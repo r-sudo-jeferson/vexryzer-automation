@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  assertMinimalHarnessContinuationSurface,
   assertMinimalHarnessRequestSurface,
   inspectHarnessEvents,
   hasToolRoundTrip,
@@ -139,6 +140,45 @@ test('accepts the official sdk-minimal two-tool request surface', () => {
     { type: 'request/header', data: { header: { system: 'small', tools: [{ name: 'bash' }, { name: 'str_replace_editor' }] } } },
   ]);
   assert.doesNotThrow(() => assertMinimalHarnessRequestSurface(minimal));
+});
+
+test('accepts an append-only continuation that inherits the prior minimal request header', () => {
+  const prior = inspectHarnessEvents([
+    { type: 'request/header', data: { header: { system: 'small', tools: [{ name: 'bash' }, { name: 'str_replace_editor' }] }, reason: 'initial' } },
+  ]);
+  const continuation = inspectHarnessEvents([
+    { type: 'turn/start', data: { turn: 2 } },
+    { type: 'step/start', data: { turn: 2, step: 1 } },
+    { type: 'tool/call', data: { turn: 2, step: 1, callId: 'call-2', name: 'str_replace_editor', arguments: '{"command":"view","path":"/tmp/probe"}' } },
+    { type: 'tool/result', data: { turn: 2, step: 1, message: { toolCallId: 'call-2' } } },
+    { type: 'turn/end', data: { turn: 2, reason: { kind: 'completed' } } },
+  ]);
+  assert.equal(continuation.requestHeaderCount, 0);
+  assert.doesNotThrow(() => assertMinimalHarnessContinuationSurface(prior, continuation));
+});
+
+test('validates a continuation request header when the Harness emits one', () => {
+  const prior = inspectHarnessEvents([
+    { type: 'request/header', data: { header: { tools: [{ name: 'bash' }, { name: 'str_replace_editor' }] }, reason: 'initial' } },
+  ]);
+  const changedToFull = inspectHarnessEvents([
+    { type: 'request/header', data: { header: { tools: Array.from({ length: 26 }, () => ({})) }, reason: 'change' } },
+  ]);
+  assert.throws(
+    () => assertMinimalHarnessContinuationSurface(prior, changedToFull),
+    /expected exactly 2 tool schemas/,
+  );
+});
+
+test('rejects inherited continuation if the prior request surface was not minimal', () => {
+  const priorFull = inspectHarnessEvents([
+    { type: 'request/header', data: { header: { tools: Array.from({ length: 26 }, () => ({})) }, reason: 'initial' } },
+  ]);
+  const continuation = inspectHarnessEvents([]);
+  assert.throws(
+    () => assertMinimalHarnessContinuationSurface(priorFull, continuation),
+    /expected exactly 2 tool schemas/,
+  );
 });
 
 test('rejects a full-sdk request surface before provider evidence can be accepted', () => {
