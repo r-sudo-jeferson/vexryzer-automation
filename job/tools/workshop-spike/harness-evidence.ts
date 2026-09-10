@@ -130,6 +130,15 @@ export function assertMinimalHarnessRequestSurface(evidence: HarnessEventEvidenc
   }
 }
 
+export function assertMinimalHarnessContinuationSurface(
+  priorEvidence: HarnessEventEvidence,
+  continuationEvidence: HarnessEventEvidence,
+): void {
+  assertMinimalHarnessRequestSurface(priorEvidence);
+  if (continuationEvidence.requestHeaderCount === 0) return;
+  assertMinimalHarnessRequestSurface(continuationEvidence);
+}
+
 export function inspectHarnessEvents(events: readonly unknown[]): HarnessEventEvidence {
   const toolCalls = events.filter((event) => eventType(event) === 'tool/call');
   const toolResults = events.filter((event) => eventType(event) === 'tool/result');
