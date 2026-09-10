@@ -77,7 +77,7 @@ function acceptedResponse() {
 }
 
 test('ASK AI applies only accepted intelligence and sends no browser-authored Canon', async ({ page }) => {
-  let releaseTurn: (() => void) | null = null;
+  let releaseTurn = () => {};
   const gate = new Promise<void>((resolve) => { releaseTurn = resolve; });
   let turnPayload: Record<string, unknown> | null = null;
   let authorization: string | null = null;
@@ -115,7 +115,7 @@ test('ASK AI applies only accepted intelligence and sends no browser-authored Ca
   await expect(page.locator('.vxa-shell')).toHaveAttribute('data-live', 'false');
   await expect(page.locator('.vxa-step')).toHaveCount(0);
 
-  releaseTurn?.();
+  releaseTurn();
 
   await expect(page.getByText('O fechamento depende de uma conferência manual recorrente.')).toBeVisible();
   await expect(page.locator('.vxa-shell')).toHaveAttribute('data-live', 'true');
@@ -174,7 +174,7 @@ test('hard validation failure leaves visitor text and S001 foundation untouched'
 
 test('pending correction requires an explicit click and correction request carries no replacement authority', async ({ page }) => {
   let correctionCalls = 0;
-  let correctionPayload: Record<string, unknown> | null = null;
+  let correctionPayload: Record<string, unknown> = {};
   let releaseCorrectionResponse = () => {};
   const correctionResponseGate = new Promise<void>((resolve) => {
     releaseCorrectionResponse = resolve;
@@ -240,7 +240,7 @@ test('pending correction requires an explicit click and correction request carri
     'requestId',
     'sessionId',
   ]);
-  expect(correctionPayload?.correctionId).toBe('correction-one');
+  expect(correctionPayload.correctionId).toBe('correction-one');
   expect(correctionPayload).not.toHaveProperty('replacementValue');
   expect(correctionPayload).not.toHaveProperty('targetEvidenceId');
   expect(correctionPayload).not.toHaveProperty('source');
