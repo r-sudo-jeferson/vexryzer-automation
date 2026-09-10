@@ -179,8 +179,9 @@ export function claimAgentSession(
 
   const completed = record.lastCompletedRequest;
   if (completed !== null && completed.requestId === input.requestId) {
-    if (record.status !== 'idle' || completed.resultRevision !== record.canonical.revision) {
-      return { ok: false, code: 'SESSION_BUSY' };
+    if (record.status !== 'idle') return { ok: false, code: 'SESSION_BUSY' };
+    if (completed.resultRevision !== record.canonical.revision) {
+      return { ok: false, code: 'REQUEST_REPLAY' };
     }
     return { ok: true, record, idempotent: true, completed };
   }
