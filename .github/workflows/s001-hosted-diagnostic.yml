@@ -1,3 +1,4 @@
+# Diagnostic iteration 2: TypeScript ecosystem compatibility without weakening strictness.
 name: S001 Hosted Diagnostic
 
 on:

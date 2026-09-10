@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
-    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.node.tsbuildinfo",
-    "target": "ES2023",
-    "lib": ["ES2023"],
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.e2e.tsbuildinfo",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "allowImportingTsExtensions": true,
@@ -13,5 +13,5 @@
     "exactOptionalPropertyTypes": true,
     "types": ["node"]
   },
-  "include": ["vite.config.ts", "vitest.config.ts", "tests/pure"]
+  "include": ["playwright.config.ts", "tests/e2e", "tests/visual"]
 }

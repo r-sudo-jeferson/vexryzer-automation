@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useMachine } from '@xstate/react';
 import { motion } from 'motion/react';
 import { appMachine, type AppMachineEvent } from './app-machine.ts';
-import { transitionExperience } from './experience-state.ts';
+import { transitionExperience, type ExperienceMode } from './experience-state.ts';
 import { decodeViewState, encodeViewState } from './view-state.ts';
 import { AutomationCanvas } from '../canvas/AutomationCanvas.tsx';
 import { processFixtures, type ProcessFixture } from '../canvas/fixtures.ts';
@@ -30,7 +30,7 @@ export function App() {
   const motionPolicy = useReducedMotionPolicy();
   usePerformanceInstrumentation();
   const fixture = useMemo(resolveFixture, []);
-  const mode = snapshot.matches('origin') ? 'origin' : snapshot.matches('process') ? 'process' : 'focus';
+  const mode: ExperienceMode = snapshot.matches('origin') ? 'origin' : snapshot.matches('process') ? 'process' : 'focus';
   const focusedNodeId = snapshot.context.focusedNodeId;
   const validNodeIds = useMemo(() => fixture.graph.nodes.map((node) => node.id), [fixture]);
 
