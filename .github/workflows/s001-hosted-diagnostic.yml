@@ -1,4 +1,4 @@
-# Diagnostic iteration 12: stable ctrl-wheel baseline plus single-worker Web Vitals evidence, unchanged hard gates, isolated lockfile capture.
+# iteration 13 RED visual evidence contract: reject unstable cameras, clipped nodes, and clipped attribution before accepting screenshots.
 name: S001 Hosted Diagnostic
 
 on:
@@ -7,6 +7,7 @@ on:
       - slice/vxa-s001-foundation-canvas
     paths:
       - .github/workflows/s001-hosted-diagnostic.yml
+      - job/tests/visual/s001.visual.spec.ts
 
 permissions:
   contents: read
