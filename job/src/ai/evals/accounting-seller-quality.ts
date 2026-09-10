@@ -59,7 +59,7 @@ function semanticText(submission: Readonly<SellerSubmission>): string {
 
 function hasAccountingSignals(text: string, groups: readonly (readonly string[])[]): boolean {
   if (groups.length === 0) return true;
-  return groups.some((group) => group.some((term) => text.includes(normalize(term))));
+  return groups.every((group) => group.some((term) => text.includes(normalize(term))));
 }
 
 function hasSemanticUi(submission: Readonly<SellerSubmission>): boolean {
