@@ -2,6 +2,8 @@ export const HARNESS_CANDIDATE_VERSION = '0.1.2-rc.1' as const;
 export const DEFAULT_MISTRAL_PROVIDER_ROUTE = 'mistral' as const;
 export const DEFAULT_MISTRAL_MODEL_ID = 'mistral-medium-3-5' as const;
 export const DEFAULT_MISTRAL_BASE_URL = 'https://api.mistral.ai/v1' as const;
+export const MISTRAL_RATE_LIMIT_WINDOW_MS = 65_000 as const;
+export const MISTRAL_SPIKE_MAX_RETRIES = 1 as const;
 
 const HARNESS_BUILD_SCRIPT_POLICY = {
   '0.1.2-rc.1': [
@@ -219,10 +221,42 @@ export function buildHarnessSdkOptions(
   };
 }
 
+function renderSpikeRetryPolicyLines(disableRetries: boolean): string[] {
+  return [
+    '      retryPolicy:',
+    '        mode: normal',
+    `        maxRetries: ${disableRetries ? 0 : MISTRAL_SPIKE_MAX_RETRIES}`,
+    '        retryableCodes:',
+    '          - RATE_LIMIT',
+    '        backoff:',
+    `          initialDelayMs: ${MISTRAL_RATE_LIMIT_WINDOW_MS}`,
+    `          maxDelayMs: ${MISTRAL_RATE_LIMIT_WINDOW_MS}`,
+    '          jitterRatio: 0',
+  ];
+}
+
 export function renderMistralSettingsYaml(input: MistralRouteConfig): string {
   validateSpikeInputs({ ...input, mistralApiKey: 'redacted-validation-key' });
   validateOptionalTimeout('timeoutMs', input.timeoutMs);
   validateOptionalTimeout('streamIdleTimeoutMs', input.streamIdleTimeoutMs);
+  const timeoutProbe = input.timeoutMs !== undefined || input.streamIdleTimeoutMs !== undefined;
+  return [
+    'llm-pi-ai:',
+    '  providers:',
+    `    ${input.providerRoute}:`,
+    '      apiKeyEnv: MISTRAL_API_KEY',
+    ...(input.timeoutMs === undefined ? [] : [`      timeoutMs: ${input.timeoutMs}`]),
+    ...(input.streamIdleTimeoutMs === undefined ? [] : [`      streamIdleTimeoutMs: ${input.streamIdleTimeoutMs}`]),
+    ...renderSpikeRetryPolicyLines(timeoutProbe),
+    '',
+  ].join('\n');
+}
+
+export function renderConfiguredMistralSettingsYaml(input: MistralRouteConfig): string {
+  validateSpikeInputs({ ...input, mistralApiKey: 'redacted-validation-key' });
+  validateOptionalTimeout('timeoutMs', input.timeoutMs);
+  validateOptionalTimeout('streamIdleTimeoutMs', input.streamIdleTimeoutMs);
+  const timeoutProbe = input.timeoutMs !== undefined || input.streamIdleTimeoutMs !== undefined;
   return [
     'llm-pi-ai:',
     '  providers:',
@@ -233,6 +267,7 @@ export function renderMistralSettingsYaml(input: MistralRouteConfig): string {
     `      baseURL: ${input.baseUrl}`,
     ...(input.timeoutMs === undefined ? [] : [`      timeoutMs: ${input.timeoutMs}`]),
     ...(input.streamIdleTimeoutMs === undefined ? [] : [`      streamIdleTimeoutMs: ${input.streamIdleTimeoutMs}`]),
+    ...renderSpikeRetryPolicyLines(timeoutProbe),
     '      compat:',
     '        supportsDeveloperRole: false',
     '        maxTokensField: max_tokens',

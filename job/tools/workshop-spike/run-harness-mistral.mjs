@@ -27,7 +27,7 @@ import {
   validateSpikeInputs,
 } from './spike-config.ts';
 
-const NORMAL_TURN_WALL_MS = 45_000;
+const NORMAL_TURN_WALL_MS = 180_000;
 const TIMEOUT_PROBE_WALL_MS = 15_000;
 const TIMEOUT_PROVIDER_MS = 5;
 const MAX_TOKENS = 2_048;
@@ -239,13 +239,12 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
 async function proveTimeoutMapping(runtime, rootDir, input) {
   const workspace = join(rootDir, 'timeout-workspace');
   const dshHome = join(rootDir, 'timeout-dsh-home');
-  const timeoutInput = { ...input, providerRoute: `${input.providerRoute}-timeout` };
   await mkdir(workspace, { recursive: true });
-  await writeProviderSettings(dshHome, timeoutInput, {
+  await writeProviderSettings(dshHome, input, {
     timeoutMs: TIMEOUT_PROVIDER_MS,
     streamIdleTimeoutMs: TIMEOUT_PROVIDER_MS,
   });
-  const harness = createHarness({ ...runtime, workspace, dshHome, input: timeoutInput });
+  const harness = createHarness({ ...runtime, workspace, dshHome, input });
   try {
     currentPhase = 'timeout-mapping';
     const result = await withWallTimeout(harness.run(
@@ -310,6 +309,7 @@ async function main() {
       evidence: normal.diagnosticCounts,
       notes: [
         'Raw provider payloads and model credentials are intentionally not emitted.',
+        'The primary proof uses the pinned Harness Mistral catalog route before any configured transport override.',
         'A PASS is valid only for this exact Harness version/provider/model tuple.',
         'This proof does not authorize a public live Workshop deployment.',
       ],
