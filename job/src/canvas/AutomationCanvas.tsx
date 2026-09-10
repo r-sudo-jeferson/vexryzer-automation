@@ -201,7 +201,7 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
         zoomOnDoubleClick={false}
         minZoom={0.42}
         maxZoom={1.4}
-        preventScrolling={false}
+        preventScrolling={!directedMobile}
         fitView={false}
         aria-label="Mapa visual do processo"
         proOptions={{ hideAttribution: false }}
