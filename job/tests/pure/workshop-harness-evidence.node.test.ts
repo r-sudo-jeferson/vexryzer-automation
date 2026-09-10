@@ -8,6 +8,19 @@ import {
   hasStreamingChunks,
 } from '../../tools/workshop-spike/harness-evidence.ts';
 
+function canonicalToolResultMessage(callId: string, text = 'probe') {
+  return {
+    role: 'user',
+    source: { kind: 'tool', callId },
+    content: [{
+      type: 'tool-result',
+      toolCallId: callId,
+      content: [{ type: 'text', text }],
+      isError: false,
+    }],
+  };
+}
+
 const events = [
   { type: 'turn/start', seq: 1, time: 1, data: { turn: 1 } },
   { type: 'step/start', seq: 2, time: 2, data: { turn: 1, step: 1 } },
@@ -15,7 +28,7 @@ const events = [
   { type: 'assistant/chunk', seq: 4, time: 4, data: { turn: 1, step: 1, chunk: { type: 'text-delta', text: 'a' } } },
   { type: 'assistant/chunk', seq: 5, time: 5, data: { turn: 1, step: 1, chunk: { type: 'text-delta', text: 'b' } } },
   { type: 'tool/call', seq: 6, time: 6, data: { turn: 1, step: 1, callId: 'call-1', name: 'bash', arguments: '{"command":"printf probe"}' } },
-  { type: 'tool/result', seq: 7, time: 7, data: { turn: 1, step: 1, message: { toolCallId: 'call-1', content: [{ type: 'text', text: 'probe' }] } } },
+  { type: 'tool/result', seq: 7, time: 7, data: { turn: 1, step: 1, message: canonicalToolResultMessage('call-1') } },
   { type: 'assistant/message', seq: 8, time: 8, data: { turn: 1, step: 1, message: { content: [] }, usage: { inputTokens: 1200, outputTokens: 50, cacheReadTokens: 100, cacheWriteTokens: 25 } } },
   { type: 'assistant/attempt', seq: 9, time: 9, data: { turn: 1, step: 1, stream: [] } },
   { type: 'step/end', seq: 10, time: 10, data: { turn: 1, step: 1 } },
@@ -50,9 +63,34 @@ test('extracts only bounded evidence from Harness session events', () => {
   assert.equal(JSON.stringify(inspectHarnessEvents(events)).includes('bounded-system'), false);
 });
 
-test('detects streaming and a complete tool round trip', () => {
+test('detects streaming and a canonical complete tool round trip', () => {
   assert.equal(hasStreamingChunks(events), true);
   assert.equal(hasToolRoundTrip(events), true);
+});
+
+test('requires canonical source and tool-result block ids to agree', () => {
+  const mismatch = [
+    { type: 'tool/call', data: { callId: 'call-1', name: 'bash', arguments: '{}' } },
+    {
+      type: 'tool/result',
+      data: {
+        message: {
+          role: 'user',
+          source: { kind: 'tool', callId: 'call-1' },
+          content: [{ type: 'tool-result', toolCallId: 'call-2', content: [], isError: false }],
+        },
+      },
+    },
+  ];
+  assert.equal(hasToolRoundTrip(mismatch), false);
+});
+
+test('does not accept the obsolete direct message toolCallId shape', () => {
+  const legacyShape = [
+    { type: 'tool/call', data: { callId: 'call-1', name: 'bash', arguments: '{}' } },
+    { type: 'tool/result', data: { message: { toolCallId: 'call-1', content: [] } } },
+  ];
+  assert.equal(hasToolRoundTrip(legacyShape), false);
 });
 
 test('rejects malformed JSON tool arguments as structured evidence', () => {
@@ -62,10 +100,10 @@ test('rejects malformed JSON tool arguments as structured evidence', () => {
   assert.equal(inspectHarnessEvents(malformed).structuredToolArguments, false);
 });
 
-test('does not infer a tool round trip from unrelated tool counts', () => {
+test('does not infer a tool round trip from unrelated tool ids', () => {
   const unrelated = [
     { type: 'tool/call', data: { callId: 'call-1', name: 'bash', arguments: '{}' } },
-    { type: 'tool/result', data: { message: { toolCallId: 'call-2' } } },
+    { type: 'tool/result', data: { message: canonicalToolResultMessage('call-2') } },
   ];
   assert.equal(hasToolRoundTrip(unrelated), false);
 });
@@ -76,7 +114,7 @@ test('reports tool failure codes without exposing result content', () => {
     {
       type: 'tool/result',
       data: {
-        message: { toolCallId: 'call-9', content: [{ type: 'text', text: 'sensitive-result' }] },
+        message: canonicalToolResultMessage('call-9', 'sensitive-result'),
         error: { name: 'ToolExecutionError', code: 'PERMISSION_DENIED' },
       },
     },
@@ -150,10 +188,11 @@ test('accepts an append-only continuation that inherits the prior minimal reques
     { type: 'turn/start', data: { turn: 2 } },
     { type: 'step/start', data: { turn: 2, step: 1 } },
     { type: 'tool/call', data: { turn: 2, step: 1, callId: 'call-2', name: 'str_replace_editor', arguments: '{"command":"view","path":"/tmp/probe"}' } },
-    { type: 'tool/result', data: { turn: 2, step: 1, message: { toolCallId: 'call-2' } } },
+    { type: 'tool/result', data: { turn: 2, step: 1, message: canonicalToolResultMessage('call-2') } },
     { type: 'turn/end', data: { turn: 2, reason: { kind: 'completed' } } },
   ]);
   assert.equal(continuation.requestHeaderCount, 0);
+  assert.equal(hasToolRoundTrip(continuation), true);
   assert.doesNotThrow(() => assertMinimalHarnessContinuationSurface(prior, continuation));
 });
 
