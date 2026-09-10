@@ -12,6 +12,7 @@ import type {
   VersionedAgentSession,
 } from '../../src/server/session/session-repository.ts';
 import {
+  handleAskAiCorrection,
   handleAskAiSessionStart,
   handleAskAiTurn,
 } from '../../src/server/session/ask-ai-http.ts';
@@ -336,6 +337,100 @@ test('Critic/publication failure is 502 and never masquerades as guided recovery
   assert.equal(Object.hasOwn(body, 'detail'), false);
   assert.equal(repository.snapshot('session-http')?.status, 'idle');
   assert.equal(repository.snapshot('session-http')?.lastCompletedRequest, null);
+});
+
+test('correction HTTP accepts only a persisted suggestion id and rejects browser-authored replacement semantics', async () => {
+  const repository = new MemoryRepository();
+  const created = createAgentSession(entropy());
+  const reactiveState = {
+    ...created.record.reactiveState,
+    basedOnRevision: 1,
+    correctionSuggestions: [{
+      sourceCorrectionId: 'correction-one',
+      correction: {
+        id: 'correction-one',
+        targetEvidenceId: 'fact-old',
+        reason: 'Atualizar o prazo.',
+        replacementValue: '3 dias',
+        supportingTurnIds: ['turn-one'],
+      },
+      status: 'pending' as const,
+      invalidatedReason: null,
+    }],
+  };
+  await repository.create({
+    ...created.record,
+    canonical: {
+      ...created.record.canonical,
+      revision: 1,
+      turnIds: ['turn-one'],
+      facts: [{
+        id: 'fact-old',
+        subject: 'fechamento',
+        predicate: 'leva',
+        value: '5 dias',
+        status: 'confirmed',
+        source: 'user',
+        confidence: 1,
+        supportingTurnIds: ['turn-one'],
+        confirmedByTurnId: 'turn-one',
+      }],
+    },
+    reactiveState,
+  } as never);
+
+  const accepted = await handleAskAiCorrection(turnRequest({
+    sessionId: 'session-http',
+    requestId: 'correction-request',
+    expectedRevision: 1,
+    correctionId: 'correction-one',
+  }), {
+    repository,
+    runtime: runtime(),
+    correctionDependencies: { nowEpochMs: () => 1_000, leaseId: () => 'lease-correction' },
+  });
+  assert.equal(accepted.status, 200);
+  const acceptedBody = await accepted.json() as { ok: boolean; state: { canonicalRevision: number } };
+  assert.equal(acceptedBody.ok, true);
+  assert.equal(acceptedBody.state.canonicalRevision, 2);
+
+  const injected = await handleAskAiCorrection(turnRequest({
+    sessionId: 'session-http',
+    requestId: 'correction-forged',
+    expectedRevision: 2,
+    correctionId: 'correction-one',
+    replacementValue: '1 dia',
+    targetEvidenceId: 'fact-other',
+    source: 'system',
+    unit: 'hour',
+  }), {
+    repository,
+    runtime: runtime(),
+  });
+  assert.equal(injected.status, 400);
+  const injectedBody = await injected.json() as { code: string };
+  assert.equal(injectedBody.code, 'INVALID_REQUEST');
+});
+
+test('correction HTTP maps stale/conflict/busy and never leaks correction internals', async () => {
+  const repository = new MemoryRepository();
+  const created = createAgentSession(entropy());
+  await repository.create(created.record);
+
+  const response = await handleAskAiCorrection(turnRequest({
+    sessionId: 'session-http',
+    requestId: 'correction-stale',
+    expectedRevision: 1,
+    correctionId: 'correction-one',
+  }), {
+    repository,
+    runtime: runtime(),
+    correctionDependencies: { nowEpochMs: () => 1_000 },
+  });
+  assert.equal(response.status, 409);
+  const body = await response.json() as Record<string, unknown>;
+  assert.equal(body.code, 'STALE_REVISION');
+  assert.deepEqual(Object.keys(body).sort(), ['code', 'currentRevision', 'ok']);
 });
 
 test('store unavailability is 503 and no provider details leak', async () => {
