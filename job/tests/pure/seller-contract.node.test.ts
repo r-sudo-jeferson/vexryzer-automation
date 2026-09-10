@@ -189,3 +189,34 @@ test('defense-in-depth permits material numbers already supported by canonical f
     assert.equal(result.ok, true);
   });
 });
+
+
+test('numeric hard block matches value and unit instead of laundering a percentage through another canonical quantity', () => {
+  const thirtyPeopleContext: CanonicalSalesContext = {
+    ...context,
+    facts: [{
+      ...context.facts[0]!,
+      id: 'fact-team-size',
+      subject: 'equipe',
+      predicate: 'tem',
+      value: '30 pessoas',
+    }],
+  };
+  const result = validateSellerSubmission(submission({
+    proposal: proposal({ narration: 'A automação reduziria 30% do retrabalho.' }),
+  }), { canonical: thirtyPeopleContext });
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  if (result.code !== 'HARD_BLOCK') assert.fail(`expected HARD_BLOCK, got ${result.code}`);
+  assert.equal(result.finding.code, 'UNSUPPORTED_NUMERIC_CLAIM');
+});
+
+test('numeric hard block recognizes unsupported BRL amounts even when the price assertion vocabulary is absent', () => {
+  const result = validateSellerSubmission(submission({
+    proposal: proposal({ narration: 'O investimento estimado seria R$ 5.000.' }),
+  }), options);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  if (result.code !== 'HARD_BLOCK') assert.fail(`expected HARD_BLOCK, got ${result.code}`);
+  assert.equal(result.finding.code, 'UNSUPPORTED_NUMERIC_CLAIM');
+});
