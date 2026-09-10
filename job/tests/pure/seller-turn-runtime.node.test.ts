@@ -334,10 +334,12 @@ test('Critic revision request is same-revision, calculation-free, and requires a
     }),
   });
 
-  await t.test('accepts a newly identified revised proposal and carries structured feedback', async () => {
+  await t.test('accepts a newly identified revised proposal and exposes only the final submission tool', async () => {
     let observed = '';
+    let observedTools: readonly { function: { name: string } }[] = [];
     const input = baseInput([primary], async (providerInput) => {
       observed = (providerInput.messages[1] as { content: string }).content;
+      observedTools = providerInput.tools;
       return completion([submissionTool(7, 'tool-revised', 'proposal-7-revised')]);
     });
     input.revisionRequest = revisionRequest;
@@ -346,6 +348,7 @@ test('Critic revision request is same-revision, calculation-free, and requires a
     if (!result.ok) return;
     assert.equal(result.submission.proposalId, 'proposal-7-revised');
     assert.equal(observed.includes('"previousProposalId":"proposal-7"'), true);
+    assert.deepEqual(observedTools.map((tool) => tool.function.name), ['submit_seller_submission']);
   });
 
   await t.test('rejects calculation tool use and reused proposal id during revision', async () => {
