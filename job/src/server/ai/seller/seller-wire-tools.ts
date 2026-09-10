@@ -1,8 +1,18 @@
+import { CAPABILITY_KINDS } from '../../../ai/context/canonical-sales-context.ts';
 import type { CalculationRequest } from '../../../ai/quant/quantity-types.ts';
 import {
   USER_OBSERVATION_KINDS,
   type UserObservationKind,
 } from '../../../ai/context/user-evidence-ingestion.ts';
+import {
+  AGENT_INTENT_LIMITS,
+  QUANTITATIVE_OPPORTUNITY_KINDS,
+} from '../../../experience/agent-intent.ts';
+import {
+  ARTIFACT_AUDIENCES,
+  ARTIFACT_KINDS,
+} from '../../../experience/artifact-intent.ts';
+import { EXPERIENCE_PROPOSAL_LIMITS } from '../../../experience/experience-validation.ts';
 import type { AssembledToolCall } from '../providers/chat-sse.ts';
 import type { LocalFunctionTool } from '../providers/openai-chat-wire.ts';
 
@@ -156,36 +166,348 @@ const requestCalculationsTool: LocalFunctionTool = Object.freeze({
   }),
 });
 
+const nonEmptyTextSchema = (maxLength: number, description?: string): Readonly<Record<string, unknown>> => Object.freeze({
+  type: 'string',
+  minLength: 1,
+  maxLength,
+  ...(description === undefined ? {} : { description }),
+});
+
+const idArraySchema = (
+  maxItems: number,
+  minItems = 0,
+): Readonly<Record<string, unknown>> => Object.freeze({
+  type: 'array',
+  minItems,
+  maxItems,
+  uniqueItems: true,
+  items: idSchema,
+});
+
+const primitiveSchema = Object.freeze({
+  oneOf: Object.freeze([
+    Object.freeze({ type: 'string', minLength: 1, maxLength: 1000 }),
+    Object.freeze({ type: 'number' }),
+    Object.freeze({ type: 'boolean' }),
+  ]),
+});
+
+function closedObjectSchema(
+  properties: Readonly<Record<string, unknown>>,
+  required: readonly string[],
+): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    type: 'object',
+    additionalProperties: false,
+    properties: Object.freeze({ ...properties }),
+    required: Object.freeze([...required]),
+  });
+}
+
+function discriminatedSchema(
+  kind: string,
+  properties: Readonly<Record<string, unknown>>,
+  required: readonly string[],
+): Readonly<Record<string, unknown>> {
+  return closedObjectSchema({
+    id: idSchema,
+    kind: Object.freeze({ type: 'string', enum: Object.freeze([kind]) }),
+    ...properties,
+  }, ['id', 'kind', ...required]);
+}
+
+const experienceActionSchema = Object.freeze({
+  oneOf: Object.freeze([
+    discriminatedSchema('focus', {
+      targetId: idSchema,
+      reason: nonEmptyTextSchema(600),
+    }, ['targetId', 'reason']),
+    discriminatedSchema('compare', {
+      targetIds: idArraySchema(AGENT_INTENT_LIMITS.actionTargetIds, 2),
+      reason: nonEmptyTextSchema(600),
+    }, ['targetIds', 'reason']),
+    discriminatedSchema('annotate', {
+      targetId: idSchema,
+      text: nonEmptyTextSchema(1000),
+      evidenceIds: idArraySchema(AGENT_INTENT_LIMITS.evidenceIds),
+    }, ['targetId', 'text', 'evidenceIds']),
+    discriminatedSchema('reveal', {
+      targetId: idSchema,
+      reason: nonEmptyTextSchema(600),
+    }, ['targetId', 'reason']),
+    discriminatedSchema('group', {
+      groupId: idSchema,
+      memberIds: idArraySchema(AGENT_INTENT_LIMITS.actionTargetIds, 2),
+      label: nonEmptyTextSchema(200),
+    }, ['groupId', 'memberIds', 'label']),
+    discriminatedSchema('de_emphasize', {
+      targetIds: idArraySchema(AGENT_INTENT_LIMITS.actionTargetIds, 1),
+      reason: nonEmptyTextSchema(600),
+    }, ['targetIds', 'reason']),
+    discriminatedSchema('quantify', {
+      calculationId: idSchema,
+      targetId: Object.freeze({ oneOf: Object.freeze([idSchema, Object.freeze({ type: 'null' })]) }),
+      reason: nonEmptyTextSchema(600),
+    }, ['calculationId', 'targetId', 'reason']),
+    discriminatedSchema('demonstrate', {
+      artifactIntentId: idSchema,
+      reason: nonEmptyTextSchema(600),
+    }, ['artifactIntentId', 'reason']),
+    discriminatedSchema('explain_relationship', {
+      sourceId: idSchema,
+      targetId: idSchema,
+      text: nonEmptyTextSchema(1000),
+    }, ['sourceId', 'targetId', 'text']),
+    discriminatedSchema('stage_artifact', {
+      artifactIntentId: idSchema,
+      reason: nonEmptyTextSchema(600),
+    }, ['artifactIntentId', 'reason']),
+    discriminatedSchema('request_workshop', {
+      artifactIntentId: idSchema,
+      reason: nonEmptyTextSchema(600),
+    }, ['artifactIntentId', 'reason']),
+  ]),
+});
+
+const quantitativeOpportunitySchema = closedObjectSchema({
+  id: idSchema,
+  kind: Object.freeze({ type: 'string', enum: Object.freeze([...QUANTITATIVE_OPPORTUNITY_KINDS]) }),
+  objective: nonEmptyTextSchema(600),
+  evidenceIds: idArraySchema(AGENT_INTENT_LIMITS.evidenceIds),
+  missingInputs: Object.freeze({
+    type: 'array',
+    maxItems: AGENT_INTENT_LIMITS.missingInputs,
+    uniqueItems: true,
+    items: nonEmptyTextSchema(200),
+  }),
+}, ['id', 'kind', 'objective', 'evidenceIds', 'missingInputs']);
+
+const artifactIntentSchema = closedObjectSchema({
+  id: idSchema,
+  kind: Object.freeze({ type: 'string', enum: Object.freeze([...ARTIFACT_KINDS]) }),
+  objective: nonEmptyTextSchema(600),
+  evidenceIds: idArraySchema(32),
+  audience: Object.freeze({ type: 'string', enum: Object.freeze([...ARTIFACT_AUDIENCES]) }),
+  desiredImpact: nonEmptyTextSchema(600),
+  workshopRequired: Object.freeze({ type: 'boolean' }),
+}, ['kind', 'objective', 'evidenceIds', 'audience', 'desiredImpact', 'workshopRequired']);
+
+const nextQuestionSchema = Object.freeze({
+  oneOf: Object.freeze([
+    closedObjectSchema({
+      text: nonEmptyTextSchema(800),
+      objective: nonEmptyTextSchema(400),
+      evidenceIds: idArraySchema(AGENT_INTENT_LIMITS.evidenceIds),
+    }, ['text']),
+    Object.freeze({ type: 'null' }),
+  ]),
+});
+
+const agentIntentSchema = closedObjectSchema({
+  schemaVersion: Object.freeze({ type: 'integer', enum: Object.freeze([1]) }),
+  objective: nonEmptyTextSchema(1200),
+  rationale: nonEmptyTextSchema(2000),
+  capabilities: Object.freeze({
+    type: 'array',
+    uniqueItems: true,
+    items: Object.freeze({ type: 'string', enum: Object.freeze([...CAPABILITY_KINDS]) }),
+  }),
+  actions: Object.freeze({
+    type: 'array',
+    maxItems: AGENT_INTENT_LIMITS.actions,
+    items: experienceActionSchema,
+  }),
+  quantitativeOpportunities: Object.freeze({
+    type: 'array',
+    maxItems: AGENT_INTENT_LIMITS.quantitativeOpportunities,
+    items: quantitativeOpportunitySchema,
+  }),
+  artifactIntents: Object.freeze({
+    type: 'array',
+    maxItems: AGENT_INTENT_LIMITS.artifactIntents,
+    items: artifactIntentSchema,
+  }),
+  nextQuestion: nextQuestionSchema,
+}, [
+  'schemaVersion',
+  'objective',
+  'rationale',
+  'capabilities',
+  'actions',
+  'quantitativeOpportunities',
+  'artifactIntents',
+  'nextQuestion',
+]);
+
+const factProposalSchema = closedObjectSchema({
+  id: idSchema,
+  subject: nonEmptyTextSchema(200),
+  predicate: nonEmptyTextSchema(200),
+  value: primitiveSchema,
+  source: Object.freeze({
+    type: 'string',
+    enum: Object.freeze(['inference']),
+    description: 'Model-authored facts are hypotheses only. User/system provenance is application-owned.',
+  }),
+  supportingTurnIds: idArraySchema(EXPERIENCE_PROPOSAL_LIMITS.evidenceIds),
+}, ['id', 'subject', 'predicate', 'value', 'source', 'supportingTurnIds']);
+
+const correctionProposalSchema = closedObjectSchema({
+  id: idSchema,
+  targetEvidenceId: idSchema,
+  reason: nonEmptyTextSchema(800),
+  replacementValue: primitiveSchema,
+  supportingTurnIds: idArraySchema(EXPERIENCE_PROPOSAL_LIMITS.evidenceIds),
+}, ['id', 'targetEvidenceId', 'reason', 'replacementValue', 'supportingTurnIds']);
+
+const processMutationSchema = Object.freeze({
+  oneOf: Object.freeze([
+    discriminatedSchema('upsert_node', {
+      nodeId: idSchema,
+      label: nonEmptyTextSchema(EXPERIENCE_PROPOSAL_LIMITS.processNodeLabel),
+      summary: nonEmptyTextSchema(EXPERIENCE_PROPOSAL_LIMITS.processNodeSummary),
+      evidenceIds: idArraySchema(EXPERIENCE_PROPOSAL_LIMITS.evidenceIds),
+    }, ['nodeId', 'label', 'summary', 'evidenceIds']),
+    discriminatedSchema('upsert_relationship', {
+      relationshipId: idSchema,
+      sourceNodeId: idSchema,
+      targetNodeId: idSchema,
+      label: nonEmptyTextSchema(EXPERIENCE_PROPOSAL_LIMITS.processRelationshipLabel),
+      evidenceIds: idArraySchema(EXPERIENCE_PROPOSAL_LIMITS.evidenceIds),
+    }, ['relationshipId', 'sourceNodeId', 'targetNodeId', 'label', 'evidenceIds']),
+    discriminatedSchema('remove_element', {
+      targetId: idSchema,
+      reason: nonEmptyTextSchema(600),
+    }, ['targetId', 'reason']),
+    discriminatedSchema('set_node_state', {
+      nodeId: idSchema,
+      state: Object.freeze({
+        type: 'string',
+        enum: Object.freeze(['active', 'hypothesis', 'invalidated']),
+      }),
+      reason: nonEmptyTextSchema(600),
+    }, ['nodeId', 'state', 'reason']),
+  ]),
+});
+
+const sceneProposalSchema = Object.freeze({
+  oneOf: Object.freeze([
+    closedObjectSchema({
+      composition: Object.freeze({
+        type: 'string',
+        enum: Object.freeze(['stable', 'focus', 'compare', 'overview', 'artifact']),
+      }),
+      focusIds: idArraySchema(EXPERIENCE_PROPOSAL_LIMITS.sceneIds),
+      comparisonIds: idArraySchema(EXPERIENCE_PROPOSAL_LIMITS.sceneIds),
+      announcement: Object.freeze({
+        oneOf: Object.freeze([nonEmptyTextSchema(600), Object.freeze({ type: 'null' })]),
+      }),
+    }, ['composition', 'focusIds', 'comparisonIds', 'announcement']),
+    Object.freeze({ type: 'null' }),
+  ]),
+});
+
+const artifactProposalSchema = closedObjectSchema({
+  id: idSchema,
+  kind: Object.freeze({ type: 'string', enum: Object.freeze([...ARTIFACT_KINDS]) }),
+  title: nonEmptyTextSchema(240),
+  summary: nonEmptyTextSchema(1200),
+  evidenceIds: idArraySchema(EXPERIENCE_PROPOSAL_LIMITS.evidenceIds),
+  status: Object.freeze({ type: 'string', enum: Object.freeze(['conceptual', 'prototype']) }),
+}, ['id', 'kind', 'title', 'summary', 'evidenceIds', 'status']);
+
+const modelFacingProposalSchema = closedObjectSchema({
+  schemaVersion: Object.freeze({ type: 'integer', enum: Object.freeze([1]) }),
+  narration: nonEmptyTextSchema(EXPERIENCE_PROPOSAL_LIMITS.narration),
+  intent: agentIntentSchema,
+  factProposals: Object.freeze({
+    type: 'array',
+    maxItems: EXPERIENCE_PROPOSAL_LIMITS.factProposals,
+    items: factProposalSchema,
+  }),
+  correctionProposals: Object.freeze({
+    type: 'array',
+    maxItems: EXPERIENCE_PROPOSAL_LIMITS.correctionProposals,
+    items: correctionProposalSchema,
+  }),
+  processMutations: Object.freeze({
+    type: 'array',
+    maxItems: EXPERIENCE_PROPOSAL_LIMITS.processMutations,
+    items: processMutationSchema,
+  }),
+  sceneProposal: sceneProposalSchema,
+  artifactProposals: Object.freeze({
+    type: 'array',
+    maxItems: EXPERIENCE_PROPOSAL_LIMITS.artifactProposals,
+    items: artifactProposalSchema,
+  }),
+  criticRequired: Object.freeze({
+    type: 'boolean',
+    enum: Object.freeze([true]),
+    description: 'Every Seller submission requires independent Critic review.',
+  }),
+}, [
+  'schemaVersion',
+  'narration',
+  'intent',
+  'factProposals',
+  'correctionProposals',
+  'processMutations',
+  'sceneProposal',
+  'artifactProposals',
+  'criticRequired',
+]);
+
+const safeMaterialClaimSchema = Object.freeze({
+  oneOf: Object.freeze([
+    discriminatedSchema('verified_numeric', {
+      text: nonEmptyTextSchema(1200),
+      calculationId: idSchema,
+    }, ['text', 'calculationId']),
+    discriminatedSchema('qualitative', {
+      text: nonEmptyTextSchema(1200),
+      evidenceIds: idArraySchema(32),
+    }, ['text', 'evidenceIds']),
+    discriminatedSchema('feasibility', {
+      text: nonEmptyTextSchema(1200),
+      state: Object.freeze({ type: 'string', enum: Object.freeze(['unknown', 'conditional']) }),
+      evidenceIds: idArraySchema(32),
+    }, ['text', 'state', 'evidenceIds']),
+    discriminatedSchema('artifact_readiness', {
+      text: nonEmptyTextSchema(1200),
+      artifactId: idSchema,
+      readiness: Object.freeze({ type: 'string', enum: Object.freeze(['conceptual', 'prototype']) }),
+    }, ['text', 'artifactId', 'readiness']),
+  ]),
+});
+
 const submitSellerTool: LocalFunctionTool = Object.freeze({
   type: 'function',
   function: Object.freeze({
     name: 'submit_seller_submission',
-    description: 'Submit the final SellerSubmission candidate after all deterministic calculations have been committed. The application binds proposal.baseRevision to the current canonical revision. Pending calculation requests are forbidden and every nested field is independently validated.',
-    parameters: Object.freeze({
-      type: 'object',
-      additionalProperties: false,
-      properties: Object.freeze({
-        submission: Object.freeze({
-          type: 'object',
-          additionalProperties: false,
-          properties: Object.freeze({
-            schemaVersion: Object.freeze({ type: 'integer', enum: Object.freeze([1]) }),
-            proposalId: idSchema,
-            proposal: Object.freeze({ type: 'object' }),
-            materialClaims: Object.freeze({ type: 'array' }),
-            calculationRequests: Object.freeze({ type: 'array', maxItems: 0 }),
-          }),
-          required: Object.freeze([
-            'schemaVersion',
-            'proposalId',
-            'proposal',
-            'materialClaims',
-            'calculationRequests',
-          ]),
+    description: 'Submit the final fully structured SellerSubmission after deterministic calculations are committed. proposal.baseRevision is server-owned and must be omitted. Only non-authoritative safe material-claim kinds are exposed here; every field is independently revalidated server-side.',
+    parameters: closedObjectSchema({
+      submission: closedObjectSchema({
+        schemaVersion: Object.freeze({ type: 'integer', enum: Object.freeze([1]) }),
+        proposalId: idSchema,
+        proposal: modelFacingProposalSchema,
+        materialClaims: Object.freeze({
+          type: 'array',
+          maxItems: 20,
+          items: safeMaterialClaimSchema,
         }),
-      }),
-      required: Object.freeze(['submission']),
-    }),
+        calculationRequests: Object.freeze({
+          type: 'array',
+          maxItems: 0,
+        }),
+      }, [
+        'schemaVersion',
+        'proposalId',
+        'proposal',
+        'materialClaims',
+        'calculationRequests',
+      ]),
+    }, ['submission']),
   }),
 });
 
