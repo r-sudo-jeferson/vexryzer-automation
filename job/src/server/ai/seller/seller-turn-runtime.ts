@@ -144,6 +144,7 @@ export type SellerTurnRuntimeResult =
       failureClass: Exclude<ProviderChatClientResult, { ok: true }>['class'];
       status: number | null;
       retryAfterMs: number | null;
+      providerMalformedDetail?: Exclude<ProviderChatClientResult, { ok: true }>['malformedDetail'];
     }
   | {
       ok: false;
@@ -545,6 +546,7 @@ function providerFailure(
     failureClass: failure.class,
     status: failure.status,
     retryAfterMs: failure.retryAfterMs,
+    ...(failure.malformedDetail === undefined ? {} : { providerMalformedDetail: failure.malformedDetail }),
   };
 }
 
