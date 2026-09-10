@@ -435,7 +435,7 @@ export function packageContext(input: ContextPackagerInput): ContextPackagingRes
         ? {}
         : { processNodes: baseParts.visualState.processNodes }),
     }),
-    activeArtifacts: Object.freeze([]),
+    activeArtifacts: baseParts.activeArtifacts,
     digestContinuity: null,
     recentTurns: Object.freeze([]),
   };
