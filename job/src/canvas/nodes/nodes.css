@@ -26,9 +26,11 @@
 .vxa-node h3 { margin: 0; color: var(--vxa-text-platinum); font-family: var(--vxa-font-display); font-size: 1rem; line-height: 1.22; letter-spacing: -0.015em; overflow-wrap: anywhere; }
 .vxa-node p { margin: 0.55rem 0 0; color: var(--vxa-text-muted); font-size: 0.78rem; line-height: 1.5; overflow-wrap: anywhere; }
 .vxa-node__datum { display: inline-flex; margin-top: 0.75rem; padding: 0.34rem 0.5rem; border: 1px solid var(--vxa-border-subtle); border-radius: 0.5rem; background: rgba(255,255,255,0.035); color: var(--vxa-text-primary); font-size: 0.68rem; }
+.react-flow__node.react-flow__node-process:focus-visible { outline: 2px solid var(--vxa-focus-ring); outline-offset: 4px; box-shadow: var(--vxa-shadow-focus); }
 .vxa-node[data-zoom='far'] { width: 9rem; min-height: 3.75rem; border-radius: 0.9rem; }
 .vxa-node[data-zoom='far'] .vxa-node__content { padding: 0.72rem 0.78rem; }
-.vxa-node[data-zoom='far'] .vxa-node__meta { margin-bottom: 0.35rem; }
+.vxa-node[data-zoom='far'] .vxa-node__meta { align-items: flex-start; gap: 0.3rem; margin-bottom: 0.35rem; }
+.vxa-node[data-zoom='far'] .vxa-node__kind, .vxa-node[data-zoom='far'] .vxa-node__provenance { font-size: 0.54rem; line-height: 1.25; letter-spacing: 0.055em; }
 .vxa-node[data-zoom='far'] h3 { font-size: 0.78rem; }
 .vxa-node__handle { width: 1px !important; height: 1px !important; min-width: 0 !important; min-height: 0 !important; border: 0 !important; opacity: 0 !important; pointer-events: none !important; }
 

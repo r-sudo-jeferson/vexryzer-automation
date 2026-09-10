@@ -80,8 +80,8 @@ export function App() {
         <section className="vxa-intro" aria-labelledby="vxa-title">
           <motion.div
             className="vxa-intro__copy"
-            initial={{ opacity: 0, y: motionPolicy.reduced ? 0 : 14 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ y: motionPolicy.reduced ? 0 : 14 }}
+            animate={{ y: 0 }}
             transition={{ duration: motionPolicy.reduced ? 0.09 : 0.45 }}
           >
             <span className="vxa-kicker">AUTOMAÇÃO COMEÇA COM CLAREZA</span>

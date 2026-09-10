@@ -13,16 +13,20 @@ const provenanceLabels: Record<ProcessNodeModel['provenance'], string> = {
   user_stated: 'Informado', ai_inferred: 'Hipótese', user_confirmed: 'Confirmado',
 };
 
+export function processNodeAccessibleLabel(model: ProcessNodeModel): string {
+  return `${kindLabels[model.kind]}: ${model.label}. ${model.summary} Proveniência: ${provenanceLabels[model.provenance]}.`;
+}
+
 export function ProcessNode({ data, selected }: NodeProps<ProcessFlowNode>) {
   const { model, zoomBand, muted } = data;
   const detail = zoomBand === 'near';
   const medium = zoomBand !== 'far';
   return (
-    <article className="vxa-node" data-kind={model.kind} data-zoom={zoomBand} data-muted={muted ? 'true' : 'false'} data-selected={selected ? 'true' : 'false'} aria-label={`${kindLabels[model.kind]}: ${model.label}. ${model.summary}`}>
+    <article className="vxa-node" data-kind={model.kind} data-zoom={zoomBand} data-muted={muted ? 'true' : 'false'} data-selected={selected ? 'true' : 'false'} aria-label={processNodeAccessibleLabel(model)}>
       <Handle className="vxa-node__handle" type="target" position={Position.Left} isConnectable={false} />
       <div className="vxa-node__rail" aria-hidden="true" />
       <div className="vxa-node__content">
-        <div className="vxa-node__meta"><span className="vxa-node__kind">{kindLabels[model.kind]}</span>{detail ? <span className="vxa-node__provenance">{provenanceLabels[model.provenance]}</span> : null}</div>
+        <div className="vxa-node__meta"><span className="vxa-node__kind">{kindLabels[model.kind]}</span><span className="vxa-node__provenance">{provenanceLabels[model.provenance]}</span></div>
         <h3>{model.label}</h3>
         {medium ? <p>{model.summary}</p> : null}
         {detail && model.kind === 'manual_action' && model.effort ? <span className="vxa-node__datum">~{model.effort.minutesPerOccurrence} min / ocorrência</span> : null}

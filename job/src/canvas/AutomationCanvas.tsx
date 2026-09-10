@@ -6,6 +6,7 @@ import {
   ReactFlowProvider,
   type Edge,
   type Node,
+  type NodeChange,
   type ReactFlowInstance,
   type Viewport,
 } from '@xyflow/react';
@@ -15,7 +16,7 @@ import type { ProcessFixture } from './fixtures.ts';
 import { layoutProcessGraph } from './layout.ts';
 import { resolveZoomBand, type ZoomBand } from './semantic-zoom.ts';
 import { OriginNode, type OriginFlowNode } from './nodes/OriginNode.tsx';
-import { ProcessNode, type ProcessFlowNode } from './nodes/ProcessNode.tsx';
+import { ProcessNode, processNodeAccessibleLabel, type ProcessFlowNode } from './nodes/ProcessNode.tsx';
 import type { MotionPolicy } from '../accessibility/motion-policy.ts';
 import './canvas.css';
 
@@ -45,6 +46,7 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
   const [viewportRevision, setViewportRevision] = useState(0);
   const [directedMobile, setDirectedMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 720px), (pointer: coarse)').matches);
   const cameraIntent = `${mode}:${focusedNodeId ?? 'none'}:${motionPolicy.reduced ? 'reduced' : 'standard'}`;
+  const processNodeIds = useMemo(() => new Set(fixture.graph.nodes.map((node) => node.id)), [fixture]);
 
   useEffect(() => {
     if (window.__VXA_PERF__) window.__VXA_PERF__.canvasCommits += 1;
@@ -88,7 +90,7 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
       connectable: false,
       selectable: mode !== 'origin',
       focusable: mode !== 'origin',
-      ariaLabel: `${model.label}. ${model.summary}`,
+      ariaLabel: processNodeAccessibleLabel(model),
       deletable: false,
     }));
 
@@ -170,6 +172,11 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
     }
   };
 
+  const handleNodesChange = (changes: NodeChange<CanvasNode>[]) => {
+    const selected = changes.find((change) => change.type === 'select' && change.selected && processNodeIds.has(change.id));
+    if (selected?.type === 'select' && selected.id !== focusedNodeId) onFocusNode(selected.id);
+  };
+
   return (
     <div ref={canvasRef} className="vxa-canvas" data-mode={mode} data-zoom-band={zoomBand}>
       <ReactFlow<CanvasNode, Edge>
@@ -179,12 +186,14 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
         onInit={setInstance}
         onMoveStart={handleMoveStart}
         onMove={handleViewport}
-        onNodeClick={(_event, node) => node.type === 'process' && onFocusNode(node.id)}
+        onNodesChange={handleNodesChange}
         nodesDraggable={false}
         nodesConnectable={false}
+        nodesFocusable
         edgesReconnectable={false}
         elementsSelectable
         selectionOnDrag={false}
+        autoPanOnNodeFocus
         panOnDrag={[0, 1]}
         panOnScroll={false}
         zoomOnScroll={!directedMobile}
