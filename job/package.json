@@ -20,7 +20,8 @@
     "test:a11y": "playwright test tests/e2e/accessibility.spec.ts",
     "test:visual": "playwright test tests/visual --project=chromium-desktop",
     "verify:foundation": "node scripts/validate-foundation.mjs ..",
-    "verify": "pnpm verify:foundation && pnpm typecheck && pnpm test && pnpm build && pnpm test:e2e && pnpm test:visual"
+    "verify:bundle": "node scripts/scan-production-bundle.mjs dist",
+    "verify": "pnpm verify:foundation && pnpm typecheck && pnpm test && pnpm build && pnpm verify:bundle && pnpm test:e2e && pnpm test:visual"
   },
   "dependencies": {
     "@xstate/react": "6.1.0",

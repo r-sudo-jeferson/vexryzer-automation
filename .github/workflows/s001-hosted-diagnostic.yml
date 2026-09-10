@@ -1,4 +1,4 @@
-# Diagnostic iteration 3: source-strict typechecking with vendor declaration boundary aligned to upstream projects.
+# Diagnostic iteration 4: structured redacted production-bundle scanner before browser gates.
 name: S001 Hosted Diagnostic
 
 on:
@@ -58,12 +58,7 @@ jobs:
 
       - name: Production bundle provider and secret scan
         working-directory: job
-        shell: bash
-        run: |
-          if grep -RniE 'mistral|anthropic|openai|github_pat_|ghp_[A-Za-z0-9]{30,}|sk-[A-Za-z0-9_-]{20,}|VITE_[A-Z0-9_]*(KEY|TOKEN|SECRET)' dist; then
-            echo 'Forbidden provider/credential pattern found in production bundle.' >&2
-            exit 1
-          fi
+        run: pnpm verify:bundle
 
       - name: Dependency license inventory
         id: licenses
