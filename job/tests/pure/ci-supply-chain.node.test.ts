@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const workflow = await readFile(path.resolve(here, '../../.github/workflows/s001-hosted-diagnostic.yml'), 'utf8');
+const workflow = await readFile(path.resolve(here, '../../../.github/workflows/s001-hosted-diagnostic.yml'), 'utf8');
 
 test('hosted S001 gate pins every action to an immutable commit and uses the pnpm 11 native setup path', () => {
   const actions = [...workflow.matchAll(/uses:\s*([^\s#]+)/g)].map((match) => match[1]!);
