@@ -30,6 +30,9 @@ import { ACCOUNTING_PROVIDER_QUALITY_SCENARIOS } from './accounting-scenarios.ts
 
 const REQUEST_START_SPACING_MS = 2_600;
 const REQUEST_TIMEOUT_MS = 45_000;
+const GROQ_FREE_TPM_SAFETY_BUDGET = 7_200;
+const GROQ_OUTPUT_RESERVE_TOKENS = 1_000;
+const GROQ_TOKEN_WINDOW_MS = 60_000;
 const ROUTE_INPUT_TOKENS = 16_000;
 const ROUTE_EMERGENCY_TOKENS = 4_000;
 const RESERVED_OUTPUT_TOKENS = 2_000;
@@ -156,12 +159,43 @@ function canonicalForScenario(routeId: string, scenarioId: string, userText: str
 }
 
 let lastProviderStart = 0;
+const groqTokenStarts: { at: number; tokens: number }[] = [];
+
+async function sleep(ms: number): Promise<void> {
+  if (ms > 0) await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function paceGroqTokenBudget(input: Parameters<typeof executeProviderChatStream>[0]): Promise<void> {
+  const plannedTokens = estimateTokens(Object.freeze({
+    messages: input.messages,
+    tools: input.tools,
+  })) + GROQ_OUTPUT_RESERVE_TOKENS;
+  if (plannedTokens > GROQ_FREE_TPM_SAFETY_BUDGET) {
+    throw new RangeError('Groq evaluation request exceeds bounded free-tier TPM safety budget');
+  }
+
+  while (true) {
+    const now = Date.now();
+    while (groqTokenStarts[0] !== undefined && now - groqTokenStarts[0].at >= GROQ_TOKEN_WINDOW_MS) {
+      groqTokenStarts.shift();
+    }
+    const used = groqTokenStarts.reduce((sum, entry) => sum + entry.tokens, 0);
+    if (used + plannedTokens <= GROQ_FREE_TPM_SAFETY_BUDGET) {
+      groqTokenStarts.push({ at: now, tokens: plannedTokens });
+      return;
+    }
+    const oldest = groqTokenStarts[0];
+    if (oldest === undefined) throw new Error('Groq pacing invariant failed');
+    await sleep(Math.max(1, GROQ_TOKEN_WINDOW_MS - (now - oldest.at) + 250));
+  }
+}
 
 async function pacedProviderInvoker(
   input: Parameters<typeof executeProviderChatStream>[0],
 ): Promise<ProviderChatClientResult> {
+  if (input.route.family === 'groq') await paceGroqTokenBudget(input);
   const remaining = REQUEST_START_SPACING_MS - (Date.now() - lastProviderStart);
-  if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+  await sleep(remaining);
   lastProviderStart = Date.now();
   return executeProviderChatStream(input);
 }
@@ -244,6 +278,7 @@ function safeFailure(result: object & { ok: false; code: string }) {
     ...('detail' in result && typeof result.detail === 'string' ? { detail: result.detail } : {}),
     ...('failureClass' in result && typeof result.failureClass === 'string' ? { failureClass: result.failureClass } : {}),
     ...('status' in result && typeof result.status === 'number' ? { httpStatus: result.status } : {}),
+    ...('providerMalformedDetail' in result && typeof result.providerMalformedDetail === 'string' ? { providerMalformedDetail: result.providerMalformedDetail } : {}),
   });
 }
 
@@ -537,6 +572,8 @@ async function main() {
       rawProviderPayloadsEmitted: false,
       requestStartSpacingMs: REQUEST_START_SPACING_MS,
       requestTimeoutMs: REQUEST_TIMEOUT_MS,
+      groqFreeTpmSafetyBudget: GROQ_FREE_TPM_SAFETY_BUDGET,
+      groqOutputReserveTokens: GROQ_OUTPUT_RESERVE_TOKENS,
       oneBoundedSellerRevision: true,
     }),
     criticRoute: Object.freeze({
