@@ -179,10 +179,12 @@ test('no eligible configured route uses deterministic guided recovery and preser
   assert.equal(result.mode, 'guided_recovery');
   assert.equal(result.idempotent, false);
   assert.equal(result.state.canonicalRevision, 1);
-  assert.equal(result.state.canonical.latestUserIntent?.turnId, 'request-one');
-  assert.equal(result.state.canonical.latestUserIntent?.text, 'Somos 3 pessoas no fechamento.');
+  assert.equal(Object.hasOwn(result.state, 'canonical'), false);
+  assert.deepEqual(result.state.verifiedCalculations, []);
 
   const stored = repository.snapshot(created.record.sessionId);
+  assert.equal(stored?.canonical.latestUserIntent?.turnId, 'request-one');
+  assert.equal(stored?.canonical.latestUserIntent?.text, 'Somos 3 pessoas no fechamento.');
   assert.equal(stored?.status, 'idle');
   assert.equal(stored?.lastCompletedRequest?.mode, 'guided_recovery');
   assert.equal(stored?.recentTurns.map((turn) => turn.role).join(','), 'user,assistant');
