@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { applyContextMutation } from '../../ai/context/context-reducer.ts';
 import { createSessionDigest } from '../../ai/context/session-digest.ts';
-import type { CanonicalSalesContext } from '../../ai/context/canonical-sales-context.ts';
+import type { CanonicalSalesContext, VerifiedCalculation } from '../../ai/context/canonical-sales-context.ts';
 import type { RecentContextTurn } from '../../ai/context/context-packager.ts';
 import type { ReactiveExperienceState } from '../../experience/reactive-experience-state.ts';
 import {
@@ -67,10 +67,17 @@ export interface StoredAgentTurnInput {
   dependencies?: Partial<StoredAgentTurnDependencies>;
 }
 
+export interface PublicVerifiedCalculation {
+  id: string;
+  resultValue: number;
+  resultUnit: string;
+  status: VerifiedCalculation['status'];
+}
+
 export interface PublicAgentSessionState {
   sessionId: string;
   canonicalRevision: number;
-  canonical: CanonicalSalesContext;
+  verifiedCalculations: readonly Readonly<PublicVerifiedCalculation>[];
   reactiveState: Readonly<ReactiveExperienceState>;
 }
 
@@ -149,7 +156,12 @@ function publicState(record: Readonly<AgentSessionRecord>): Readonly<PublicAgent
   return Object.freeze({
     sessionId: record.sessionId,
     canonicalRevision: record.canonical.revision,
-    canonical: record.canonical,
+    verifiedCalculations: Object.freeze(record.canonical.verifiedCalculations.map((calculation) => Object.freeze({
+      id: calculation.id,
+      resultValue: calculation.resultValue,
+      resultUnit: calculation.resultUnit,
+      status: calculation.status,
+    }))),
     reactiveState: record.reactiveState,
   });
 }
