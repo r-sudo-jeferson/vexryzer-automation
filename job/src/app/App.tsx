@@ -100,12 +100,12 @@ export function App() {
     }
   }, [send]);
 
-  const handleAskSubmit = useCallback(async (text: string) => {
+  const handleAskSubmit = useCallback(async (text: string): Promise<boolean> => {
     send({ type: 'ASK_REQUESTED' });
     const result = await askAiClient.submit(text);
     if (!result.ok) {
       send({ type: 'ASK_FAILED', code: result.code });
-      return;
+      return false;
     }
 
     const surface = projectReactiveCanvas(
@@ -115,13 +115,14 @@ export function App() {
     );
     if (!surface.ok) {
       send({ type: 'ASK_FAILED', code: 'CLIENT_SURFACE_REJECTED' });
-      return;
+      return false;
     }
 
     send({ type: 'ASK_ACCEPTED', response: result });
     const focusId = result.state.reactiveState.scene.focusIds.find((id) =>
       surface.model.graph.nodes.some((node) => node.id === id)) ?? null;
     applyAcceptedNavigation(focusId);
+    return true;
   }, [applyAcceptedNavigation, askAiClient, send]);
 
   const resetAgentSession = useCallback(() => {
