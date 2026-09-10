@@ -1,4 +1,4 @@
-# S002 deterministic candidate gate. Increment this marker only when a remote gate is intentionally warranted: iteration 2.
+# S002 deterministic candidate gate. Increment this marker only when a remote gate is intentionally warranted: iteration 3.
 name: S002 Candidate Gate
 
 on:
@@ -43,8 +43,10 @@ jobs:
           merge_base="$(git merge-base "$BASE" HEAD)"
           printf 'authorized_base=%s\nresolved_base=%s\nresolved_merge_base=%s\n' "$BASE" "$resolved_base" "$merge_base"
           git merge-base --is-ancestor "$BASE" HEAD
-          git diff --name-only "$BASE"...HEAD | tee s002-changed-files.txt
-          unexpected="$(grep -Ev '^(job/|\.github/workflows/[^/]+\.ya?ml$|AGENTS\.md$|README\.md$)' s002-changed-files.txt || true)"
+          evidence_dir="$RUNNER_TEMP/s002-evidence"
+          mkdir -p "$evidence_dir"
+          git diff --name-only "$BASE"...HEAD | tee "$evidence_dir/s002-changed-files.txt"
+          unexpected="$(grep -Ev '^(job/|\.github/workflows/[^/]+\.ya?ml$|AGENTS\.md$|README\.md$)' "$evidence_dir/s002-changed-files.txt" || true)"
           if [ -n "$unexpected" ]; then
             echo 'Unexpected files outside the authorized product/glue boundary:' >&2
             printf '%s\n' "$unexpected" >&2
@@ -62,7 +64,8 @@ jobs:
           node --version
           pnpm --version
           git rev-parse HEAD
-          sha256sum job/pnpm-lock.yaml | tee s002-lockfile.sha256
+          mkdir -p "$RUNNER_TEMP/s002-evidence"
+          sha256sum job/pnpm-lock.yaml | tee "$RUNNER_TEMP/s002-evidence/s002-lockfile.sha256"
 
       - name: Foundation validation
         working-directory: job
@@ -124,8 +127,8 @@ jobs:
           path: |
             job/pnpm-lock.yaml
             job/s002-licenses.json
-            s002-changed-files.txt
-            s002-lockfile.sha256
+            ${{ runner.temp }}/s002-evidence/s002-changed-files.txt
+            ${{ runner.temp }}/s002-evidence/s002-lockfile.sha256
           if-no-files-found: warn
           retention-days: 3
 
