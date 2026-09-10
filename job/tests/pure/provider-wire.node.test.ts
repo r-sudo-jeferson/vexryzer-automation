@@ -7,7 +7,7 @@ import {
   buildServerChatHttpRequest,
   type LocalFunctionTool,
 } from '../../src/server/ai/providers/openai-chat-wire.ts';
-import { createChatSseDecoder, createChatStreamAccumulator } from '../../src/server/ai/providers/chat-sse.ts';
+import { ChatStreamChunkError, createChatSseDecoder, createChatStreamAccumulator } from '../../src/server/ai/providers/chat-sse.ts';
 import { classifyHttpFailure, classifyTransportFailure } from '../../src/server/ai/providers/provider-http-errors.ts';
 
 const accountId = '0123456789abcdef0123456789abcdef';
@@ -207,4 +207,33 @@ test('stream accumulator rejects unsafe tool names and non-object JSON arguments
     }] }, finish_reason: 'tool_calls' }],
   });
   assert.throws(() => malformed.finish(), /arguments must be a json object/);
+});
+
+
+test('stream accumulator reports bounded structural error codes without embedding provider payloads', () => {
+  const missingChoiceIndex = createChatStreamAccumulator();
+  assert.throws(
+    () => missingChoiceIndex.accept({ choices: [{ delta: {} }] }),
+    (error: unknown) => error instanceof ChatStreamChunkError && error.code === 'choice_shape',
+  );
+
+  const objectArguments = createChatStreamAccumulator();
+  assert.throws(
+    () => objectArguments.accept({
+      choices: [{
+        index: 0,
+        delta: {
+          tool_calls: [{
+            index: 0,
+            id: 'call-1',
+            type: 'function',
+            function: { name: 'capture_signal', arguments: { value: 'private-payload' } },
+          }],
+        },
+      }],
+    }),
+    (error: unknown) => error instanceof ChatStreamChunkError
+      && error.code === 'tool_arguments'
+      && !error.message.includes('private-payload'),
+  );
 });
