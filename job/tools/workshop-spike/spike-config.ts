@@ -16,10 +16,11 @@ const HARNESS_BUILD_SCRIPT_POLICY = {
   ],
 } as const;
 
-const HARNESS_RUNTIME_PEER_ANCHORS = {
+const HARNESS_RUNTIME_ANCHORS = {
   '0.1.2-rc.1': {
     react: '18.3.1',
     reactDom: '18.3.1',
+    piAiCore: '0.84.2',
   },
 } as const;
 
@@ -32,14 +33,14 @@ export function resolveHarnessCandidateVersion(value: string | undefined): strin
 }
 
 function requireReviewedHarnessRelease(harnessVersion: string): void {
-  if (!(harnessVersion in HARNESS_BUILD_SCRIPT_POLICY) || !(harnessVersion in HARNESS_RUNTIME_PEER_ANCHORS)) {
+  if (!(harnessVersion in HARNESS_BUILD_SCRIPT_POLICY) || !(harnessVersion in HARNESS_RUNTIME_ANCHORS)) {
     throw new Error(`No reviewed dependency policy exists for DeepSeek Harness ${harnessVersion}`);
   }
 }
 
 export function renderHarnessInstallPackageJson(harnessVersion: string): string {
   requireReviewedHarnessRelease(harnessVersion);
-  const anchors = HARNESS_RUNTIME_PEER_ANCHORS[harnessVersion as keyof typeof HARNESS_RUNTIME_PEER_ANCHORS];
+  const anchors = HARNESS_RUNTIME_ANCHORS[harnessVersion as keyof typeof HARNESS_RUNTIME_ANCHORS];
   return `${JSON.stringify({
     private: true,
     packageManager: 'pnpm@11.25.0',
@@ -47,6 +48,7 @@ export function renderHarnessInstallPackageJson(harnessVersion: string): string 
       '@deepseek-ai/dsh': harnessVersion,
       '@deepseek-ai/dsh-sdk-client': harnessVersion,
       '@deepseek-ai/dsh-llm-pi-ai': harnessVersion,
+      '@earendil-works/pi-ai': anchors.piAiCore,
       react: anchors.react,
       'react-dom': anchors.reactDom,
     },
