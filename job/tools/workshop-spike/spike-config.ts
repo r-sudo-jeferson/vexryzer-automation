@@ -5,6 +5,14 @@ export const DEFAULT_MISTRAL_PROVIDER_ROUTE = 'mistral' as const;
 export const DEFAULT_MISTRAL_MODEL_ID = 'mistral-medium-latest' as const;
 export const DEFAULT_MISTRAL_BASE_URL = 'https://api.mistral.ai/v1' as const;
 
+export function resolveHarnessCandidateVersion(value: string | undefined): string {
+  const version = value?.trim() || HARNESS_CANDIDATE_VERSION;
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$/.test(version)) {
+    throw new TypeError(`Harness version must be an exact semver; got ${version}`);
+  }
+  return version;
+}
+
 export interface SpikeRuntimeVersions {
   nodeVersion: string;
   pnpmVersion: string;
