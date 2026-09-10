@@ -7,8 +7,7 @@ import { validateQuantitativeClaim } from '../../src/ai/quant/calculation-valida
 
 function accept(context: ReturnType<typeof createCanonicalSalesContext>, envelope: Parameters<typeof applyContextMutation>[1]) {
   const result = applyContextMutation(context, envelope);
-  assert.equal(result.ok, true);
-  if (!result.ok) throw new Error(result.code);
+  if (!result.ok) assert.fail(result.code);
   return result.context;
 }
 
@@ -40,8 +39,7 @@ test('computes accounting-office monthly capacity from canonical confirmed input
     workingDaysPerMonthObservationId: 'obs-days-month',
   });
 
-  assert.equal(result.ok, true);
-  if (!result.ok) throw new Error(result.code);
+  if (!result.ok) assert.fail(result.code);
   assert.equal(result.calculation.resultValue, 44);
   assert.equal(result.calculation.resultUnit, 'hour/month');
   assert.equal(result.calculation.computedBy, 'application');
@@ -104,8 +102,7 @@ test('commercial derived claims remain blocked unless a dedicated deterministic 
     id: 'calc-capacity-month', baseRevision: 3, kind: 'monthly_capacity', peopleObservationId: 'obs-people',
     minutesPerPersonPerDayObservationId: 'obs-minutes-day', workingDaysPerMonthObservationId: 'obs-days-month',
   });
-  assert.equal(computed.ok, true);
-  if (!computed.ok) throw new Error(computed.code);
+  if (!computed.ok) assert.fail(computed.code);
   const stored = accept(context, { baseRevision: 3, actor: 'system', mutation: { type: 'ADD_CALCULATION', calculation: computed.calculation } });
 
   assert.deepEqual(validateQuantitativeClaim(stored, { kind: 'verified_result', calculationId: 'calc-capacity-month' }), { ok: true });
@@ -137,8 +134,7 @@ test('computes workload, explicit hourly cost, and rework volume with unit-prese
     id: 'calc-workload', baseRevision: 6, kind: 'monthly_workload',
     occurrencesPerMonthObservationId: 'obs-occurrences', minutesPerOccurrenceObservationId: 'obs-minutes-event',
   });
-  assert.equal(workload.ok, true);
-  if (!workload.ok) throw new Error(workload.code);
+  if (!workload.ok) assert.fail(workload.code);
   assert.equal(workload.calculation.resultValue, 30);
   assert.equal(workload.calculation.resultUnit, 'hour/month');
 
@@ -146,8 +142,7 @@ test('computes workload, explicit hourly cost, and rework volume with unit-prese
     id: 'calc-cost', baseRevision: 6, kind: 'monthly_cost',
     monthlyHoursObservationId: 'obs-hours-month', hourlyCostObservationId: 'obs-hourly-cost',
   });
-  assert.equal(cost.ok, true);
-  if (!cost.ok) throw new Error(cost.code);
+  if (!cost.ok) assert.fail(cost.code);
   assert.equal(cost.calculation.resultValue, 3300);
   assert.equal(cost.calculation.resultUnit, 'currency/month');
 
@@ -155,8 +150,7 @@ test('computes workload, explicit hourly cost, and rework volume with unit-prese
     id: 'calc-rework', baseRevision: 6, kind: 'rework_volume',
     volumeObservationId: 'obs-documents', reworkRateObservationId: 'obs-rework-rate',
   });
-  assert.equal(rework.ok, true);
-  if (!rework.ok) throw new Error(rework.code);
+  if (!rework.ok) assert.fail(rework.code);
   assert.equal(rework.calculation.resultValue, 5);
   assert.equal(rework.calculation.resultUnit, 'document/month');
 });
