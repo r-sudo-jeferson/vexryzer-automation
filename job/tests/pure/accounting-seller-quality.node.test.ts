@@ -77,7 +77,7 @@ function submission(overrides: {
 
 const scenario: AccountingSellerQualityScenario = {
   id: 'closing',
-  accountingSignalGroups: [['fechamento'], ['reconciliação', 'reconciliacao']],
+  accountingSignalGroups: [['fechamento'], ['retrabalho', 'pendência', 'pendencia']],
   expectedCapabilitiesAnyOf: ['process_data_improvement', 'automation_integration'],
   forbiddenCapabilities: [],
   quantitativeExpectation: 'opportunity_or_calculation',
