@@ -86,6 +86,8 @@ test('keyboard focus auto-pans a proven-offscreen process node back into view', 
   const beforeFocus = await readViewportMatrix(page);
   await page.getByRole('button', { name: /Voltar à origem/i }).focus();
   await page.keyboard.press('Tab');
+  await expect(page.getByLabel('Sua rotina, gargalo ou pergunta')).toBeFocused();
+  await page.keyboard.press('Tab');
   await expect(firstNode).toBeFocused();
   await expect.poll(() => firstNode.evaluate((element) => element.matches(':focus-visible'))).toBe(true);
   await expectViewportChanged(page, beforeFocus);
