@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
-const axePaths = ['/', '/?fixture=longContent', '/?fixture=origin', '/?fixture=provenance', '/?fixture=duplicateLabels'] as const;
+const axePaths = ['/', '/?fixture=longContent', '/?fixture=origin', '/?fixture=provenance', '/?fixture=duplicateLabels', '/?fixture=adversarialText'] as const;
 
 for (const path of axePaths) {
   test(`axe serious/critical = 0 for ${path}`, async ({ page }) => {

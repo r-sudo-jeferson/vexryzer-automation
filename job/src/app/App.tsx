@@ -20,6 +20,7 @@ function resolveFixture(): ProcessFixture {
     || value === 'stress'
     || value === 'duplicateLabels'
     || value === 'provenance'
+    || value === 'adversarialText'
   ) return processFixtures[value];
   return processFixtures.standard;
 }

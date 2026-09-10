@@ -1,7 +1,7 @@
 import { createProcessGraph, type ProcessGraph, type ProcessNodeModel, type Provenance } from './domain.ts';
 
 export interface ProcessFixture {
-  readonly id: 'origin' | 'single' | 'standard' | 'longContent' | 'stress' | 'duplicateLabels' | 'provenance';
+  readonly id: 'origin' | 'single' | 'standard' | 'longContent' | 'stress' | 'duplicateLabels' | 'provenance' | 'adversarialText';
   readonly label: string;
   readonly graph: ProcessGraph;
 }
@@ -43,6 +43,23 @@ const duplicateLabelNodes: ProcessNodeModel[] = [
   { id: 'duplicate-output', kind: 'output', label: 'Saída revisada', summary: 'Resultado após as duas conferências.', provenance: 'ai_inferred' },
 ];
 
+const adversarialTextNodes: ProcessNodeModel[] = [
+  {
+    id: 'adversarial-markup',
+    kind: 'source',
+    label: '<img src=x onerror="window.__VXA_INJECTED__=true">',
+    summary: '<script>window.__VXA_INJECTED__=true</script> deve permanecer texto literal.',
+    provenance: 'user_stated',
+  },
+  {
+    id: 'adversarial-output',
+    kind: 'output',
+    label: 'Conteúdo tratado como texto',
+    summary: 'Nenhuma marcação recebida pelo Canvas ganha autoridade de HTML.',
+    provenance: 'user_confirmed',
+  },
+];
+
 const provenanceNodes: ProcessNodeModel[] = [
   { id: 'provenance-source', kind: 'source', label: 'Entrada informada', summary: 'Fato explicitamente informado no exemplo visual.', provenance: 'user_stated' },
   { id: 'provenance-uncertainty', kind: 'uncertainty', label: 'Sistema a confirmar', summary: 'Hipótese visual que permanece claramente não confirmada.', provenance: 'ai_inferred', question: 'Qual sistema recebe estes dados?' },
@@ -70,6 +87,13 @@ export const processFixtures: Readonly<Record<ProcessFixture['id'], ProcessFixtu
     graph: createProcessGraph(duplicateLabelNodes, [
       { id: 'duplicate-edge-first-second', source: 'duplicate-first', target: 'duplicate-second' },
       { id: 'duplicate-edge-second-output', source: 'duplicate-second', target: 'duplicate-output' },
+    ]),
+  },
+  adversarialText: {
+    id: 'adversarialText',
+    label: 'Texto adversarial',
+    graph: createProcessGraph(adversarialTextNodes, [
+      { id: 'adversarial-edge', source: 'adversarial-markup', target: 'adversarial-output' },
     ]),
   },
   provenance: {

@@ -30,3 +30,13 @@ test('provenance fixture represents every canonical provenance state and uncerta
   assert.deepEqual(new Set(fixture.nodes.map((node) => node.provenance)), new Set(PROVENANCE_VALUES));
   assert.ok(fixture.nodes.some((node) => node.kind === 'uncertainty' && node.provenance === 'ai_inferred'));
 });
+
+test('adversarial-text fixture contains literal markup-shaped content for XSS-safe rendering attacks', () => {
+  assert.ok(Object.hasOwn(processFixtures, 'adversarialText'));
+  const fixture = (processFixtures as Record<string, { graph: { nodes: readonly { label: string; summary: string }[] } }>).adversarialText;
+  assert.ok(fixture);
+  const content = fixture.graph.nodes.map((node) => `${node.label} ${node.summary}`).join(' ');
+  assert.match(content, /<img/i);
+  assert.match(content, /<script/i);
+  assert.match(content, /__VXA_INJECTED__/);
+});

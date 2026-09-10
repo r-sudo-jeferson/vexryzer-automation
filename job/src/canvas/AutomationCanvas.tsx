@@ -38,7 +38,13 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
   const [instance, setInstance] = useState<ReactFlowInstance<CanvasNode, Edge> | null>(null);
   const [zoomBand, setZoomBand] = useState<ZoomBand>('medium');
   const zoomBandRef = useRef<ZoomBand>('medium');
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const userInterruptedRef = useRef(false);
+  const lastCameraIntentRef = useRef<string | null>(null);
+  const observedInitialSizeRef = useRef(false);
+  const [viewportRevision, setViewportRevision] = useState(0);
   const [directedMobile, setDirectedMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 720px), (pointer: coarse)').matches);
+  const cameraIntent = `${mode}:${focusedNodeId ?? 'none'}:${motionPolicy.reduced ? 'reduced' : 'standard'}`;
 
   useEffect(() => {
     if (window.__VXA_PERF__) window.__VXA_PERF__.canvasCommits += 1;
@@ -50,6 +56,20 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
     update();
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
+    const element = canvasRef.current;
+    if (!element || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (!observedInitialSizeRef.current) {
+        observedInitialSizeRef.current = true;
+        return;
+      }
+      setViewportRevision((revision) => revision + 1);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
   }, []);
 
   const nodes = useMemo<CanvasNode[]>(() => {
@@ -99,7 +119,20 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
 
   useEffect(() => {
     if (!instance) return;
-    if (window.__VXA_PERF__) window.__VXA_PERF__.cameraCommands += 1;
+
+    const intentChanged = lastCameraIntentRef.current !== cameraIntent;
+    if (intentChanged) {
+      lastCameraIntentRef.current = cameraIntent;
+      userInterruptedRef.current = false;
+    } else if (userInterruptedRef.current) {
+      return;
+    }
+
+    if (window.__VXA_PERF__) {
+      window.__VXA_PERF__.cameraCommands += 1;
+      if (!intentChanged && viewportRevision > 0) window.__VXA_PERF__.cameraResizeRefits += 1;
+    }
+
     const plan = createCameraPlan({
       mode,
       ...(focusedNodeId ? { focusNodeId: focusedNodeId } : {}),
@@ -118,7 +151,14 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
     }
     const processNodes = instance.getNodes().filter((node) => node.type === 'process');
     if (processNodes.length > 0) void instance.fitView({ ...common, nodes: processNodes });
-  }, [focusedNodeId, instance, mode, motionPolicy.reduced]);
+  }, [cameraIntent, focusedNodeId, instance, mode, motionPolicy.reduced, viewportRevision]);
+
+  const handleMoveStart = (event: MouseEvent | TouchEvent | null) => {
+    if (!event || !instance) return;
+    userInterruptedRef.current = true;
+    if (window.__VXA_PERF__) window.__VXA_PERF__.cameraInterruptions += 1;
+    void instance.setViewport(instance.getViewport(), { duration: 0 });
+  };
 
   const handleViewport = (_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
     if (window.__VXA_PERF__) window.__VXA_PERF__.viewportEvents += 1;
@@ -131,12 +171,13 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
   };
 
   return (
-    <div className="vxa-canvas" data-mode={mode} data-zoom-band={zoomBand}>
+    <div ref={canvasRef} className="vxa-canvas" data-mode={mode} data-zoom-band={zoomBand}>
       <ReactFlow<CanvasNode, Edge>
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         onInit={setInstance}
+        onMoveStart={handleMoveStart}
         onMove={handleViewport}
         onNodeClick={(_event, node) => node.type === 'process' && onFocusNode(node.id)}
         nodesDraggable={false}
@@ -144,10 +185,10 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
         edgesReconnectable={false}
         elementsSelectable
         selectionOnDrag={false}
-        panOnDrag={directedMobile ? false : [0, 1]}
+        panOnDrag={[0, 1]}
         panOnScroll={false}
         zoomOnScroll={!directedMobile}
-        zoomOnPinch={!directedMobile}
+        zoomOnPinch
         zoomOnDoubleClick={false}
         minZoom={0.42}
         maxZoom={1.4}

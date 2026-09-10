@@ -10,6 +10,8 @@ declare global {
       viewportEvents: number;
       semanticBandChanges: number;
       cameraCommands: number;
+      cameraInterruptions: number;
+      cameraResizeRefits: number;
       budgets: typeof PERFORMANCE_BUDGETS;
     };
   }
@@ -30,6 +32,8 @@ export function usePerformanceInstrumentation(): void {
       viewportEvents: 0,
       semanticBandChanges: 0,
       cameraCommands: 0,
+      cameraInterruptions: 0,
+      cameraResizeRefits: 0,
       budgets: PERFORMANCE_BUDGETS,
     };
 
