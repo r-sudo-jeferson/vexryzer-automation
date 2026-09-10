@@ -4,6 +4,8 @@ import { createSessionDigest } from '../../ai/context/session-digest.ts';
 import type { CanonicalSalesContext, VerifiedCalculation } from '../../ai/context/canonical-sales-context.ts';
 import type { RecentContextTurn } from '../../ai/context/context-packager.ts';
 import type { ReactiveExperienceState } from '../../experience/reactive-experience-state.ts';
+import { projectReactiveCanvas } from '../../canvas/reactive-graph-adapter.ts';
+import { createProcessGraph } from '../../canvas/domain.ts';
 import {
   runAgentLedTurn,
   type AgentLedCriticRuntimeConfig,
@@ -447,6 +449,16 @@ export async function runStoredAgentTurn(
     },
     critic: input.runtime.critic,
     reactiveState: claimed.record.reactiveState,
+    surfaceGuard: ({ canonical, reactiveState }) => {
+      const surface = projectReactiveCanvas(
+        createProcessGraph([], []),
+        reactiveState,
+        canonical,
+      );
+      return surface.ok
+        ? { ok: true }
+        : { ok: false, code: surface.code, path: surface.path };
+    },
   };
 
   let agent: AgentLedTurnRuntimeResult;
