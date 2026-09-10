@@ -110,6 +110,7 @@ function baseInput(): AgentLedTurnRuntimeInput {
       timeoutMs: 10_000,
     },
     reactiveState: createReactiveExperienceState({ basedOnRevision: 7 }),
+    surfaceGuard: () => ({ ok: true }),
   };
 }
 
@@ -150,6 +151,7 @@ test('first Critic PASS publishes exactly once without a revision round', async 
     commitCriticApprovedExperience: ((publishInput: { submission: Readonly<SellerSubmission> }) => {
       publicationCalls += 1;
       assert.equal(publishInput.submission.proposalId, 'proposal-1');
+      assert.equal(typeof (publishInput as { surfaceGuard?: unknown }).surfaceGuard, 'function');
       return {
         ok: true,
         canonical: canonical(),
