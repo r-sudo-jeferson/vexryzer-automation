@@ -1,4 +1,4 @@
-import type { CanonicalSalesContext } from '../ai/context/canonical-sales-context.ts';
+import type { VerifiedCalculation } from '../ai/context/canonical-sales-context.ts';
 import type { ReactiveExperienceState } from '../experience/reactive-experience-state.ts';
 import {
   createProcessGraph,
@@ -137,8 +137,12 @@ function applyGraphMutations(
   return projected;
 }
 
+export interface CanvasEvidenceContext {
+  verifiedCalculations: readonly Readonly<Pick<VerifiedCalculation, 'id' | 'resultValue' | 'resultUnit' | 'status'>>[];
+}
+
 function quantification(
-  canonical: CanonicalSalesContext,
+  canonical: Readonly<CanvasEvidenceContext>,
   calculationId: string,
   path: string,
 ): Readonly<CanvasQuantification> | ReactiveCanvasProjectionResult {
@@ -173,7 +177,7 @@ function ensureTarget(
 export function projectReactiveCanvas(
   baseGraph: ProcessGraph,
   state: Readonly<ReactiveExperienceState>,
-  canonical: CanonicalSalesContext,
+  canonical: Readonly<CanvasEvidenceContext>,
 ): ReactiveCanvasProjectionResult {
   const graphResult = applyGraphMutations(baseGraph, state);
   if ('ok' in graphResult) return graphResult;
