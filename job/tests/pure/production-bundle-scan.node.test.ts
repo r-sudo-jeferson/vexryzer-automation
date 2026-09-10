@@ -30,8 +30,8 @@ function scan(dir: string) {
 
 test('safe minified CSS and React Flow metadata do not trigger provider or credential findings', async () => {
   await withBundle({
-    'assets/index.css': '.x{mask-image:linear-gradient(#000,#0000);box-shadow:0 0 2px #000}',
-    'assets/index.js': 'const attribution="https://reactflow.dev/";const label="process intelligence";',
+    'assets/index.css': '.x{--xy-minimap-mask-stroke-color-default:transparent;mask-image:linear-gradient(#000,#0000);box-shadow:0 0 2px #000}',
+    'assets/index.js': 'const cssToken="--xy-minimap-mask-stroke-color-default";const attribution="https://reactflow.dev/";const label="process intelligence";',
   }, (dir) => {
     const result = scan(dir);
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);

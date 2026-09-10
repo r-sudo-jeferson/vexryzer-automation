@@ -1,4 +1,4 @@
-# Diagnostic iteration 4: structured redacted production-bundle scanner before browser gates.
+# Diagnostic iteration 5: token-boundary bundle scanner plus isolated lockfile capture after hard gates.
 name: S001 Hosted Diagnostic
 
 on:
@@ -116,3 +116,40 @@ jobs:
             job/s001-licenses.json
           if-no-files-found: warn
           retention-days: 3
+
+  capture-lockfile:
+    needs: s001-hosted-diagnostic
+    if: ${{ needs.s001-hosted-diagnostic.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout validated checkpoint
+        uses: actions/checkout@v4
+
+      - name: Download dependency artifact only
+        uses: actions/download-artifact@v4
+        with:
+          name: s001-dependency-resolution-${{ github.sha }}
+          path: .lock-artifact
+
+      - name: Commit only generated product lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .lock-artifact/pnpm-lock.yaml
+          cp .lock-artifact/pnpm-lock.yaml job/pnpm-lock.yaml
+          git add job/pnpm-lock.yaml
+          if git diff --cached --quiet; then
+            echo 'Lockfile already matches validated artifact.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit \
+            -m 'chore(s001): capture validated pnpm lockfile' \
+            -m 'Binding: FORGE-VEXRYZER-AUTOMATION-v1.0.0' \
+            -m 'Slice: VXA-S001@1.0.0' \
+            -m 'Gauntlet: GNT-VXA-S001-001' \
+            -m 'Base: d6a7e1d1994003dff1a9a6871fe1015a049ecdb8'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
