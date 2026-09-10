@@ -23,6 +23,7 @@ export type ContextMutation =
   | { type: 'CONFIRM_FACT'; factId: string; turnId: string }
   | { type: 'CORRECT_FACT'; factId: string; turnId: string; replacement: SalesFact }
   | { type: 'ADD_OBSERVATION'; observation: QuantitativeObservation }
+  | { type: 'ADD_USER_OBSERVATIONS'; observations: readonly QuantitativeObservation[] }
   | { type: 'CONFIRM_OBSERVATION'; observationId: string; turnId: string }
   | { type: 'CORRECT_OBSERVATION'; observationId: string; turnId: string; replacement: QuantitativeObservation }
   | { type: 'ADD_CALCULATION'; calculation: VerifiedCalculation }
@@ -234,6 +235,37 @@ export function applyContextMutation(
             facts,
             opportunities,
             turnIds: appendTurnId(context.turnIds, mutation.turnId),
+          }),
+        };
+      }
+
+      case 'ADD_USER_OBSERVATIONS': {
+        if (envelope.actor !== 'user') return reject(context, 'AUTHORITY_VIOLATION');
+        if (!Array.isArray(mutation.observations) || mutation.observations.length < 1 || mutation.observations.length > 8) {
+          return reject(context, 'INVALID_MUTATION');
+        }
+        const ids = new Set<string>();
+        const observations: QuantitativeObservation[] = [];
+        for (const raw of mutation.observations) {
+          const observation = freezeObservation(raw);
+          if (
+            observation.source !== 'user'
+            || observation.status !== 'confirmed'
+            || observation.confirmedByTurnId === null
+            || !observation.supportingTurnIds.includes(observation.confirmedByTurnId)
+          ) return reject(context, 'AUTHORITY_VIOLATION');
+          if (idExists(context, observation.id) || ids.has(observation.id)) return reject(context, 'DUPLICATE_ID');
+          ids.add(observation.id);
+          observations.push(observation);
+        }
+        return {
+          ok: true,
+          context: withRevision(context, {
+            quantitativeObservations: [...context.quantitativeObservations, ...observations],
+            turnIds: observations.reduce(
+              (turnIds, observation) => appendTurnId(turnIds, observation.confirmedByTurnId!),
+              context.turnIds,
+            ),
           }),
         };
       }
