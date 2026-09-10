@@ -14,14 +14,14 @@ It is deliberately a spike, not a production runtime and not evidence that a pub
 ## Candidate under test
 
 - DeepSeek Harness candidate: `0.1.2-rc.1` exact;
-- temporary package set: `@deepseek-ai/dsh@0.1.2-rc.1`, `@deepseek-ai/dsh-sdk-client@0.1.2-rc.1`, and `@deepseek-ai/dsh-llm-pi-ai@0.1.2-rc.1`;
+- temporary package set: `@deepseek-ai/dsh@0.1.2-rc.1`, `@deepseek-ai/dsh-sdk-client@0.1.2-rc.1`, `@deepseek-ai/dsh-llm-pi-ai@0.1.2-rc.1`, and `@earendil-works/pi-ai@0.84.2`;
 - Harness profile: shipped `sdk-minimal`;
 - provider route: `mistral`;
 - model: `mistral-medium-3-5`;
 - endpoint: `https://api.mistral.ai/v1`;
 - route implementation: configured Harness `llm-pi-ai` using `openai-completions` compatibility mode.
 
-The Harness version is a **candidate for evidence**, not an accepted product dependency. The temporary runtime pins the `llm-pi-ai` adapter to the same release as the CLI and SDK so evidence cannot accidentally combine package trains.
+The Harness version is a **candidate for evidence**, not an accepted product dependency. The temporary runtime pins the `llm-pi-ai` adapter to the same release as the CLI and SDK. It also pins the adapter's pi-ai core to exact `0.84.2` rather than accepting the adapter manifest's `^0.84.2` range, so a later patch release cannot silently change evidence for the same source SHA. Bootstrap verifies the installed core version before any provider request.
 
 The Mistral model is intentionally pinned to `mistral-medium-3-5`, not a moving `-latest` alias.
 
@@ -48,7 +48,7 @@ The patch does not recreate a Harness profile or a second architecture.
 
 The spike uses the public TypeScript SDK surface of `@deepseek-ai/dsh-sdk-client@0.1.2-rc.1` directly. `DeepSeekHarness` receives `profile: sdk-minimal`, one explicit `patches` path, `dshHome`, `processCwd`, `env`, `cwd`, `provider`, `model`, `maxTokens`, and lifecycle timeouts. It does **not** use an older custom `launch` command shape.
 
-The SDK resolves the same-version `@deepseek-ai/dsh` CLI package and builds the canonical profile launch. Before any provider turn, the spike verifies the installed `dsh`, SDK client, pi-ai adapter, and shipped `sdk-minimal` bundle all resolve to the exact requested Harness version.
+The SDK resolves the same-version `@deepseek-ai/dsh` CLI package and builds the canonical profile launch. Before any provider turn, the spike verifies the installed `dsh`, SDK client, pi-ai adapter, shipped `sdk-minimal` bundle, and exact pi-ai core version.
 
 ## Required environment
 
