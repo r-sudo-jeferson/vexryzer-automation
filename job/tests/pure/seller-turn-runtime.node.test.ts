@@ -72,7 +72,7 @@ function budgetFor(item: Readonly<ProviderRouteDefinition>) {
   });
 }
 
-function submissionTool(revision: number, id = 'tool-submit') {
+function submissionTool(revision: number, id = 'tool-submit', proposalId = `proposal-${revision}`) {
   return Object.freeze({
     id,
     type: 'function' as const,
@@ -81,7 +81,7 @@ function submissionTool(revision: number, id = 'tool-submit') {
       arguments: JSON.stringify({
         submission: {
           schemaVersion: 1,
-          proposalId: `proposal-${revision}`,
+          proposalId,
           proposal: { baseRevision: revision },
           materialClaims: [],
           calculationRequests: [],
@@ -281,6 +281,75 @@ test('primary Seller call requires only full context and final submission is acc
   assert.equal(payload.contextMode, 'full');
   assert.equal(payload.canonicalRevision, 7);
   assert.equal(payload.context.marker, 'full-7');
+});
+
+test('Critic revision request is same-revision, calculation-free, and requires a distinct proposal id', async (t) => {
+  const primary = route();
+  const revisionRequest = Object.freeze({
+    rootProposalId: 'proposal-7',
+    previousProposalId: 'proposal-7',
+    review: Object.freeze({
+      schemaVersion: 1 as const,
+      proposalId: 'proposal-7',
+      basedOnRevision: 7,
+      verdict: 'REVISE' as const,
+      findings: Object.freeze([Object.freeze({
+        id: 'finding-1',
+        code: 'USER_INTENT_MISMATCH' as const,
+        severity: 'revise' as const,
+        summary: 'Align the move to the confirmed objective.',
+        evidenceIds: Object.freeze([]),
+      })]),
+    }),
+  });
+
+  await t.test('accepts a newly identified revised proposal and carries structured feedback', async () => {
+    let observed = '';
+    const input = baseInput([primary], async (providerInput) => {
+      observed = (providerInput.messages[1] as { content: string }).content;
+      return completion([submissionTool(7, 'tool-revised', 'proposal-7-revised')]);
+    });
+    input.revisionRequest = revisionRequest;
+    const result = await runSellerTurn(input);
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.submission.proposalId, 'proposal-7-revised');
+    assert.equal(observed.includes('"previousProposalId":"proposal-7"'), true);
+  });
+
+  await t.test('rejects calculation tool use and reused proposal id during revision', async () => {
+    const calculationInput = baseInput([primary], async () => completion([
+      calculationTool(7, 'calc-revision', 'tool-calc-revision'),
+    ] as never));
+    calculationInput.revisionRequest = revisionRequest;
+    const calculationResult = await runSellerTurn(calculationInput);
+    if (calculationResult.ok || calculationResult.code !== 'INVALID_PROVIDER_OUTPUT') throw new Error(JSON.stringify(calculationResult));
+    assert.equal(calculationResult.detail, 'CALCULATIONS_FORBIDDEN_DURING_CRITIC_REVISION');
+
+    const reusedInput = baseInput([primary], async () => completion([
+      submissionTool(7, 'tool-reused', 'proposal-7'),
+    ]));
+    reusedInput.revisionRequest = revisionRequest;
+    const reusedResult = await runSellerTurn(reusedInput);
+    if (reusedResult.ok || reusedResult.code !== 'INVALID_PROVIDER_OUTPUT') throw new Error(JSON.stringify(reusedResult));
+    assert.equal(reusedResult.detail, 'REVISED_PROPOSAL_ID_REUSED');
+  });
+
+  await t.test('rejects stale Critic feedback before provider execution', async () => {
+    let calls = 0;
+    const input = baseInput([primary], async () => {
+      calls += 1;
+      return completion([submissionTool(7)]);
+    });
+    input.revisionRequest = Object.freeze({
+      ...revisionRequest,
+      review: Object.freeze({ ...revisionRequest.review, basedOnRevision: 6 }),
+    });
+    const result = await runSellerTurn(input);
+    if (result.ok || result.code !== 'INVALID_RUNTIME_CONFIG') throw new Error(JSON.stringify(result));
+    assert.equal(result.detail, 'INVALID_REVISION_REQUEST');
+    assert.equal(calls, 0);
+  });
 });
 
 test('provider-side capacity failure reselects independent Groq fallback at the same canonical revision with a freshly built emergency message', async () => {
