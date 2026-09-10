@@ -3,7 +3,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const BINDING = 'FORGE-VEXRYZER-AUTOMATION-v1.0.0';
-const EXPECTED_S001_STATUS = 'PLANNED_NOT_AUTHORIZED';
+const PLANNING_STATUS = 'PLANNED_NOT_AUTHORIZED';
+const CONSTRUCTION_STATUSES = new Set(['AUTHORIZED', 'IN_PROGRESS', 'PASS']);
+const AUTHORIZATION_FILE = 'job/docs/authorizations/VXA-S001-AUTHORIZATION.md';
 const FORBIDDEN_REPOS = ['r-sudo-jeferson/Machina', 'machina-group/machina'];
 const ALLOWED_ROOT_ENTRIES = new Set(['AGENTS.md', 'README.md', 'job', '.github', '.gitignore']);
 const REQUIRED_FILES = [
@@ -111,10 +113,34 @@ export async function validateRepository(root) {
     const baseSha = extractBacktickedField(slice, 'base_sha');
     const status = extractPlainOrBacktickedStatus(slice);
     if (baseSha === 'UNESTABLISHED_REPOSITORY_WAS_EMPTY_AT_PLANNING' || !isSha(baseSha)) {
-      errors.push(error('BASE_SHA_UNESTABLISHED', 'S001 base_sha must be an exact 40-hex bootstrap SHA before hardening can pass.', sliceFile));
+      errors.push(error('BASE_SHA_UNESTABLISHED', 'S001 base_sha must be an exact 40-hex repository SHA.', sliceFile));
     }
-    if (status !== EXPECTED_S001_STATUS) {
-      errors.push(error('S001_AUTHORIZATION_VIOLATION', `Foundation-only hardening requires S001 status ${EXPECTED_S001_STATUS}; found ${status ?? 'missing'}.`, sliceFile));
+    if (status !== PLANNING_STATUS && !CONSTRUCTION_STATUSES.has(status)) {
+      errors.push(error('S001_STATUS_INVALID', `Unsupported S001 status: ${status ?? 'missing'}.`, sliceFile));
+    }
+
+    if (CONSTRUCTION_STATUSES.has(status)) {
+      if (!await exists(path.join(root, AUTHORIZATION_FILE))) {
+        errors.push(error('S001_AUTHORIZATION_RECORD_MISSING', 'S001 construction status requires an explicit authorization record.', AUTHORIZATION_FILE));
+      } else {
+        const authorization = await read(root, AUTHORIZATION_FILE);
+        const authorizedBaseSha = extractBacktickedField(authorization, 'authorized_base_sha');
+        const authorizedSliceId = extractBacktickedField(authorization, 'slice_id');
+        const authorizedSliceVersion = extractBacktickedField(authorization, 'slice_version');
+        const authorizationStatus = extractPlainOrBacktickedStatus(authorization);
+        if (!authorization.includes(BINDING)) {
+          errors.push(error('AUTHORIZATION_BINDING_MISMATCH', `Authorization record does not carry canonical binding ${BINDING}.`, AUTHORIZATION_FILE));
+        }
+        if (authorizedSliceId !== 'VXA-S001' || authorizedSliceVersion !== '1.0.0') {
+          errors.push(error('AUTHORIZATION_SLICE_MISMATCH', 'Authorization record must target VXA-S001@1.0.0.', AUTHORIZATION_FILE));
+        }
+        if (!isSha(authorizedBaseSha) || authorizedBaseSha !== baseSha) {
+          errors.push(error('AUTHORIZATION_BASE_SHA_MISMATCH', 'Authorization base SHA must be an exact SHA matching the S001 contract base_sha.', AUTHORIZATION_FILE));
+        }
+        if (authorizationStatus !== 'AUTHORIZED') {
+          errors.push(error('AUTHORIZATION_STATUS_INVALID', 'Authorization record status must be AUTHORIZED.', AUTHORIZATION_FILE));
+        }
+      }
     }
   }
 
@@ -127,8 +153,10 @@ export async function validateRepository(root) {
     if (!isSha(handoffSha) || handoffSha !== sliceSha) {
       errors.push(error('BASE_SHA_MISMATCH', 'Engineering handoff base_sha must exactly match the S001 base_sha.', handoffFile));
     }
-    if (extractPlainOrBacktickedStatus(handoff) !== EXPECTED_S001_STATUS) {
-      errors.push(error('HANDOFF_STATUS_MISMATCH', `Engineering handoff must remain ${EXPECTED_S001_STATUS}.`, handoffFile));
+    const sliceStatus = extractPlainOrBacktickedStatus(slice);
+    const handoffStatus = extractPlainOrBacktickedStatus(handoff);
+    if (handoffStatus !== sliceStatus) {
+      errors.push(error('HANDOFF_STATUS_MISMATCH', `Engineering handoff status must exactly match S001 status ${sliceStatus ?? 'missing'}.`, handoffFile));
     }
   }
 
