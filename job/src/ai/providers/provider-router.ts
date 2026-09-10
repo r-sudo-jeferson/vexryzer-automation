@@ -8,6 +8,12 @@ import {
 export type ProviderContextMode = 'full' | 'emergency_capsule';
 export type ProviderFallbackReason = 'PRIMARY_UNAVAILABLE' | 'PRIMARY_CONTEXT_EXCEEDED';
 
+export interface ProviderRouteTokenUsage {
+  routeId: string;
+  fullContextInputTokens: number;
+  emergencyCapsuleInputTokens: number;
+}
+
 export interface ProviderSelectionRequest {
   role: ProviderRole;
   canonicalRevision: number;
@@ -16,6 +22,7 @@ export interface ProviderSelectionRequest {
   requiresStreaming: boolean;
   requiresTools: boolean;
   requiresStructuredArguments: boolean;
+  routeTokenUsage?: readonly Readonly<ProviderRouteTokenUsage>[];
 }
 
 export interface ProviderRouteRejection {
@@ -84,6 +91,29 @@ export function selectProviderRoute(
     return { ok: false, code: 'INVALID_ROUTE_REQUEST', recovery: 'deterministic_guided_discovery', rejections: Object.freeze([]) };
   }
 
+  let tokenUsageByRoute: ReadonlyMap<string, Readonly<ProviderRouteTokenUsage>> | null = null;
+  if (request.routeTokenUsage !== undefined) {
+    if (
+      request.routeTokenUsage.length !== routes.length
+      || new Set(request.routeTokenUsage.map((usage) => usage.routeId)).size !== request.routeTokenUsage.length
+    ) {
+      return { ok: false, code: 'INVALID_ROUTE_REQUEST', recovery: 'deterministic_guided_discovery', rejections: Object.freeze([]) };
+    }
+    const routeIds = new Set(routes.map((route) => route.routeId));
+    for (const usage of request.routeTokenUsage) {
+      if (
+        !routeIds.has(usage.routeId)
+        || !Number.isFinite(usage.fullContextInputTokens)
+        || usage.fullContextInputTokens < 0
+        || !Number.isFinite(usage.emergencyCapsuleInputTokens)
+        || usage.emergencyCapsuleInputTokens < 0
+      ) {
+        return { ok: false, code: 'INVALID_ROUTE_REQUEST', recovery: 'deterministic_guided_discovery', rejections: Object.freeze([]) };
+      }
+    }
+    tokenUsageByRoute = new Map(request.routeTokenUsage.map((usage) => [usage.routeId, usage] as const));
+  }
+
   const runtimeByRoute = new Map(runtimeStates.map((state) => [state.routeId, state] as const));
   const ordered = [...routes].sort(routeSort);
   const rejections: ProviderRouteRejection[] = [];
@@ -91,7 +121,10 @@ export function selectProviderRoute(
 
   for (const route of ordered) {
     const contextMode = contextModeFor(route);
-    const inputTokens = contextMode === 'full' ? request.fullContextInputTokens : request.emergencyCapsuleInputTokens;
+    const routeUsage = tokenUsageByRoute?.get(route.routeId);
+    const inputTokens = contextMode === 'full'
+      ? routeUsage?.fullContextInputTokens ?? request.fullContextInputTokens
+      : routeUsage?.emergencyCapsuleInputTokens ?? request.emergencyCapsuleInputTokens;
     const limitTokens = contextMode === 'full' ? route.maxInputTokens : route.emergencyInputTokens;
     const eligibility = evaluateRouteEligibility(route, {
       role: request.role,
