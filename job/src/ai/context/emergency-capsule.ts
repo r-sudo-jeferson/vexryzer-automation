@@ -1,4 +1,5 @@
 import type {
+  ArtifactRecord,
   CanonicalSalesContext,
   QuantitativeObservation,
   SalesFact,
@@ -26,6 +27,7 @@ export interface EmergencyContinuationCapsule {
   };
   sceneId: string | null;
   activeArtifactIds: readonly string[];
+  activeArtifacts: readonly Pick<ArtifactRecord, 'id' | 'kind' | 'title' | 'summary' | 'maturity' | 'status'>[];
   estimatedInputTokens: number;
 }
 
@@ -81,6 +83,19 @@ function buildPayload(canonical: CanonicalSalesContext, visualState: CurrentExpe
       basedOnRevision: calculation.basedOnRevision,
       status: calculation.status,
     }));
+  const activeArtifactIds = visualState.activeArtifactIds.slice(0, 32);
+  const activeArtifactSet = new Set(activeArtifactIds);
+  const activeArtifacts = canonical.artifacts
+    .filter((artifact) => artifact.status !== 'invalidated' && activeArtifactSet.has(artifact.id))
+    .slice(0, 32)
+    .map((artifact) => Object.freeze({
+      id: artifact.id,
+      kind: artifact.kind,
+      title: artifact.title,
+      summary: artifact.summary,
+      maturity: artifact.maturity,
+      status: artifact.status,
+    }));
 
   return Object.freeze({
     schemaVersion: 1 as const,
@@ -91,7 +106,8 @@ function buildPayload(canonical: CanonicalSalesContext, visualState: CurrentExpe
     openObjections: freezeArray(objections),
     quantitativeEvidence: Object.freeze({ observations: freezeArray(observations), calculations: freezeArray(calculations) }),
     sceneId: visualState.sceneId,
-    activeArtifactIds: freezeArray(visualState.activeArtifactIds.slice(0, 32)),
+    activeArtifactIds: freezeArray(activeArtifactIds),
+    activeArtifacts: freezeArray(activeArtifacts),
   });
 }
 
