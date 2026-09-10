@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertWorkshopProviderCompatibility } from './provider-compatibility.ts';
 import {
@@ -14,14 +14,14 @@ import {
 import {
   assertSpikeNodeVersion,
   assertSpikePnpmVersion,
+  buildHarnessSdkOptions,
   buildPackageInstallEnv,
-  buildScrubbedHarnessEnv,
   DEFAULT_MISTRAL_BASE_URL,
   DEFAULT_MISTRAL_MODEL_ID,
   DEFAULT_MISTRAL_PROVIDER_ROUTE,
   renderMistralSettingsYaml,
-  resolveDshBinFromPackageManifest,
   resolveHarnessCandidateVersion,
+  sanitizeSpikeDiagnostic,
   validateSpikeInputs,
 } from './spike-config.ts';
 
@@ -29,6 +29,7 @@ const NORMAL_TURN_WALL_MS = 45_000;
 const TIMEOUT_PROBE_WALL_MS = 15_000;
 const TIMEOUT_PROVIDER_MS = 5;
 const MAX_TOKENS = 2_048;
+let currentPhase = 'preflight';
 
 class SpikeWallTimeoutError extends Error {
   constructor(label, timeoutMs) {
@@ -52,9 +53,10 @@ function runCommand(command, args, options) {
         resolve({ stdout, stderr });
         return;
       }
-      const error = new Error(`${command} exited with code ${code ?? 'unknown'}`);
+      const bounded = stderr.replace(/[\r\n\t]+/g, ' ').trim().slice(-800);
+      const suffix = bounded ? `: ${bounded}` : '';
+      const error = new Error(`${command} exited with code ${code ?? 'unknown'}${suffix}`);
       error.name = 'SpikeSubprocessError';
-      error.stderr = stderr.slice(-4_000);
       reject(error);
     });
   });
@@ -74,6 +76,10 @@ async function withWallTimeout(promise, label, timeoutMs) {
   }
 }
 
+async function readJson(path) {
+  return JSON.parse(await readFile(path, 'utf8'));
+}
+
 async function bootstrapHarnessRuntime(rootDir, harnessVersion) {
   const runtimeDir = join(rootDir, 'runtime');
   await mkdir(runtimeDir, { recursive: true });
@@ -90,19 +96,31 @@ async function bootstrapHarnessRuntime(rootDir, harnessVersion) {
   const packageInstallEnv = buildPackageInstallEnv(process.env);
   const pnpmVersion = await runCommand(pnpm, ['--version'], { cwd: runtimeDir, env: packageInstallEnv });
   assertSpikePnpmVersion(pnpmVersion.stdout);
-  await runCommand(pnpm, ['install', '--save-exact', '--frozen-lockfile=false'], {
+  await runCommand(pnpm, ['install', '--frozen-lockfile=false'], {
     cwd: runtimeDir,
     env: packageInstallEnv,
   });
 
   const requireFromRuntime = createRequire(join(runtimeDir, 'package.json'));
+  const sdkPackagePath = requireFromRuntime.resolve('@deepseek-ai/dsh-sdk-client/package.json');
+  const dshPackagePath = requireFromRuntime.resolve('@deepseek-ai/dsh/package.json');
+  const [sdkManifest, dshManifest] = await Promise.all([
+    readJson(sdkPackagePath),
+    readJson(dshPackagePath),
+  ]);
+  if (sdkManifest.version !== harnessVersion || dshManifest.version !== harnessVersion) {
+    throw new Error(
+      `Harness package version mismatch: expected ${harnessVersion}, sdk=${String(sdkManifest.version)}, dsh=${String(dshManifest.version)}`,
+    );
+  }
+
   const sdkEntry = requireFromRuntime.resolve('@deepseek-ai/dsh-sdk-client');
   const sdk = await import(pathToFileURL(sdkEntry).href);
-  const dshPackagePath = requireFromRuntime.resolve('@deepseek-ai/dsh/package.json');
-  const dshManifest = JSON.parse(await readFile(dshPackagePath, 'utf8'));
-  const dshBin = resolveDshBinFromPackageManifest(dshManifest, dirname(dshPackagePath));
+  if (typeof sdk.DeepSeekHarness !== 'function') {
+    throw new TypeError('@deepseek-ai/dsh-sdk-client did not export DeepSeekHarness');
+  }
 
-  return { runtimeDir, sdk, dshBin };
+  return { runtimeDir, sdk };
 }
 
 async function writeProviderSettings(dshHome, input, timeouts = undefined) {
@@ -115,25 +133,13 @@ async function writeProviderSettings(dshHome, input, timeouts = undefined) {
   }), { mode: 0o600 });
 }
 
-function createHarness({ sdk, dshBin, workspace, dshHome, input }) {
-  return new sdk.DeepSeekHarness({
-    launch: {
-      command: process.execPath,
-      args: [dshBin, '--profile', 'sdk'],
-      cwd: workspace,
-      env: buildScrubbedHarnessEnv(process.env, {
-        dshHome,
-        mistralApiKey: input.mistralApiKey,
-      }),
-      shutdownTimeoutMs: 1_000,
-      disposeEofGraceMs: 6_000,
-      disposeGraceMs: 3_000,
-    },
-    cwd: workspace,
-    provider: input.providerRoute,
-    model: input.modelId,
+function createHarness({ sdk, workspace, dshHome, input }) {
+  return new sdk.DeepSeekHarness(buildHarnessSdkOptions(process.env, {
+    workspace,
+    dshHome,
+    input,
     maxTokens: MAX_TOKENS,
-  });
+  }));
 }
 
 function turnEndKinds(events) {
@@ -158,6 +164,7 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
   let first;
   let second;
   try {
+    currentPhase = 'normal-turn-write';
     first = await withWallTimeout(harness.run(
       `Compatibility probe. Use one available development tool to create ${probeFile} in the current workspace with exactly this single line: ${nonce}. Do not merely describe the action. After the tool succeeds, reply concisely.`,
       { sessionId },
@@ -168,6 +175,7 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
       throw new Error('Harness tool probe did not create the exact expected workspace artifact');
     }
 
+    currentPhase = 'normal-turn-read';
     second = await withWallTimeout(harness.run(
       `Use one available development tool to read ${probeFile}. Return the exact nonce found there and no invented value.`,
       { sessionId },
@@ -183,6 +191,7 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
   const structuredArguments = firstEvidence.structuredToolArguments && secondEvidence.structuredToolArguments;
   const multiTurnToolReplay = hasToolRoundTrip(second.events) && second.finalResponse.includes(nonce);
 
+  currentPhase = 'restart-replay';
   const restartedHarness = createHarness({ ...runtime, workspace, dshHome, input });
   let restart;
   try {
@@ -221,6 +230,7 @@ async function proveTimeoutMapping(runtime, rootDir, input) {
   });
   const harness = createHarness({ ...runtime, workspace, dshHome, input: timeoutInput });
   try {
+    currentPhase = 'timeout-mapping';
     const result = await withWallTimeout(harness.run(
       'This is a timeout-mapping probe. Return the word TIMEOUT-PROBE.',
       { sessionId: `vxa-s002-timeout-${randomUUID()}` },
@@ -238,6 +248,7 @@ async function proveTimeoutMapping(runtime, rootDir, input) {
 }
 
 async function main() {
+  currentPhase = 'runtime-preflight';
   assertSpikeNodeVersion(process.version);
   const harnessVersion = resolveHarnessCandidateVersion(process.env.VXA_HARNESS_VERSION);
   const input = {
@@ -250,6 +261,7 @@ async function main() {
 
   const rootDir = await mkdtemp(join(tmpdir(), 'vxa-s002-harness-spike-'));
   try {
+    currentPhase = 'harness-bootstrap';
     const runtime = await bootstrapHarnessRuntime(rootDir, harnessVersion);
     const normal = await proveNormalCompatibility(runtime, rootDir, input);
     const timeoutMapped = await proveTimeoutMapping(runtime, rootDir, input);
@@ -272,14 +284,17 @@ async function main() {
       compatible = false;
     }
 
+    currentPhase = 'complete';
     const result = {
       schemaVersion: 1,
+      status: compatible ? 'pass' : 'fail',
       compatible,
       ...compatibility,
       evidence: normal.diagnosticCounts,
       notes: [
         'Raw provider payloads and model credentials are intentionally not emitted.',
         'A PASS is valid only for this exact Harness version/provider/model tuple.',
+        'This proof does not authorize a public live Workshop deployment.',
       ],
     };
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -291,7 +306,18 @@ async function main() {
 
 main().catch((error) => {
   const name = error instanceof Error ? error.name : 'UnknownError';
-  const message = error instanceof Error ? error.message : 'Unknown compatibility-spike failure';
-  process.stderr.write(`[${name}] ${message}\n`);
+  const rawMessage = error instanceof Error ? error.message : 'Unknown compatibility-spike failure';
+  const message = sanitizeSpikeDiagnostic(rawMessage, process.env.MISTRAL_API_KEY);
+  process.stdout.write(`${JSON.stringify({
+    schemaVersion: 1,
+    status: 'error',
+    compatible: false,
+    phase: currentPhase,
+    error: { name, message },
+    notes: [
+      'Diagnostic text is bounded and the current Mistral credential is redacted before emission.',
+      'No compatibility PASS is valid from this result.',
+    ],
+  }, null, 2)}\n`);
   process.exitCode = 1;
 });
