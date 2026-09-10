@@ -4,6 +4,7 @@ import {
   runStoredAgentTurn,
   startStoredAgentSession,
   type AgentRuntimeStaticConfig,
+  type StoredAgentTurnDependencies,
   type StoredAgentTurnResult,
 } from './stored-agent-turn-service.ts';
 
@@ -11,6 +12,7 @@ export interface AskAiHttpDependencies {
   repository: AgentSessionRepository;
   runtime: Readonly<AgentRuntimeStaticConfig>;
   entropy?: Readonly<AgentSessionEntropy>;
+  turnDependencies?: Partial<StoredAgentTurnDependencies>;
 }
 
 const MAX_BODY_BYTES = 16_384;
@@ -188,6 +190,7 @@ export async function handleAskAiTurn(
       expectedRevision,
       text,
     },
+    dependencies: dependencies.turnDependencies,
   });
 
   if (!result.ok) return mapTurnFailure(result);
