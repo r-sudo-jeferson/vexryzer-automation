@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildPackageInstallEnv,
   buildScrubbedHarnessEnv,
   renderMistralSettingsYaml,
   validateSpikeInputs,
@@ -67,4 +68,18 @@ test('rejects unsafe or incomplete spike inputs before any subprocess starts', (
     baseUrl: 'https://api.mistral.ai/v1',
     mistralApiKey: '',
   }), /MISTRAL_API_KEY/);
+});
+
+test('does not expose model credentials to temporary package installation', () => {
+  const env = buildPackageInstallEnv({
+    PATH: '/usr/bin',
+    HOME: '/home/test',
+    HTTPS_PROXY: 'http://proxy.test',
+    MISTRAL_API_KEY: 'must-not-pass-to-package-scripts',
+    NPM_TOKEN: 'must-not-pass',
+  });
+  assert.equal(env.PATH, '/usr/bin');
+  assert.equal(env.HTTPS_PROXY, 'http://proxy.test');
+  assert.equal(env.MISTRAL_API_KEY, undefined);
+  assert.equal(env.NPM_TOKEN, undefined);
 });
