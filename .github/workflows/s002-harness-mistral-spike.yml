@@ -8,6 +8,7 @@ on:
       - .github/workflows/s002-harness-mistral-spike.yml
       - job/tools/workshop-spike/**
       - job/tests/pure/workshop-*.node.test.ts
+      - job/tests/pure/workshop-*.node.test.mjs
   workflow_dispatch:
 
 permissions:
@@ -55,7 +56,8 @@ jobs:
             tests/pure/workshop-provider-contract.node.test.ts \
             tests/pure/workshop-harness-evidence.node.test.ts \
             tests/pure/workshop-spike-config.node.test.ts \
-            tests/pure/workshop-model-battery.node.test.ts
+            tests/pure/workshop-model-battery.node.test.ts \
+            tests/pure/workshop-harness-probe-path.node.test.mjs
 
       - name: Run credentialed Harness plus Mistral compatibility gate
         id: compatibility
