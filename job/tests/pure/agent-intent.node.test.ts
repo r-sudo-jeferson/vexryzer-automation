@@ -37,7 +37,7 @@ test('accepts multiple coordinated semantic effects without imposing a fixed act
     { id: 'act-focus', kind: 'focus', targetId: 'node-reconciliation', reason: 'Manter o gargalo principal no centro.' },
   ];
   const result = validateAgentIntent(baseIntent({ actions }));
-    assert.equal(result.ok, true);
+  assert.equal(result.ok, true);
   if (!result.ok) throw new Error(`${result.code}:${result.path}`);
   assert.deepEqual(result.value.actions.map((action) => action.id), ['act-quantify', 'act-compare', 'act-focus']);
 });
