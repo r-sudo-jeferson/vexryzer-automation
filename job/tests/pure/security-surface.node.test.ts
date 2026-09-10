@@ -33,8 +33,13 @@ test('S002 keeps browser network authority same-origin and provider egress serve
   })));
   const joined = sources.map((item) => item.source).join('\n');
 
-  // Global product-surface bans remain unchanged.
-  assert.doesNotMatch(joined, /dangerouslySetInnerHTML/);
+  // Global product-surface bans remain unchanged. The forbidden React sink token may
+  // exist only inside the validator that rejects it; executable JSX usage remains forbidden.
+  const dangerousSinkMentions = sources
+    .filter((item) => item.source.includes('dangerouslySetInnerHTML'))
+    .map((item) => item.path);
+  assert.deepEqual(dangerousSinkMentions, ['experience/experience-validation.ts']);
+  assert.doesNotMatch(joined, /dangerouslySetInnerHTML\s*=/);
   assert.doesNotMatch(joined, /VITE_[A-Z0-9_]*(?:KEY|TOKEN|SECRET)/);
 
   const browserSources = sources.filter((item) => !item.path.startsWith('server/'));
