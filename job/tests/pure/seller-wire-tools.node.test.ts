@@ -5,8 +5,9 @@ import {
   parseSellerToolCall,
 } from '../../src/server/ai/seller/seller-wire-tools.ts';
 
-test('Seller exposes exactly two application-owned local tools with closed root schemas', () => {
+test('Seller exposes exactly three application-owned local tools with closed root schemas', () => {
   assert.deepEqual(SELLER_LOCAL_TOOLS.map((tool) => tool.function.name), [
+    'capture_user_observations',
     'request_calculations',
     'submit_seller_submission',
   ]);
@@ -19,6 +20,77 @@ test('Seller exposes exactly two application-owned local tools with closed root 
   assert.equal(serialized.includes('browser_search'), false);
   assert.equal(serialized.includes('code_interpreter'), false);
   assert.equal(serialized.includes('mcp'), false);
+});
+
+test('parses quoted user observation requests without accepting model-authored provenance, units or periods', () => {
+  const result = parseSellerToolCall({
+    id: 'call-observations',
+    type: 'function',
+    function: {
+      name: 'capture_user_observations',
+      arguments: JSON.stringify({
+        observations: [{
+          id: 'obs-people',
+          kind: 'people_count',
+          baseRevision: 12,
+          turnId: 'turn-12',
+          quote: 'somos 3 pessoas',
+          value: 3,
+        }, {
+          id: 'obs-minutes',
+          kind: 'minutes_per_person_per_day',
+          baseRevision: 12,
+          turnId: 'turn-12',
+          quote: '40 minutos por pessoa por dia',
+          value: 40,
+        }],
+      }),
+    },
+  }, 12);
+  assert.equal(result.ok, true);
+  if (!result.ok || result.kind !== 'user_observation_requests') return;
+  assert.equal(result.requests.length, 2);
+  assert.equal(result.requests[0]?.kind, 'people_count');
+  assert.equal(Object.hasOwn(result.requests[0]!, 'source'), false);
+  assert.equal(Object.hasOwn(result.requests[0]!, 'unit'), false);
+  assert.equal(Object.hasOwn(result.requests[0]!, 'period'), false);
+});
+
+test('user observation wire rejects stale revision, unknown semantics, duplicate ids and authority fields', () => {
+  const cases = [
+    {
+      observations: [{
+        id: 'obs-people', kind: 'people_count', baseRevision: 11, turnId: 'turn-12',
+        quote: 'somos 3 pessoas', value: 3,
+      }],
+    },
+    {
+      observations: [{
+        id: 'obs-people', kind: 'invented_semantics', baseRevision: 12, turnId: 'turn-12',
+        quote: 'somos 3 pessoas', value: 3,
+      }],
+    },
+    {
+      observations: [
+        { id: 'obs-people', kind: 'people_count', baseRevision: 12, turnId: 'turn-12', quote: 'somos 3 pessoas', value: 3 },
+        { id: 'obs-people', kind: 'people_count', baseRevision: 12, turnId: 'turn-12', quote: 'somos 3 pessoas', value: 3 },
+      ],
+    },
+    {
+      observations: [{
+        id: 'obs-people', kind: 'people_count', baseRevision: 12, turnId: 'turn-12',
+        quote: 'somos 3 pessoas', value: 3, source: 'user', status: 'confirmed', unit: 'person',
+      }],
+    },
+  ];
+  for (const args of cases) {
+    const result = parseSellerToolCall({
+      id: 'call-observations',
+      type: 'function',
+      function: { name: 'capture_user_observations', arguments: JSON.stringify(args) },
+    }, 12);
+    assert.equal(result.ok, false);
+  }
 });
 
 test('parses a bounded batch of calculation requests against the exact canonical revision', () => {
