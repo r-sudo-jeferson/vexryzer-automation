@@ -126,6 +126,52 @@ test('completed request becomes idempotent only while it remains the latest comm
   }
 });
 
+test('last completed request stops being idempotent after canonical state advances', () => {
+  const created = createAgentSession(entropy);
+  const claimed = claimAgentSession(created.record, {
+    requestId: 'request-completed',
+    expectedRevision: 0,
+    nowEpochMs: 1_000,
+  }, entropy);
+  if (!claimed.ok || claimed.idempotent || claimed.record.lease === null) throw new Error('expected claim');
+
+  const canonicalAtOne = Object.freeze({
+    ...claimed.record.canonical,
+    revision: 1,
+    turnIds: Object.freeze(['request-completed']),
+    latestUserIntent: Object.freeze({ turnId: 'request-completed', text: 'Primeiro turno.' }),
+  });
+  const completed = completeAgentSession(claimed.record, {
+    leaseId: claimed.record.lease.leaseId,
+    canonical: canonicalAtOne,
+    reactiveState: claimed.record.reactiveState,
+    recentTurns: [{ id: 'request-completed', role: 'user', text: 'Primeiro turno.' }],
+    completed: {
+      requestId: 'request-completed',
+      inputRevision: 0,
+      resultRevision: 1,
+      mode: 'guided_recovery',
+      narration: 'Contexto preservado.',
+      nextQuestion: null,
+    },
+  });
+
+  const advanced = Object.freeze({
+    ...completed,
+    canonical: Object.freeze({
+      ...completed.canonical,
+      revision: 2,
+      turnIds: Object.freeze([...completed.canonical.turnIds, 'correction-request']),
+    }),
+  });
+  const replay = claimAgentSession(advanced, {
+    requestId: 'request-completed',
+    expectedRevision: 2,
+    nowEpochMs: 2_000,
+  }, { leaseId: () => 'lease-never' });
+  assert.deepEqual(replay, { ok: false, code: 'REQUEST_REPLAY' });
+});
+
 test('historical request id cannot be replayed after a newer request becomes canonical', () => {
   const created = createAgentSession(entropy);
   const first = claimAgentSession(created.record, {
