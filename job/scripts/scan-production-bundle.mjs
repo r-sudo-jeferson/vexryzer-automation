@@ -1,6 +1,7 @@
 import { readdir, readFile, lstat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CREDENTIAL_RULES } from './security-patterns.mjs';
 
 const TEXT_EXTENSIONS = new Set(['.html', '.js', '.mjs', '.cjs', '.css', '.json']);
 
@@ -8,9 +9,7 @@ const RULES = Object.freeze([
   { id: 'provider-mistral', pattern: /\bmistral\b/i },
   { id: 'provider-anthropic', pattern: /\banthropic\b/i },
   { id: 'provider-openai', pattern: /\bopenai\b/i },
-  { id: 'credential-github-classic', pattern: /ghp_[A-Za-z0-9]{30,}/ },
-  { id: 'credential-github-fine-grained', pattern: /github_pat_[A-Za-z0-9_]{40,}/ },
-  { id: 'credential-openai-style', pattern: /(^|[^A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}/m },
+  ...CREDENTIAL_RULES,
   { id: 'client-secret-contract', pattern: /VITE_[A-Z0-9_]*(?:KEY|TOKEN|SECRET)/ },
 ]);
 

@@ -50,7 +50,7 @@ test('provider identifiers are rejected with named findings but without dumping 
 });
 
 test('credential-like values are rejected without echoing the secret value', async () => {
-  const secret = `sk-${'A'.repeat(32)}`;
+  const secret = ['s', 'k', '-'].join('') + 'A'.repeat(32);
   await withBundle({ 'assets/index.js': `window.token=${JSON.stringify(secret)};` }, (dir) => {
     const result = scan(dir);
     assert.equal(result.status, 1);
