@@ -116,7 +116,7 @@ test('hard-blocks authoritative price, discount, fake feasibility, attachment-re
       const result = validateSellerSubmission(submission({ materialClaims: [claim] }), options);
       assert.equal(result.ok, false);
       if (result.ok) return;
-      assert.equal(result.code, 'HARD_BLOCK');
+      if (result.code !== 'HARD_BLOCK') assert.fail(`expected HARD_BLOCK, got ${result.code}`);
       assert.equal(result.finding.code, expected);
     });
   }
