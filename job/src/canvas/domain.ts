@@ -17,7 +17,7 @@ export interface RequestReceiptNodeModel extends BaseProcessNodeModel { kind: 'r
 export type ProcessNodeModel = SourceNodeModel | ManualActionNodeModel | TransformationNodeModel | SystemNodeModel | OutputNodeModel | EvidenceNodeModel | EffortNodeModel | UncertaintyNodeModel | EstimateNodeModel | RequestReceiptNodeModel;
 export interface ProcessEdgeModel { id: string; source: string; target: string; label?: string }
 export interface ProcessGraph { readonly nodes: readonly ProcessNodeModel[]; readonly edges: readonly ProcessEdgeModel[] }
-export type GraphIssueCode = 'DUPLICATE_NODE_ID'|'DUPLICATE_EDGE_ID'|'INVALID_NODE_ID'|'INVALID_NODE_LABEL'|'INVALID_NODE_SUMMARY'|'INVALID_EFFORT'|'DANGLING_EDGE'|'SELF_LOOP'|'DUPLICATE_CONNECTION';
+export type GraphIssueCode = 'DUPLICATE_NODE_ID'|'DUPLICATE_EDGE_ID'|'INVALID_NODE_ID'|'INVALID_EDGE_ID'|'INVALID_NODE_LABEL'|'INVALID_NODE_SUMMARY'|'INVALID_EDGE_LABEL'|'INVALID_EFFORT'|'DANGLING_EDGE'|'SELF_LOOP'|'DUPLICATE_CONNECTION';
 export interface GraphIssue { code: GraphIssueCode; message: string; subjectId: string }
 const ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
@@ -33,6 +33,8 @@ export function validateProcessGraph(graph: ProcessGraph): GraphIssue[] {
   }
   for (const edge of graph.edges) {
     if(edgeIds.has(edge.id)) issues.push({code:'DUPLICATE_EDGE_ID',message:`Duplicate edge id: ${edge.id}`,subjectId:edge.id}); edgeIds.add(edge.id);
+    if(!ID_PATTERN.test(edge.id)) issues.push({code:'INVALID_EDGE_ID',message:`Invalid edge id: ${edge.id}`,subjectId:edge.id});
+    if(edge.label !== undefined) { const label=edge.label.trim(); if(label.length===0||label.length>200||CONTROL_CHARACTER_PATTERN.test(edge.label)) issues.push({code:'INVALID_EDGE_LABEL',message:`Invalid label for edge: ${edge.id}`,subjectId:edge.id}); }
     if(edge.source===edge.target) issues.push({code:'SELF_LOOP',message:`Self-loop is not allowed: ${edge.id}`,subjectId:edge.id});
     if(!nodeIds.has(edge.source)||!nodeIds.has(edge.target)) issues.push({code:'DANGLING_EDGE',message:`Dangling edge: ${edge.id}`,subjectId:edge.id});
     const key=`${edge.source}->${edge.target}`; if(directedConnections.has(key)) issues.push({code:'DUPLICATE_CONNECTION',message:`Duplicate connection: ${key}`,subjectId:edge.id}); directedConnections.add(key);
