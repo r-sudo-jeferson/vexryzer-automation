@@ -668,6 +668,7 @@ class QualityMemoryRepository implements AgentSessionRepository {
 function evaluationRuntime(
   sellerRoutes: readonly Readonly<ProviderRouteDefinition>[],
   criticRoute: Readonly<ProviderRouteDefinition>,
+  providerInvoker: typeof pacedProviderInvoker = pacedProviderInvoker,
 ): AgentRuntimeStaticConfig {
   return Object.freeze({
     seller: Object.freeze({
@@ -679,7 +680,7 @@ function evaluationRuntime(
       serverConfig: serverConfig(),
       timeoutMs: REQUEST_TIMEOUT_MS,
       maxProviderRounds: 6,
-      dependencies: Object.freeze({ executeProviderChatStream: pacedProviderInvoker }),
+      dependencies: Object.freeze({ executeProviderChatStream: providerInvoker }),
     }),
     critic: Object.freeze({
       routes: Object.freeze([criticRoute]),
@@ -689,7 +690,7 @@ function evaluationRuntime(
       resolveCredential: credentialResolver,
       serverConfig: serverConfig(),
       timeoutMs: REQUEST_TIMEOUT_MS,
-      dependencies: Object.freeze({ executeProviderChatStream: pacedProviderInvoker }),
+      dependencies: Object.freeze({ executeProviderChatStream: providerInvoker }),
     }),
   });
 }
@@ -846,6 +847,17 @@ async function runAllProviderRecoveryCheck(
     });
   }
 
+  const forcedOutageFailures = new Map<string, number>();
+  const outageInvoker = async (
+    input: Parameters<typeof executeProviderChatStream>[0],
+  ): Promise<ProviderChatClientResult> => {
+    forcedOutageFailures.set(
+      input.route.routeId,
+      (forcedOutageFailures.get(input.route.routeId) ?? 0) + 1,
+    );
+    return { ok: false, class: 'capacity', status: 503, retryAfterMs: null };
+  };
+  const outageRuntime = evaluationRuntime(sellerRoutes, criticRoute, outageInvoker);
   const runtime = evaluationRuntime(sellerRoutes, criticRoute);
   const firstText = 'O fechamento mensal ainda concentra o principal retrabalho do escritório.';
   const outage = await runStoredAgentTurn({
@@ -857,23 +869,18 @@ async function runAllProviderRecoveryCheck(
       expectedRevision: 0,
       text: firstText,
     }),
-    runtime,
+    runtime: outageRuntime,
     dependencies: {
       nowEpochMs: () => 1_000,
       leaseId: () => 'lease-provider-outage',
-      runAgentLedTurn: (async (input: {
-        seller: { canonical: CanonicalSalesContext };
-        reactiveState: AgentSessionRecord['reactiveState'];
-      }) => ({
-        ok: false,
-        code: 'SELLER_FAILED',
-        canonical: input.seller.canonical,
-        reactiveState: input.reactiveState,
-        detail: 'PROVIDER_FAILED',
-        reviews: Object.freeze([]),
-      })) as never,
     },
   });
+  const outageAttempts = Object.freeze(sellerRoutes.map((route) => Object.freeze({
+    routeId: route.routeId,
+    failures: forcedOutageFailures.get(route.routeId) ?? 0,
+  })));
+  const allSellerRoutesAttempted = sellerRoutes.length > 0
+    && outageAttempts.every((item) => item.failures === 1);
   if (!outage.ok || outage.mode !== 'guided_recovery') {
     return Object.freeze({
       contractOrdinal: scenario.contractOrdinal,
@@ -881,6 +888,8 @@ async function runAllProviderRecoveryCheck(
       pass: false,
       evidenceMode: 'stored_session_recovery' as const,
       guidedRecoveryPass: false,
+      allSellerRoutesAttempted,
+      outageAttempts,
       failure: Object.freeze({ code: outage.ok ? 'GUIDED_RECOVERY_NOT_USED' : outage.code }),
     });
   }
@@ -912,6 +921,7 @@ async function runAllProviderRecoveryCheck(
   ) ?? false;
   const pass = recovered.ok
     && recovered.mode === 'agent'
+    && allSellerRoutesAttempted
     && outageStatePreserved
     && firstTurnStillPresent
     && recovered.state.canonicalRevision > outage.state.canonicalRevision;
@@ -922,6 +932,8 @@ async function runAllProviderRecoveryCheck(
     pass,
     evidenceMode: 'stored_session_recovery' as const,
     guidedRecoveryPass: true,
+    allSellerRoutesAttempted,
+    outageAttempts,
     outageStatePreserved,
     firstTurnStillPresent,
     recoveredMode: recovered.ok ? recovered.mode : 'NOT_RUN',
