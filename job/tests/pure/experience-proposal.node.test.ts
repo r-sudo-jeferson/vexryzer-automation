@@ -39,8 +39,7 @@ function baseProposal(overrides: Record<string, unknown> = {}) {
 
 test('accepts a revision-bound proposal with several coordinated effects and no mandatory question', () => {
   const result = validateExperienceProposal(baseProposal(), { expectedBaseRevision: 7 });
-  assert.equal(result.ok, true);
-  if (!result.ok) throw new Error(`${result.code}:${result.path}`);
+  if (!result.ok) assert.fail(`${result.code}:${result.path}`);
   assert.equal(result.proposal.intent.nextQuestion, null);
   assert.deepEqual(result.proposal.intent.actions.map((action) => action.id), ['act-quantify', 'act-focus']);
 });
