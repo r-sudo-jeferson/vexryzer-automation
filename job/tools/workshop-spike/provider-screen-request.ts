@@ -16,15 +16,16 @@ const tool = {
   },
 };
 
-export function buildStreamRequest(model: string, marker: string) {
+export function buildStreamRequest(model: string, marker: string, provider: 'cloudflare-workers-ai' | 'groq') {
   return {
     model,
     stream: true,
     messages: [{ role: 'user' as const, content: `Return exactly ${marker} and nothing else.` }],
+    ...(provider === 'groq' ? { include_reasoning: false as const } : {}),
   };
 }
 
-export function buildToolRequest(model: string, marker: string) {
+export function buildToolRequest(model: string, marker: string, provider: 'cloudflare-workers-ai' | 'groq') {
   return {
     model,
     stream: false,
@@ -34,10 +35,11 @@ export function buildToolRequest(model: string, marker: string) {
     }],
     tools: [tool],
     tool_choice: 'required' as const,
+    ...(provider === 'groq' ? { include_reasoning: false as const } : {}),
   };
 }
 
-export function buildReplayRequest(model: string, call: StructuredToolCall, marker: string) {
+export function buildReplayRequest(model: string, call: StructuredToolCall, marker: string, provider: 'cloudflare-workers-ai' | 'groq') {
   return {
     model,
     stream: false,
@@ -64,5 +66,6 @@ export function buildReplayRequest(model: string, call: StructuredToolCall, mark
     ],
     tools: [tool],
     tool_choice: 'none' as const,
+    ...(provider === 'groq' ? { include_reasoning: false as const } : {}),
   };
 }
