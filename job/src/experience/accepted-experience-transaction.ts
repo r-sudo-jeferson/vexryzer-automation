@@ -123,6 +123,8 @@ function canonicalArtifacts(
     id: item.id,
     kind: item.kind,
     title: item.title,
+    summary: item.summary,
+    maturity: item.status,
     evidenceIds: Object.freeze([...item.evidenceIds]),
     status: 'proposed' as const,
     invalidatedAtRevision: null,
