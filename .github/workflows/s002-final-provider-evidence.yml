@@ -117,6 +117,19 @@ jobs:
           set -euo pipefail
           node tools/workshop-spike/run-opencode-provider.mjs             > test-results/s002-opencode-provider-exact-sha.json
 
+      - name: Prove Cloudflare account has no registered payment method
+        if: always()
+        working-directory: job
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p test-results
+          node tools/provider-quality/run-cloudflare-account-cost-proof.ts \
+            > test-results/s002-cloudflare-account-cost.json
+
       - name: Upload bounded final provider evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
@@ -128,5 +141,6 @@ jobs:
             job/test-results/s002-product-wire-probe.json
             job/test-results/s002-provider-quality.json
             job/test-results/s002-opencode-provider-exact-sha.json
+            job/test-results/s002-cloudflare-account-cost.json
           if-no-files-found: warn
           retention-days: 7
