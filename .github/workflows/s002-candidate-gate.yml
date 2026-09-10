@@ -1,4 +1,4 @@
-# S002 deterministic candidate gate. Increment this marker only when a remote gate is intentionally warranted: iteration 19.
+# S002 deterministic candidate gate. Increment this marker only when a remote gate is intentionally warranted: iteration 20.
 name: S002 Candidate Gate
 
 on:
