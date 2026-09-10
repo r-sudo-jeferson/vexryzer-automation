@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { applyContextMutation } from '../../ai/context/context-reducer.ts';
 import { createSessionDigest } from '../../ai/context/session-digest.ts';
 import type { CanonicalSalesContext } from '../../ai/context/canonical-sales-context.ts';
@@ -90,6 +90,7 @@ export type StoredAgentTurnResult =
         | 'INVALID_REQUEST'
         | 'NOT_FOUND'
         | 'UNAUTHORIZED'
+        | 'REQUEST_REPLAY'
         | 'STALE_REVISION'
         | 'SESSION_BUSY'
         | 'SESSION_CONFLICT'
@@ -103,7 +104,7 @@ const DEFAULT_DEPENDENCIES: StoredAgentTurnDependencies = Object.freeze({
   createSessionDigest,
   runAgentLedTurn,
   nowEpochMs: () => Date.now(),
-  leaseId: () => crypto.randomUUID(),
+  leaseId: () => randomUUID(),
 });
 
 const SAFE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -224,6 +225,35 @@ async function finalize(
   return completedResponse(record, input.completed, false);
 }
 
+async function guidedRecovery(
+  repository: AgentSessionRepository,
+  claimedEtag: string,
+  claimed: Readonly<AgentSessionRecord>,
+  canonical: CanonicalSalesContext,
+  reactiveState: Readonly<ReactiveExperienceState>,
+  recentWithUser: readonly Readonly<RecentContextTurn>[],
+  inputRevision: number,
+): Promise<StoredAgentTurnResult> {
+  const completed: CompletedAgentRequest = {
+    requestId: claimed.lease!.requestId,
+    inputRevision,
+    resultRevision: canonical.revision,
+    mode: 'guided_recovery',
+    narration: GUIDED_RECOVERY_NARRATION,
+    nextQuestion: GUIDED_RECOVERY_QUESTION,
+  };
+  return finalize(repository, claimedEtag, claimed, {
+    canonical,
+    reactiveState,
+    recentTurns: appendRecent(recentWithUser, [{
+      id: assistantTurnId(completed.requestId),
+      role: 'assistant',
+      text: GUIDED_RECOVERY_NARRATION + ' ' + GUIDED_RECOVERY_QUESTION,
+    }]),
+    completed,
+  });
+}
+
 export async function startStoredAgentSession(
   input: StartStoredAgentSessionInput,
 ): Promise<StartStoredAgentSessionResult> {
@@ -328,24 +358,15 @@ export async function runStoredAgentTurn(
   }]);
 
   if (input.runtime.seller.routes.length === 0 || input.runtime.critic.routes.length === 0) {
-    const completed: CompletedAgentRequest = {
-      requestId: input.request.requestId,
-      inputRevision: input.request.expectedRevision,
-      resultRevision: canonicalAfterInput.revision,
-      mode: 'guided_recovery',
-      narration: GUIDED_RECOVERY_NARRATION,
-      nextQuestion: GUIDED_RECOVERY_QUESTION,
-    };
-    return finalize(input.repository, claimWrite.etag, claimed.record, {
-      canonical: canonicalAfterInput,
-      reactiveState: claimed.record.reactiveState,
-      recentTurns: appendRecent(recentWithUser, [{
-        id: assistantTurnId(input.request.requestId),
-        role: 'assistant',
-        text: GUIDED_RECOVERY_NARRATION + ' ' + GUIDED_RECOVERY_QUESTION,
-      }]),
-      completed,
-    });
+    return guidedRecovery(
+      input.repository,
+      claimWrite.etag,
+      claimed.record,
+      canonicalAfterInput,
+      claimed.record.reactiveState,
+      recentWithUser,
+      input.request.expectedRevision,
+    );
   }
 
   const agentInput: AgentLedTurnRuntimeInput = {
@@ -367,31 +388,33 @@ export async function runStoredAgentTurn(
   try {
     agent = await dependencies.runAgentLedTurn(agentInput);
   } catch {
-    return { ok: false, code: 'AGENT_EXECUTION_FAILED', currentRevision: canonicalAfterInput.revision };
+    return guidedRecovery(
+      input.repository,
+      claimWrite.etag,
+      claimed.record,
+      canonicalAfterInput,
+      claimed.record.reactiveState,
+      recentWithUser,
+      input.request.expectedRevision,
+    );
   }
 
   if (!agent.ok) {
-    if (!availabilityFailure(agent)) {
-      return { ok: false, code: 'AGENT_EXECUTION_FAILED', currentRevision: agent.canonical.revision };
-    }
-    const completed: CompletedAgentRequest = {
-      requestId: input.request.requestId,
-      inputRevision: input.request.expectedRevision,
-      resultRevision: agent.canonical.revision,
-      mode: 'guided_recovery',
-      narration: GUIDED_RECOVERY_NARRATION,
-      nextQuestion: GUIDED_RECOVERY_QUESTION,
-    };
-    return finalize(input.repository, claimWrite.etag, claimed.record, {
-      canonical: agent.canonical,
-      reactiveState: input.reactiveState ?? claimed.record.reactiveState,
-      recentTurns: appendRecent(recentWithUser, [{
-        id: assistantTurnId(input.request.requestId),
-        role: 'assistant',
-        text: GUIDED_RECOVERY_NARRATION + ' ' + GUIDED_RECOVERY_QUESTION,
-      }]),
-      completed,
-    });
+    const canonical = agent.canonical.revision < canonicalAfterInput.revision
+      ? canonicalAfterInput
+      : agent.canonical;
+    const reactiveState = agent.reactiveState.basedOnRevision > canonical.revision
+      ? claimed.record.reactiveState
+      : agent.reactiveState;
+    return guidedRecovery(
+      input.repository,
+      claimWrite.etag,
+      claimed.record,
+      canonical,
+      reactiveState,
+      recentWithUser,
+      input.request.expectedRevision,
+    );
   }
 
   const nextQuestion = agent.submission.proposal.intent.nextQuestion?.text ?? null;
