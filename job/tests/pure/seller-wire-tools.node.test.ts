@@ -113,6 +113,32 @@ test('submission tool preserves raw submission for canonical Seller validator bu
   assert.deepEqual(result.submission, rawSubmission);
 });
 
+test('submission tool rejects pending calculations so deterministic arithmetic cannot bypass the calculation round-trip', () => {
+  const result = parseSellerToolCall({
+    id: 'call-submit',
+    type: 'function',
+    function: {
+      name: 'submit_seller_submission',
+      arguments: JSON.stringify({
+        submission: {
+          schemaVersion: 1,
+          proposalId: 'proposal-1',
+          proposal: { schemaVersion: 1, baseRevision: 12 },
+          materialClaims: [],
+          calculationRequests: [{
+            id: 'calc-pending',
+            kind: 'monthly_workload',
+            baseRevision: 12,
+            occurrencesPerMonthObservationId: 'obs-occ',
+            minutesPerOccurrenceObservationId: 'obs-min',
+          }],
+        },
+      }),
+    },
+  }, 12);
+  assert.equal(result.ok, false);
+});
+
 test('submission tool rejects stale revision, unknown root keys and unknown tool names', () => {
   const stale = parseSellerToolCall({
     id: 'call-submit',

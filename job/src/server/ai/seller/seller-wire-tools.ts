@@ -100,7 +100,7 @@ const submitSellerTool: LocalFunctionTool = Object.freeze({
   type: 'function',
   function: Object.freeze({
     name: 'submit_seller_submission',
-    description: 'Submit the final SellerSubmission candidate. The application will independently validate every nested field and hard block.',
+    description: 'Submit the final SellerSubmission candidate after all deterministic calculations have been requested and committed. Pending calculation requests are forbidden in the final submission; the application will independently validate every nested field and hard block.',
     parameters: Object.freeze({
       type: 'object',
       additionalProperties: false,
@@ -113,7 +113,7 @@ const submitSellerTool: LocalFunctionTool = Object.freeze({
             proposalId: idSchema,
             proposal: Object.freeze({ type: 'object' }),
             materialClaims: Object.freeze({ type: 'array' }),
-            calculationRequests: Object.freeze({ type: 'array' }),
+            calculationRequests: Object.freeze({ type: 'array', maxItems: 0 }),
           }),
           required: Object.freeze([
             'schemaVersion',
@@ -238,6 +238,9 @@ export function parseSellerToolCall(
     }
     if (submission['proposal']['baseRevision'] !== expectedRevision) return { ok: false, code: 'STALE_REVISION' };
     if (!Array.isArray(submission['materialClaims']) || !Array.isArray(submission['calculationRequests'])) {
+      return { ok: false, code: 'INVALID_ARGUMENTS' };
+    }
+    if (submission['calculationRequests'].length !== 0) {
       return { ok: false, code: 'INVALID_ARGUMENTS' };
     }
     return {

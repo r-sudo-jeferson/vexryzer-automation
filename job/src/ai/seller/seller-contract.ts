@@ -134,6 +134,12 @@ export function validateSellerSubmission(value: unknown, options: SellerValidati
 
   const proposalResult = validateExperienceProposal(value['proposal'], { expectedBaseRevision: options.canonical.revision });
   if (!proposalResult.ok) return { ok: false, code: 'PROPOSAL_INVALID', path: proposalResult.path };
+  // Every SellerSubmission is customer-facing material: narration/question text alone can
+  // influence the visitor even when no visual mutation is proposed. The model may request
+  // stricter review, but it can never disable the independent Critic gate.
+  if (proposalResult.proposal.criticRequired !== true) {
+    return { ok: false, code: 'INVALID_VALUE', path: 'sellerSubmission.proposal.criticRequired' };
+  }
 
   const rawClaims = value['materialClaims'];
   if (!Array.isArray(rawClaims)) return { ok: false, code: 'INVALID_SHAPE', path: 'materialClaims' };

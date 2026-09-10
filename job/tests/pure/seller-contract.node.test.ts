@@ -63,6 +63,16 @@ test('accepts an improvisational multi-capability proposal with no question', ()
   assert.equal(result.submission.proposal.intent.nextQuestion, null);
 });
 
+test('rejects any Seller submission that tries to disable the independent Critic gate', () => {
+  const result = validateSellerSubmission(submission({
+    proposal: proposal({ criticRequired: false }),
+  }), options);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.code, 'INVALID_VALUE');
+  assert.equal(result.path, 'sellerSubmission.proposal.criticRequired');
+});
+
 test('accepts a verified numeric claim only when backed by a valid application calculation', () => {
   const result = validateSellerSubmission(submission({
     materialClaims: [{ id: 'claim-1', kind: 'verified_numeric', text: 'O processo consome 44 horas por mês.', calculationId: 'calc-capacity' }],
