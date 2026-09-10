@@ -73,12 +73,21 @@ const DEFAULT_DEPENDENCIES: StoredUserCorrectionDependencies = Object.freeze({
 });
 
 const SAFE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const CORRECTION_REQUEST_KEYS = new Set([
+  'sessionId',
+  'sessionToken',
+  'requestId',
+  'expectedRevision',
+  'correctionId',
+]);
 
 function validId(value: string, max = 96): boolean {
   return value.length >= 1 && value.length <= max && SAFE_ID.test(value);
 }
 
 function validRequest(request: Readonly<StoredUserCorrectionRequest>): boolean {
+  if (Object.keys(request).some((key) => !CORRECTION_REQUEST_KEYS.has(key))
+    || [...CORRECTION_REQUEST_KEYS].some((key) => !Object.hasOwn(request, key))) return false;
   return validId(request.sessionId)
     && validId(request.requestId, 80)
     && validId(request.correctionId)
