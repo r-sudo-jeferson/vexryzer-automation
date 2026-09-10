@@ -159,7 +159,7 @@ test('stream accumulator assembles fragmented content and tool call arguments by
   assert.equal(result.finishReason, 'tool_calls');
 });
 
-test('SSE decoder fails closed on malformed JSON, unexpected fields or oversized unframed input', () => {
+test('SSE decoder fails closed on malformed JSON, non-standard fields or oversized unframed input', () => {
   const malformed = createChatSseDecoder();
   assert.throws(
     () => malformed.push('data: {not-json}\n\n'),
@@ -167,7 +167,7 @@ test('SSE decoder fails closed on malformed JSON, unexpected fields or oversized
   );
   const unexpected = createChatSseDecoder();
   assert.throws(
-    () => unexpected.push('event: evil\ndata: {"choices":[]}\n\n'),
+    () => unexpected.push('private-field: evil\ndata: {"choices":[]}\n\n'),
     (error: unknown) => error instanceof ChatSseDecodeError && error.code === 'unsupported_field',
   );
   const huge = createChatSseDecoder({ maxBufferedBytes: 32 });
