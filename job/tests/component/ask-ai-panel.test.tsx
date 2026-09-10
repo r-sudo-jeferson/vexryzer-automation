@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { AskAiPanel } from '../../src/app/AskAiPanel.tsx';
@@ -57,8 +57,10 @@ describe('ASK AI panel', () => {
     const input = screen.getByLabelText('Sua rotina, gargalo ou pergunta') as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: 'Não perca este texto' } });
     fireEvent.submit(input.closest('form')!);
-    await Promise.resolve();
-    expect(input.value).toBe('Não perca este texto');
+    await waitFor(() => {
+      expect(failedSubmit).toHaveBeenCalledTimes(1);
+      expect(input.value).toBe('Não perca este texto');
+    });
 
     const acceptedSubmit = vi.fn(async () => true);
     rerender(
@@ -75,8 +77,10 @@ describe('ASK AI panel', () => {
       />,
     );
     fireEvent.submit(input.closest('form')!);
-    await Promise.resolve();
-    expect(input.value).toBe('');
+    await waitFor(() => {
+      expect(acceptedSubmit).toHaveBeenCalledTimes(1);
+      expect(input.value).toBe('');
+    });
   });
 
   it('announces bounded requesting and validation-failure states without fake streaming', () => {
