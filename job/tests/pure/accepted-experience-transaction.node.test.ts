@@ -132,6 +132,7 @@ test('PASS publishes canonical evidence and reactive projection as one outer tra
     reactiveState: initialReactive,
     submission: submission(),
     review: review(),
+    surfaceGuard: () => ({ ok: true }),
   });
 
   assert.equal(result.ok, true);
@@ -196,6 +197,7 @@ test('correction-only PASS updates reactive suggestion state without granting th
     reactiveState: initialReactive,
     submission: correctionOnly,
     review: review(),
+    surfaceGuard: () => ({ ok: true }),
   });
 
   assert.equal(result.ok, true);
@@ -223,6 +225,7 @@ test('REVISE, BLOCK, or stale Critic verdict cannot publish anything', async (t)
         reactiveState: initialReactive,
         submission: submission(),
         review: candidate,
+        surfaceGuard: () => ({ ok: true }),
       });
       assert.equal(result.ok, false);
       if (result.ok) return;
@@ -230,6 +233,36 @@ test('REVISE, BLOCK, or stale Critic verdict cannot publish anything', async (t)
       assert.equal(result.reactiveState, initialReactive);
     });
   }
+});
+
+test('surface rejection discards the complete canonical and reactive candidate after immutable assembly', () => {
+  const initialCanonical = canonical();
+  const initialReactive = createReactiveExperienceState({ basedOnRevision: 4 });
+  let guardCanonicalRevision: number | null = null;
+  let guardProjectionRevision: number | null = null;
+  const result = commitCriticApprovedExperience({
+    canonical: initialCanonical,
+    reactiveState: initialReactive,
+    submission: submission(),
+    review: review(),
+    surfaceGuard: ({ canonical: candidateCanonical, reactiveState: candidateReactive }) => {
+      guardCanonicalRevision = candidateCanonical.revision;
+      guardProjectionRevision = candidateReactive.projectionRevision;
+      return { ok: false, code: 'INVALID_GRAPH_MUTATION', path: 'node-retrabalho' };
+    },
+  });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.code, 'SURFACE_REJECTED');
+  assert.equal(result.detail, 'INVALID_GRAPH_MUTATION:node-retrabalho');
+  assert.equal(guardCanonicalRevision, 5);
+  assert.equal(guardProjectionRevision, 1);
+  assert.equal(result.canonical, initialCanonical);
+  assert.equal(result.reactiveState, initialReactive);
+  assert.equal(initialCanonical.revision, 4);
+  assert.equal(initialCanonical.facts.length, 0);
+  assert.equal(initialReactive.projectionRevision, 0);
 });
 
 test('a canonical sibling failure discards an otherwise valid projected candidate', () => {
@@ -240,6 +273,7 @@ test('a canonical sibling failure discards an otherwise valid projected candidat
     reactiveState: initialReactive,
     submission: submission(4, Object.freeze(['fact-missing'])),
     review: review(),
+    surfaceGuard: () => ({ ok: true }),
   });
 
   assert.equal(result.ok, false);
@@ -271,6 +305,7 @@ test('projection failure occurs before canonical mutation and preserves both ori
     reactiveState: initialReactive,
     submission: broken,
     review: review(),
+    surfaceGuard: () => ({ ok: true }),
   });
 
   assert.equal(result.ok, false);
