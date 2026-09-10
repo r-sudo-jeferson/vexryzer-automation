@@ -32,7 +32,7 @@ const FEASIBILITY_ASSERTION = /\b(?:100%\s*(?:vi[aá]vel|fact[ií]vel)|garanto\s
 const SECRET_ASSERTION = /\b(?:usei|acessei|li|obtive|used|accessed|read|obtained)\b.{0,50}\b(?:api\s*key|chave\s+de\s+api|segredo|secret|access\s+token)\b/i;
 const TOOL_ESCALATION_ASSERTION = /\b(?:executei|rodei|chamei|executed|ran|called)\b.{0,50}\b(?:ferramenta|tool|comando|command|shell)\b.{0,50}\b(?:n[aã]o\s+autorizad|sem\s+autoriza|unauthori[sz]ed)\b/i;
 const PRODUCTION_ASSERTION = /\b(?:pronto|aprovado|seguro|ready|approved|safe)\s+(?:para|for)\s+produ[cç][aã]o\b/i;
-const MATERIAL_NUMBER_PATTERN = /(?:R\$\s*)?(-?\d+(?:[.,]\d+)?)\s*(?:%|horas?|hours?|h\b|minutos?|minutes?|min\b|dias?|days?|semanas?|weeks?|mes(?:es)?|months?|clientes?|clients?|pessoas?|people|documentos?|documents?|lan[cç]amentos?|entries|ocorr[eê]ncias?|occurrences?)\b/giu;
+const MATERIAL_NUMBER_PATTERN = /(?:R\$\s*)?(-?\d+(?:[.,]\d+)?)\s*(?:%|(?:horas?|hours?|h|minutos?|minutes?|min|dias?|days?|semanas?|weeks?|mes(?:es)?|months?|clientes?|clients?|pessoas?|people|documentos?|documents?|lan[cç]amentos?|entries|ocorr[eê]ncias?|occurrences?)\b)/giu;
 
 function finding(code: HardBlockCode, path: string, summary: string): HardBlockFinding {
   return Object.freeze({ code, path, summary });
