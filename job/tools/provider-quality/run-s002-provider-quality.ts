@@ -160,6 +160,7 @@ function canonicalForScenario(routeId: string, scenarioId: string, userText: str
 
 let lastProviderStart = 0;
 const groqTokenStarts: { at: number; tokens: number }[] = [];
+const networkCallsByRoute = new Map<string, number>();
 
 async function sleep(ms: number): Promise<void> {
   if (ms > 0) await new Promise((resolve) => setTimeout(resolve, ms));
@@ -197,6 +198,7 @@ async function pacedProviderInvoker(
   const remaining = REQUEST_START_SPACING_MS - (Date.now() - lastProviderStart);
   await sleep(remaining);
   lastProviderStart = Date.now();
+  networkCallsByRoute.set(input.route.routeId, (networkCallsByRoute.get(input.route.routeId) ?? 0) + 1);
   return executeProviderChatStream(input);
 }
 
@@ -268,8 +270,8 @@ function criticInput(
   };
 }
 
-function providerCallCount(result: object): number {
-  return 'providerCalls' in result && typeof result.providerCalls === 'number' ? result.providerCalls : 0;
+function networkCallCount(routeId: string): number {
+  return networkCallsByRoute.get(routeId) ?? 0;
 }
 
 function safeFailure(result: object & { ok: false; code: string }) {
@@ -302,6 +304,10 @@ async function evaluateScenario(
   scenario: (typeof ACCOUNTING_PROVIDER_QUALITY_SCENARIOS)[number],
 ): Promise<ScenarioEvidence> {
   const started = performance.now();
+  const sellerCallsBefore = networkCallCount(sellerRoute.routeId);
+  const criticCallsBefore = networkCallCount(criticRoute.routeId);
+  const sellerCalls = () => networkCallCount(sellerRoute.routeId) - sellerCallsBefore;
+  const criticCalls = () => networkCallCount(criticRoute.routeId) - criticCallsBefore;
   let canonical = canonicalForScenario(sellerRoute.routeId, scenario.id, scenario.userText);
   let seller = await runSellerTurn(sellerInput(sellerRoute, canonical, scenario.userText));
   if (!seller.ok) {
@@ -310,8 +316,8 @@ async function evaluateScenario(
       sellerRouteId: sellerRoute.routeId,
       sellerModelId: sellerRoute.modelId,
       pass: false,
-      sellerProviderCalls: providerCallCount(seller),
-      criticProviderCalls: 0,
+      sellerProviderCalls: sellerCalls(),
+      criticProviderCalls: criticCalls(),
       criticVerdict: 'NOT_RUN',
       revisionUsed: false,
       deterministic: null,
@@ -320,23 +326,21 @@ async function evaluateScenario(
     });
   }
 
-  let sellerCalls = seller.providerCalls;
-  canonical = seller.canonical;
+    canonical = seller.canonical;
   let deterministic = evaluateAccountingSellerQuality({
     scenario,
     submission: seller.submission,
     canonical,
   });
   let critic = await runCriticTurn(criticInput(criticRoute, canonical, seller.submission, scenario.userText));
-  let criticCalls = critic.ok ? critic.providerCalls : (providerCallCount(critic));
   if (!critic.ok) {
     return Object.freeze({
       scenarioId: scenario.id,
       sellerRouteId: sellerRoute.routeId,
       sellerModelId: sellerRoute.modelId,
       pass: false,
-      sellerProviderCalls: sellerCalls,
-      criticProviderCalls: criticCalls,
+      sellerProviderCalls: sellerCalls(),
+      criticProviderCalls: criticCalls(),
       criticVerdict: 'NOT_RUN',
       revisionUsed: false,
       deterministic,
@@ -365,8 +369,8 @@ async function evaluateScenario(
         sellerRouteId: sellerRoute.routeId,
         sellerModelId: sellerRoute.modelId,
         pass: false,
-        sellerProviderCalls: sellerCalls + (providerCallCount(revised)),
-        criticProviderCalls: criticCalls,
+        sellerProviderCalls: sellerCalls(),
+        criticProviderCalls: criticCalls(),
         criticVerdict: 'REVISE',
         revisionUsed,
         deterministic,
@@ -374,7 +378,6 @@ async function evaluateScenario(
         failure: safeFailure(revised),
       });
     }
-    sellerCalls += revised.providerCalls;
     seller = revised;
     canonical = revised.canonical;
     deterministic = evaluateAccountingSellerQuality({
@@ -388,15 +391,14 @@ async function evaluateScenario(
       revised.submission,
       scenario.userText,
     ));
-    criticCalls += secondCritic.ok ? secondCritic.providerCalls : (providerCallCount(secondCritic));
     if (!secondCritic.ok) {
       return Object.freeze({
         scenarioId: scenario.id,
         sellerRouteId: sellerRoute.routeId,
         sellerModelId: sellerRoute.modelId,
         pass: false,
-        sellerProviderCalls: sellerCalls,
-        criticProviderCalls: criticCalls,
+        sellerProviderCalls: sellerCalls(),
+        criticProviderCalls: criticCalls(),
         criticVerdict: 'NOT_RUN',
         revisionUsed,
         deterministic,
@@ -413,8 +415,8 @@ async function evaluateScenario(
     sellerRouteId: sellerRoute.routeId,
     sellerModelId: sellerRoute.modelId,
     pass,
-    sellerProviderCalls: sellerCalls,
-    criticProviderCalls: criticCalls,
+    sellerProviderCalls: sellerCalls(),
+    criticProviderCalls: criticCalls(),
     criticVerdict: critic.review.verdict,
     revisionUsed,
     deterministic,
@@ -504,6 +506,7 @@ async function runCriticAdversarialChecks(criticRoute: Readonly<ProviderRouteDef
       capabilities: item.capabilities,
     });
     const started = performance.now();
+    const callsBefore = networkCallCount(criticRoute.routeId);
     const review = await runCriticTurn(criticInput(
       criticRoute,
       canonical,
@@ -516,7 +519,7 @@ async function runCriticAdversarialChecks(criticRoute: Readonly<ProviderRouteDef
       pass,
       verdict: review.ok ? review.review.verdict : 'NOT_RUN',
       findingCodes: review.ok ? Object.freeze(review.review.findings.map((finding) => finding.code)) : Object.freeze([]),
-      providerCalls: review.ok ? review.providerCalls : (providerCallCount(review)),
+      providerCalls: networkCallCount(criticRoute.routeId) - callsBefore,
       latencyMs: Math.round(performance.now() - started),
       ...(review.ok ? {} : { failure: safeFailure(review) }),
     }));
