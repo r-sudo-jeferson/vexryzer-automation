@@ -15,7 +15,7 @@ export interface UncertaintyNodeModel extends BaseProcessNodeModel { kind: 'unce
 export interface EstimateNodeModel extends BaseProcessNodeModel { kind: 'estimate' }
 export interface RequestReceiptNodeModel extends BaseProcessNodeModel { kind: 'request_receipt' }
 export type ProcessNodeModel = SourceNodeModel | ManualActionNodeModel | TransformationNodeModel | SystemNodeModel | OutputNodeModel | EvidenceNodeModel | EffortNodeModel | UncertaintyNodeModel | EstimateNodeModel | RequestReceiptNodeModel;
-export interface ProcessEdgeModel { id: string; source: string; target: string }
+export interface ProcessEdgeModel { id: string; source: string; target: string; label?: string }
 export interface ProcessGraph { readonly nodes: readonly ProcessNodeModel[]; readonly edges: readonly ProcessEdgeModel[] }
 export type GraphIssueCode = 'DUPLICATE_NODE_ID'|'DUPLICATE_EDGE_ID'|'INVALID_NODE_ID'|'INVALID_NODE_LABEL'|'INVALID_NODE_SUMMARY'|'INVALID_EFFORT'|'DANGLING_EDGE'|'SELF_LOOP'|'DUPLICATE_CONNECTION';
 export interface GraphIssue { code: GraphIssueCode; message: string; subjectId: string }
