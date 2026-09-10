@@ -6,8 +6,9 @@ next_slice: `VXA-S001@1.0.0`
 gauntlet_id: `GNT-VXA-S001-001`
 repository: `r-sudo-jeferson/vexryzer-automation`
 product_root: `job`
-base_sha: `1ebb32587bded772bbb18b053865bdfee00407bc`
-status: `PLANNED_NOT_AUTHORIZED`
+base_sha: `d6a7e1d1994003dff1a9a6871fe1015a049ecdb8`
+planning_bootstrap_sha: `1ebb32587bded772bbb18b053865bdfee00407bc`
+status: `IN_PROGRESS`
 
 ## Absolute isolation
 
@@ -26,7 +27,7 @@ Do not access either Machina repository for any reason. This product is greenfie
 
 ## Canonical repository fact
 
-The canonical planning/bootstrap tree is bound to `1ebb32587bded772bbb18b053865bdfee00407bc`. This exact SHA is the required base reference for any later S001 authorization. S001 remains unauthorized.
+The planning/bootstrap tree remains bound to `1ebb32587bded772bbb18b053865bdfee00407bc`. Foundation hardening was promoted to `main` as `d6a7e1d1994003dff1a9a6871fe1015a049ecdb8`. On 2026-09-09 the Founder explicitly authorized continued S001 construction from that hardened `main` state and directed remote CI to run only at the final gate.
 
 ## Stack direction
 
