@@ -3,9 +3,9 @@ export const HARNESS_SPIKE_PROFILE = 'sdk-minimal' as const;
 export const DEFAULT_MISTRAL_PROVIDER_ROUTE = 'mistral' as const;
 export const DEFAULT_MISTRAL_MODEL_ID = 'mistral-medium-3-5' as const;
 export const MISTRAL_SPIKE_MAX_RETRIES = 5 as const;
-export const MISTRAL_RETRY_INITIAL_DELAY_MS = 1_000 as const;
+export const MISTRAL_RETRY_INITIAL_DELAY_MS = 2_200 as const;
 export const MISTRAL_RETRY_MAX_DELAY_MS = 16_000 as const;
-export const MISTRAL_RETRY_JITTER_RATIO = 0.1 as const;
+export const MISTRAL_RETRY_JITTER_RATIO = 0.05 as const;
 
 const HARNESS_BUILD_SCRIPT_POLICY = {
   '0.1.2-rc.1': [
