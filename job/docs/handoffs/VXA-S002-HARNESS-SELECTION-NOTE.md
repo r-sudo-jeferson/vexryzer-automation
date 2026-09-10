@@ -34,12 +34,30 @@ A Workshop harness PASS requires actual agent behavior, not merely a successful 
 - explicit timeout/error mapping;
 - credential confinement and bounded diagnostics.
 
+## DeepSeek decision evidence
+
+GitHub Actions run `34481065588` on candidate SHA `d023f91666da19e123cf1a1549ebe777c5cd4255` completed with the exact DeepSeek Harness `0.1.2-rc.1` agentic gate failing a mandatory property.
+
+- Groq `openai/gpt-oss-120b` proved streaming, a real `str_replace_editor` filesystem edit, structured arguments, a second read tool round-trip, semantic use of that tool result, and timeout mapping. The persisted Harness data retained the nonce, but a recreated Harness using the same session identifier did not recall it without another filesystem read. `restartSafe=false`.
+- Cloudflare Workers AI `@cf/openai/gpt-oss-120b` also did not prove restart safety and additionally encountered `CONTEXT_WINDOW_EXCEEDED` during the agent turns.
+- Direct provider screening in the same run proved the Groq model can stream, call tools and replay a tool result, so the Groq DeepSeek failure is not reducible to isolated function-calling incompatibility.
+
+The restart/session requirement is intentionally unchanged. The exact DeepSeek candidate therefore has a genuine material compatibility failure for every provider-accessible Workshop tuple tested. Per the pre-existing decision rule, OpenCode is now the authorized next harness candidate. Re-running the unchanged DeepSeek candidate automatically would add CI cost without a new hypothesis; its probe remains available for explicit future re-verification after a material Harness change.
+
+## OpenCode evaluation target
+
+OpenCode is evaluated first as the exact immutable release `1.18.30` with Groq `openai/gpt-oss-120b`, because that provider/model tuple already proved the strongest successful agent behavior before the DeepSeek restart boundary.
+
+The OpenCode gate must preserve the same strength. It uses fresh CLI processes with explicit `--session` continuation, requires a real filesystem write, a later `read` tool result used semantically, then another fresh-process recall with zero tool use. Bash, subagents, web access, external directories, sharing and unrelated provider credentials are denied or omitted. A PASS for OpenCode does not authorize OpenHands evaluation merely for comparison.
+
 ## Current candidates
 
-The first DeepSeek Harness gate tests only models authorized for `workshop_code`:
+The first DeepSeek Harness gate tested only models authorized for `workshop_code`:
 
 - Cloudflare Workers AI `@cf/openai/gpt-oss-120b`;
 - Groq `openai/gpt-oss-120b`.
+
+The active next harness candidate is OpenCode `1.18.30` with Groq `openai/gpt-oss-120b`.
 
 The normal ASK AI Seller remains provider-neutral and does not run inside a long-lived development harness. Canonical sales context belongs to Vexryzer. The harness is the controlled Workshop execution plane for code/UI adaptation and prototype generation.
 
@@ -51,4 +69,6 @@ All evaluated routes must remain usable without registered payment method, paid 
 
 If at least one exact DeepSeek Harness/provider/model tuple passes every required agent property, DeepSeek Harness remains the selected Workshop harness and Engineering does not spend CI evaluating OpenCode/OpenHands merely for comparison.
 
-If every provider-accessible DeepSeek tuple fails a genuine Harness compatibility/property gate, preserve evidence and evaluate OpenCode next. Do not weaken the gate to retain a preferred harness.
+If every provider-accessible DeepSeek tuple fails a genuine Harness compatibility/property gate, preserve evidence and evaluate OpenCode next. This condition is satisfied by run `34481065588` for the exact DeepSeek candidate above. Do not weaken the gate to retain a preferred harness.
+
+If the exact OpenCode/provider/model tuple passes every required property, OpenCode becomes the selected Workshop harness. If it fails a genuine material harness property, preserve evidence and evaluate OpenHands next; infrastructure or transient provider failures are not evidence that the harness itself is unsuitable.
