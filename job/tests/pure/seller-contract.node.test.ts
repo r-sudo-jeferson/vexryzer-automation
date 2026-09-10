@@ -162,3 +162,30 @@ test('accounting guidance is policy/vocabulary, not a fixed question funnel or c
     assert.equal(joined.includes(forbidden), false, forbidden);
   }
 });
+
+
+test('defense-in-depth rejects material numeric persuasion hidden in proposal text when no canonical number supports it', () => {
+  const result = validateSellerSubmission(submission({
+    proposal: proposal({ narration: 'Isso reduz 30% do retrabalho por mês.' }),
+  }), options);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  if (result.code !== 'HARD_BLOCK') assert.fail(`expected HARD_BLOCK, got ${result.code}`);
+  assert.equal(result.finding.code, 'UNSUPPORTED_NUMERIC_CLAIM');
+});
+
+test('defense-in-depth permits material numbers already supported by canonical facts or application calculations', async (t) => {
+  await t.test('verified calculation result', () => {
+    const result = validateSellerSubmission(submission({
+      proposal: proposal({ narration: 'A carga verificada é de 44 horas por mês.' }),
+    }), options);
+    assert.equal(result.ok, true);
+  });
+
+  await t.test('confirmed fact number', () => {
+    const result = validateSellerSubmission(submission({
+      proposal: proposal({ narration: 'O fechamento informado dura 5 dias.' }),
+    }), options);
+    assert.equal(result.ok, true);
+  });
+});
