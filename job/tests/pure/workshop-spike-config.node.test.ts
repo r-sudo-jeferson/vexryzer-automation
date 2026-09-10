@@ -4,6 +4,7 @@ import {
   buildPackageInstallEnv,
   buildScrubbedHarnessEnv,
   renderMistralSettingsYaml,
+  resolveDshBinFromPackageManifest,
   validateSpikeInputs,
 } from '../../tools/workshop-spike/spike-config.ts';
 
@@ -94,4 +95,26 @@ test('can render a deliberately bounded provider timeout probe', () => {
   });
   assert.match(yaml, /timeoutMs: 5/);
   assert.match(yaml, /streamIdleTimeoutMs: 5/);
+});
+
+test('resolves the dsh executable from the installed package manifest instead of assuming layout', () => {
+  assert.equal(
+    resolveDshBinFromPackageManifest({ bin: { dsh: './lib/bin.js' } }, '/tmp/runtime/node_modules/@deepseek-ai/dsh'),
+    '/tmp/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js',
+  );
+  assert.equal(
+    resolveDshBinFromPackageManifest({ bin: './lib/bin.js' }, '/tmp/runtime/node_modules/@deepseek-ai/dsh'),
+    '/tmp/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js',
+  );
+});
+
+test('rejects an invalid or escaping dsh bin declaration', () => {
+  assert.throws(
+    () => resolveDshBinFromPackageManifest({ bin: { other: './lib/bin.js' } }, '/tmp/dsh'),
+    /bin\.dsh/,
+  );
+  assert.throws(
+    () => resolveDshBinFromPackageManifest({ bin: { dsh: '../escape.js' } }, '/tmp/dsh'),
+    /inside the package/,
+  );
 });
