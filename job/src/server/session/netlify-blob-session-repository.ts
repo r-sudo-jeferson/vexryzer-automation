@@ -11,15 +11,19 @@ export interface ConditionalBlobWriteResult {
   etag?: string;
 }
 
+export type ConditionalBlobWriteOptions =
+  | { onlyIfNew: true; onlyIfMatch?: never }
+  | { onlyIfMatch: string; onlyIfNew?: never };
+
 export interface ConditionalJsonBlobStore {
   getWithMetadata(
     key: string,
     options: { type: 'json'; consistency: 'strong' },
-  ): Promise<{ data: unknown; etag: string; metadata: object } | null>;
+  ): Promise<{ data: unknown; etag?: string; metadata: object } | null>;
   setJSON(
     key: string,
     value: unknown,
-    options: { onlyIfNew?: boolean; onlyIfMatch?: string },
+    options: ConditionalBlobWriteOptions,
   ): Promise<Readonly<ConditionalBlobWriteResult>>;
 }
 
@@ -53,15 +57,53 @@ function parseStoredRecord(
   }
 }
 
-function classifyConditionalWrite(
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) return '[' + value.map(stableSerialize).join(',') + ']';
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, nested]) => JSON.stringify(key) + ':' + stableSerialize(nested));
+    return '{' + entries.join(',') + '}';
+  }
+  return JSON.stringify(value);
+}
+
+function sameRecord(a: Readonly<AgentSessionRecord>, b: Readonly<AgentSessionRecord>): boolean {
+  return stableSerialize(a) === stableSerialize(b);
+}
+
+async function confirmConditionalWrite(
+  store: Readonly<ConditionalJsonBlobStore>,
+  key: string,
+  intended: Readonly<AgentSessionRecord>,
   result: Readonly<ConditionalBlobWriteResult>,
   conflictCode: 'ALREADY_EXISTS' | 'CONFLICT',
-): SessionCreateResult | SessionCompareAndSetResult {
+  previousEtag?: string,
+): Promise<SessionCreateResult | SessionCompareAndSetResult> {
   if (result.modified === false) return { ok: false, code: conflictCode };
-  // @netlify/blobs <= current 11.0.x can report modified:true with an empty ETag
-  // for a failed conditional write. Never accept an unverifiable commit.
+  // @netlify/blobs 11.0.3 can report modified:true for non-412 failures.
+  // Empty ETag is known evidence of that phantom-success path.
   if (!validEtag(result.etag)) return { ok: false, code: 'STORE_UNAVAILABLE' };
-  return { ok: true, etag: result.etag };
+
+  let readBack;
+  try {
+    readBack = await store.getWithMetadata(key, { type: 'json', consistency: 'strong' });
+  } catch {
+    return { ok: false, code: 'STORE_UNAVAILABLE' };
+  }
+  if (readBack === null || !validEtag(readBack.etag)) {
+    return { ok: false, code: 'STORE_UNAVAILABLE' };
+  }
+
+  const persisted = parseStoredRecord(intended.sessionId, readBack.data);
+  if (readBack.etag === result.etag && persisted !== null && sameRecord(persisted, intended)) {
+    return { ok: true, etag: result.etag };
+  }
+
+  if (previousEtag !== undefined && readBack.etag !== previousEtag) {
+    return { ok: false, code: 'CONFLICT' };
+  }
+  return { ok: false, code: 'STORE_UNAVAILABLE' };
 }
 
 export function createNetlifyBlobSessionRepository(
@@ -97,7 +139,7 @@ export function createNetlifyBlobSessionRepository(
       }
       try {
         const result = await store.setJSON(key, frozen, { onlyIfNew: true });
-        return classifyConditionalWrite(result, 'ALREADY_EXISTS') as SessionCreateResult;
+        return await confirmConditionalWrite(store, key, frozen, result, 'ALREADY_EXISTS') as SessionCreateResult;
       } catch {
         return { ok: false, code: 'STORE_UNAVAILABLE' };
       }
@@ -120,7 +162,14 @@ export function createNetlifyBlobSessionRepository(
       }
       try {
         const result = await store.setJSON(key, frozen, { onlyIfMatch: expectedEtag });
-        return classifyConditionalWrite(result, 'CONFLICT') as SessionCompareAndSetResult;
+        return await confirmConditionalWrite(
+          store,
+          key,
+          frozen,
+          result,
+          'CONFLICT',
+          expectedEtag,
+        ) as SessionCompareAndSetResult;
       } catch {
         return { ok: false, code: 'STORE_UNAVAILABLE' };
       }
