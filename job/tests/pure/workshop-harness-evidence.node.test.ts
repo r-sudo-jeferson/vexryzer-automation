@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  assertMinimalHarnessRequestSurface,
   inspectHarnessEvents,
   hasToolRoundTrip,
   hasStreamingChunks,
@@ -131,4 +132,21 @@ test('reports bounded request pressure and provider token usage without exposing
   assert.equal(evidence.maxSystemPromptChars, 'private-system-prompt'.length);
   assert.equal(evidence.maxToolSchemaCount, 2);
   assert.equal(JSON.stringify(evidence).includes('private-system-prompt'), false);
+});
+
+test('accepts the official sdk-minimal two-tool request surface', () => {
+  const minimal = inspectHarnessEvents([
+    { type: 'request/header', data: { header: { system: 'small', tools: [{ name: 'bash' }, { name: 'str_replace_editor' }] } } },
+  ]);
+  assert.doesNotThrow(() => assertMinimalHarnessRequestSurface(minimal));
+});
+
+test('rejects a full-sdk request surface before provider evidence can be accepted', () => {
+  const full = inspectHarnessEvents([
+    { type: 'request/header', data: { header: { system: 'large', tools: Array.from({ length: 26 }, () => ({})) } } },
+  ]);
+  assert.throws(
+    () => assertMinimalHarnessRequestSurface(full),
+    /expected exactly 2 tool schemas/,
+  );
 });
