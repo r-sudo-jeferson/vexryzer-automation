@@ -1,4 +1,4 @@
-# iteration 14 GREEN convergence: validate active-work hierarchy, adaptive canvas fit, attribution inset, singular copy, and bundle slimming.
+# iteration 15 final supply-chain hardening: revalidate the exact S001 candidate after pinning every executable workflow action.
 name: S001 Hosted Diagnostic
 
 on:
@@ -6,7 +6,9 @@ on:
     branches:
       - slice/vxa-s001-foundation-canvas
     paths:
+      - .github/workflows/foundation-integrity.yml
       - .github/workflows/s001-hosted-diagnostic.yml
+      - job/tests/pure/ci-supply-chain.node.test.ts
       - job/tests/visual/s001.visual.spec.ts
 
 permissions:
