@@ -6,8 +6,7 @@ import { createSessionDigest } from '../../src/ai/context/session-digest.ts';
 
 function accept(context: ReturnType<typeof createCanonicalSalesContext>, input: Parameters<typeof applyContextMutation>[1]) {
   const result = applyContextMutation(context, input);
-  assert.equal(result.ok, true);
-  if (!result.ok) throw new Error(result.code);
+  if (!result.ok) assert.fail(result.code);
   return result.context;
 }
 
