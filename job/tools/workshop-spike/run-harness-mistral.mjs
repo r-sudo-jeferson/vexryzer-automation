@@ -198,6 +198,7 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
   const sessionId = `vxa-s002-provider-${randomUUID()}`;
   const nonce = `VXA-S002-NONCE-${randomUUID()}`;
   const probeFile = 'vxa-harness-tool-probe.txt';
+  const probePath = join(workspace, probeFile);
   const harness = createHarness({ ...runtime, workspace, dshHome, patchPath, input });
 
   let first;
@@ -206,20 +207,20 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
   try {
     currentPhase = 'normal-turn-write';
     first = await withWallTimeout(harness.run(
-      `Compatibility probe. Use one available development tool to create ${probeFile} in the current workspace with exactly this single line: ${nonce}. Do not merely describe the action. After the tool succeeds, reply concisely.`,
+      `Compatibility probe. Use str_replace_editor command create with this exact absolute path: ${probePath}. Set file_text to exactly this single line and nothing else: ${nonce}. Do not merely describe the action. After the tool succeeds, reply concisely.`,
       { sessionId },
     ), 'first Harness turn', NORMAL_TURN_WALL_MS);
 
     firstEvidence = inspectHarnessEvents(first.events);
     assertMinimalHarnessRequestSurface(firstEvidence);
-    const fileContent = await readFile(join(workspace, probeFile), 'utf8').catch(() => '');
+    const fileContent = await readFile(probePath, 'utf8').catch(() => '');
     if (fileContent.trim() !== nonce) {
       throw new Error(`Harness tool probe did not create the exact expected workspace artifact; evidence=${JSON.stringify(firstEvidence)}`);
     }
 
     currentPhase = 'normal-turn-read';
     second = await withWallTimeout(harness.run(
-      `Use one available development tool to read ${probeFile}. Return the exact nonce found there and no invented value.`,
+      `Use str_replace_editor command view on this exact absolute path: ${probePath}. Return the exact nonce found there and no invented value.`,
       { sessionId },
     ), 'second Harness turn', NORMAL_TURN_WALL_MS);
   } finally {
