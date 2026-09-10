@@ -95,6 +95,7 @@ function safeFailure(result: Exclude<ProviderChatClientResult, { ok: true }>) {
     failureClass: result.class,
     httpStatus: result.status,
     ...(result.malformedDetail === undefined ? {} : { malformedDetail: result.malformedDetail }),
+    ...(result.streamChunkDetail === undefined ? {} : { streamChunkDetail: result.streamChunkDetail }),
   });
 }
 
