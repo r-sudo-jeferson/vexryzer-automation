@@ -257,3 +257,67 @@ test('atomic model proposal rejects forged authority or unknown evidence without
     assert.equal(context.opportunities.length, 0);
   });
 });
+
+
+test('atomic model proposal rejects superseded and invalidated evidence as support for new objects', () => {
+  let context = createCanonicalSalesContext({ sessionId: 'session-invalid-evidence' });
+  context = accepted(applyContextMutation(context, {
+    baseRevision: 0,
+    actor: 'user',
+    mutation: {
+      type: 'ADD_OBSERVATION',
+      observation: {
+        id: 'obs-old', metric: 'minutos por conferencia', value: 40, unit: 'minute', period: 'day',
+        status: 'confirmed', source: 'user', supportingTurnIds: ['turn-1'], confirmedByTurnId: 'turn-1',
+      },
+    },
+  }));
+  context = accepted(applyContextMutation(context, {
+    baseRevision: 1,
+    actor: 'system',
+    mutation: {
+      type: 'ADD_CALCULATION',
+      calculation: {
+        id: 'calc-old', kind: 'capacity', inputObservationIds: ['obs-old'], expression: '40 min/day',
+        resultValue: 40, resultUnit: 'minute/day', computedBy: 'application', basedOnRevision: 1,
+        status: 'valid', invalidatedAtRevision: null,
+      },
+    },
+  }));
+  context = accepted(applyContextMutation(context, {
+    baseRevision: 2,
+    actor: 'user',
+    mutation: {
+      type: 'CORRECT_OBSERVATION',
+      observationId: 'obs-old',
+      turnId: 'turn-2',
+      replacement: {
+        id: 'obs-new', metric: 'minutos por conferencia', value: 25, unit: 'minute', period: 'day',
+        status: 'confirmed', source: 'user', supportingTurnIds: ['turn-2'], confirmedByTurnId: 'turn-2',
+      },
+    },
+  }));
+
+  const result = applyContextMutation(context, {
+    baseRevision: context.revision,
+    actor: 'model',
+    mutation: {
+      type: 'COMMIT_MODEL_PROPOSAL',
+      facts: [],
+      opportunities: [{
+        id: 'opp-stale',
+        summary: 'Não pode depender de evidência invalidada',
+        capabilities: ['process_data_improvement'],
+        evidenceIds: ['calc-old'],
+        status: 'surfaced',
+        invalidatedAtRevision: null,
+      }],
+      artifacts: [],
+    },
+  });
+
+  assert.deepEqual(result, { ok: false, code: 'INVALID_MUTATION', revision: 3 });
+  assert.equal(context.opportunities.length, 0);
+  assert.equal(context.quantitativeObservations.find((item) => item.id === 'obs-old')?.status, 'superseded');
+  assert.equal(context.verifiedCalculations.find((item) => item.id === 'calc-old')?.status, 'invalidated');
+});
