@@ -32,6 +32,7 @@ const FEASIBILITY_ASSERTION = /\b(?:100%\s*(?:vi[aá]vel|fact[ií]vel)|garanto\s
 const SECRET_ASSERTION = /\b(?:usei|acessei|li|obtive|used|accessed|read|obtained)\b.{0,50}\b(?:api\s*key|chave\s+de\s+api|segredo|secret|access\s+token)\b/i;
 const TOOL_ESCALATION_ASSERTION = /\b(?:executei|rodei|chamei|executed|ran|called)\b.{0,50}\b(?:ferramenta|tool|comando|command|shell)\b.{0,50}\b(?:n[aã]o\s+autorizad|sem\s+autoriza|unauthori[sz]ed)\b/i;
 const PRODUCTION_ASSERTION = /\b(?:pronto|aprovado|seguro|ready|approved|safe)\s+(?:para|for)\s+produ[cç][aã]o\b/i;
+const MATERIAL_NUMBER_PATTERN = /(?:R\$\s*)?(-?\d+(?:[.,]\d+)?)\s*(?:%|horas?|hours?|h\b|minutos?|minutes?|min\b|dias?|days?|semanas?|weeks?|mes(?:es)?|months?|clientes?|clients?|pessoas?|people|documentos?|documents?|lan[cç]amentos?|entries|ocorr[eê]ncias?|occurrences?)\b/giu;
 
 function finding(code: HardBlockCode, path: string, summary: string): HardBlockFinding {
   return Object.freeze({ code, path, summary });
@@ -53,6 +54,39 @@ function collectText(value: unknown, path = 'proposal', output: { path: string; 
 }
 
 const NEGATION_NEAR_ASSERTION = /\b(?:não|nao|not|never|cannot|can't|did\s+not|didn't)\b(?:\s+[\p{L}\p{N}_-]+){0,3}\s*$/iu;
+
+function numericValuesFromText(text: string): readonly number[] {
+  const values: number[] = [];
+  const matcher = new RegExp(MATERIAL_NUMBER_PATTERN.source, MATERIAL_NUMBER_PATTERN.flags);
+  for (let match = matcher.exec(text); match !== null; match = matcher.exec(text)) {
+    const raw = match[1];
+    if (raw === undefined) continue;
+    const parsed = Number(raw.replace(',', '.'));
+    if (Number.isFinite(parsed)) values.push(parsed);
+    if (match[0].length === 0) matcher.lastIndex += 1;
+  }
+  return Object.freeze(values);
+}
+
+function supportedCanonicalNumbers(context: CanonicalSalesContext): readonly number[] {
+  const values: number[] = [];
+  for (const fact of context.facts) {
+    if (fact.status !== 'confirmed') continue;
+    if (typeof fact.value === 'number' && Number.isFinite(fact.value)) values.push(fact.value);
+    else if (typeof fact.value === 'string') values.push(...numericValuesFromText(fact.value));
+  }
+  for (const observation of context.quantitativeObservations) {
+    if (observation.status !== 'superseded' && Number.isFinite(observation.value)) values.push(observation.value);
+  }
+  for (const calculation of context.verifiedCalculations) {
+    if (calculation.status === 'valid' && Number.isFinite(calculation.resultValue)) values.push(calculation.resultValue);
+  }
+  return Object.freeze(values);
+}
+
+function hasUnsupportedMaterialNumber(text: string, supported: readonly number[]): boolean {
+  return numericValuesFromText(text).some((value) => !supported.some((candidate) => Math.abs(candidate - value) <= 1e-9));
+}
 
 function hasUnnegatedAssertion(text: string, pattern: RegExp): boolean {
   const flags = `${pattern.flags.replaceAll('g', '')}g`;
@@ -108,7 +142,9 @@ export function evaluateHardBlocks(input: HardBlockInput): readonly HardBlockFin
     }
   }
 
+  const supportedNumbers = supportedCanonicalNumbers(input.canonical);
   for (const item of collectText(input.proposal)) {
+    if (hasUnsupportedMaterialNumber(item.text, supportedNumbers)) findings.push(finding('UNSUPPORTED_NUMERIC_CLAIM', item.path, 'Proposal text contains a material numeric value that is not present in canonical evidence or a valid application calculation.'));
     if (hasUnnegatedAssertion(item.text, ATTACHMENT_ASSERTION)) findings.push(finding('ATTACHMENT_ACCESS_CLAIM', item.path, 'Proposal text claims attachment-content access that S002 forbids.'));
     if (hasUnnegatedAssertion(item.text, PRICE_ASSERTION)) findings.push(finding('AUTHORITATIVE_PRICE_OR_DISCOUNT', item.path, 'Proposal text asserts Vexryzer price or discount authority unavailable in S002.'));
     if (hasUnnegatedAssertion(item.text, FEASIBILITY_ASSERTION)) findings.push(finding('UNSUPPORTED_FEASIBILITY', item.path, 'Proposal text asserts unsupported technical feasibility.'));
