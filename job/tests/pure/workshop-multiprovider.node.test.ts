@@ -138,7 +138,7 @@ test('rejects unsupported direct provider and malformed cloudflare account id', 
 
 test('parses streamed OpenAI-compatible content without retaining raw payloads', () => {
   const body = 'data: {"choices":[{"delta":{"content":"VXA"}}]}\n\ndata: {"choices":[{"delta":{"content":"-OK"}}]}\n\ndata: [DONE]\n\n';
-  assert.deepEqual(parseOpenAiSse(body), { eventCount: 2, text: 'VXA-OK', done: true });
+  assert.deepEqual(parseOpenAiSse(body), { eventCount: 2, contentChunkCount: 2, reasoningChunkCount: 0, text: 'VXA-OK', done: true });
 });
 
 test('extracts one structured function call and validates JSON arguments', () => {
