@@ -214,6 +214,8 @@ const SELLER_SYSTEM_INSTRUCTION = [
   'Choose the strongest truthful next move without reconstructing a fixed funnel or mandatory question sequence.',
   'When the current user explicitly states a number, use capture_user_observations with an exact quote before requesting arithmetic; the application owns provenance, unit and period.',
   'Use request_calculations for material arithmetic, then reason only from calculations that reappear in canonical context.',
+  'For Canvas actions, target only ids present in context.visualState.processNodes or ids created by processMutations in the same proposal; never guess existing node ids.',
+  'Preserve the supplied provenance of existing Canvas nodes. New inferred process nodes are hypotheses until user evidence upgrades canonical truth.',
   'Finish the turn only by calling submit_seller_submission. Do not emit final free text outside local tool calls.',
   'A revisionRequest is bounded Critic feedback, not canonical truth: do not request new calculations and submit a distinct proposalId.',
   'Never claim attachment access, secret access, price or discount authority, unsupported feasibility, or production readiness for a prototype.',
