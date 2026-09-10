@@ -6,7 +6,9 @@ import {
   buildPackageInstallEnv,
   buildScrubbedHarnessEnv,
   DEFAULT_MISTRAL_MODEL_ID,
-  MISTRAL_RATE_LIMIT_WINDOW_MS,
+  MISTRAL_RETRY_INITIAL_DELAY_MS,
+  MISTRAL_RETRY_JITTER_RATIO,
+  MISTRAL_RETRY_MAX_DELAY_MS,
   MISTRAL_SPIKE_MAX_RETRIES,
   renderHarnessInstallPackageJson,
   renderHarnessInstallWorkspaceYaml,
@@ -38,27 +40,29 @@ test('scrubs unrelated secrets from the Harness child environment', () => {
   assert.equal(env.AWS_SECRET_ACCESS_KEY, undefined);
 });
 
-test('renders an sdk-minimal invocation patch for the configured Mistral route', () => {
+test('renders an sdk-minimal patch that keeps Mistral on its native provider protocol', () => {
   const yaml = renderMistralMinimalProfilePatchYaml({
     providerRoute: 'mistral',
     modelId: 'mistral-medium-3-5',
-    baseUrl: 'https://api.mistral.ai/v1',
   });
   assert.match(yaml, /^- id: llm-deepseek\n  disabled: true/m);
   assert.match(yaml, /- insert:\n\s+- id: llm-pi-ai\n\s+name: '@deepseek-ai\/dsh-llm-pi-ai'/);
   assert.match(yaml, /providers:\n\s+mistral:/);
   assert.match(yaml, /displayName: Mistral/);
   assert.match(yaml, /apiKeyEnv: MISTRAL_API_KEY/);
-  assert.match(yaml, /api: openai-completions/);
-  assert.match(yaml, /baseURL: https:\/\/api\.mistral\.ai\/v1/);
-  assert.match(yaml, /supportsDeveloperRole: false/);
-  assert.match(yaml, /maxTokensField: max_tokens/);
-  assert.match(yaml, /- id: mistral-medium-3-5/);
+  assert.match(yaml, /models:\n\s+- id: mistral-medium-3-5/);
+  assert.doesNotMatch(yaml, /api:/);
+  assert.doesNotMatch(yaml, /baseURL:/);
+  assert.doesNotMatch(yaml, /compat:/);
   assert.match(yaml, new RegExp(`maxRetries: ${MISTRAL_SPIKE_MAX_RETRIES}`));
-  assert.match(yaml, /retryableCodes:\n\s+- RATE_LIMIT/);
-  assert.match(yaml, new RegExp(`initialDelayMs: ${MISTRAL_RATE_LIMIT_WINDOW_MS}`));
-  assert.match(yaml, new RegExp(`maxDelayMs: ${MISTRAL_RATE_LIMIT_WINDOW_MS}`));
-  assert.match(yaml, /jitterRatio: 0/);
+  assert.match(yaml, /retryableCodes:\n(?:\s+- [A-Z_]+\n)+/);
+  assert.match(yaml, /- RATE_LIMIT/);
+  assert.match(yaml, /- SERVER/);
+  assert.match(yaml, /- TIMEOUT/);
+  assert.match(yaml, /- TRANSPORT/);
+  assert.match(yaml, new RegExp(`initialDelayMs: ${MISTRAL_RETRY_INITIAL_DELAY_MS}`));
+  assert.match(yaml, new RegExp(`maxDelayMs: ${MISTRAL_RETRY_MAX_DELAY_MS}`));
+  assert.match(yaml, new RegExp(`jitterRatio: ${MISTRAL_RETRY_JITTER_RATIO}`));
   assert.doesNotMatch(yaml, /mistral-secret/);
   assert.doesNotMatch(yaml, /-latest/);
 });
@@ -72,25 +76,16 @@ test('rejects unsafe or incomplete spike inputs before any subprocess starts', (
   assert.throws(() => validateSpikeInputs({
     providerRoute: 'Mistral With Space',
     modelId: 'mistral-medium-3-5',
-    baseUrl: 'https://api.mistral.ai/v1',
     mistralApiKey: 'x',
   }), /providerRoute/);
   assert.throws(() => validateSpikeInputs({
     providerRoute: 'mistral',
     modelId: '../model',
-    baseUrl: 'https://api.mistral.ai/v1',
     mistralApiKey: 'x',
   }), /modelId/);
   assert.throws(() => validateSpikeInputs({
     providerRoute: 'mistral',
     modelId: 'mistral-medium-3-5',
-    baseUrl: 'http://api.mistral.ai/v1',
-    mistralApiKey: 'x',
-  }), /HTTPS/);
-  assert.throws(() => validateSpikeInputs({
-    providerRoute: 'mistral',
-    modelId: 'mistral-medium-3-5',
-    baseUrl: 'https://api.mistral.ai/v1',
     mistralApiKey: '',
   }), /MISTRAL_API_KEY/);
 });
@@ -144,19 +139,19 @@ test('refuses an unreviewed Harness release before dependency policies can run',
   );
 });
 
-test('keeps the timeout probe on sdk-minimal and disables retry amplification', () => {
+test('keeps the timeout probe on the native Mistral route and disables retry amplification', () => {
   const yaml = renderMistralMinimalProfilePatchYaml({
     providerRoute: 'mistral',
     modelId: 'mistral-medium-3-5',
-    baseUrl: 'https://api.mistral.ai/v1',
     timeoutMs: 5,
     streamIdleTimeoutMs: 5,
   });
   assert.match(yaml, /timeoutMs: 5/);
   assert.match(yaml, /streamIdleTimeoutMs: 5/);
   assert.match(yaml, /maxRetries: 0/);
-  assert.match(yaml, /api: openai-completions/);
   assert.match(yaml, /- id: mistral-medium-3-5/);
+  assert.doesNotMatch(yaml, /api:/);
+  assert.doesNotMatch(yaml, /baseURL:/);
 });
 
 test('builds only the public DeepSeek Harness 0.1.2-rc.1 SDK option shape', () => {
@@ -172,7 +167,6 @@ test('builds only the public DeepSeek Harness 0.1.2-rc.1 SDK option shape', () =
     input: {
       providerRoute: 'mistral',
       modelId: 'mistral-medium-3-5',
-      baseUrl: 'https://api.mistral.ai/v1',
       mistralApiKey: 'mistral-secret',
     },
   });
@@ -201,7 +195,6 @@ test('rejects invalid SDK option construction before Harness startup', () => {
   const input = {
     providerRoute: 'mistral',
     modelId: 'mistral-medium-3-5',
-    baseUrl: 'https://api.mistral.ai/v1',
     mistralApiKey: 'secret',
   };
   assert.throws(() => buildHarnessSdkOptions({}, {
