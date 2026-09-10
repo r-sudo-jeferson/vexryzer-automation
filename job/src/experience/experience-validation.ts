@@ -14,6 +14,9 @@ export const EXPERIENCE_PROPOSAL_LIMITS = Object.freeze({
   factProposals: 16,
   correctionProposals: 8,
   processMutations: 16,
+  processNodeLabel: 120,
+  processNodeSummary: 280,
+  processRelationshipLabel: 200,
   artifactProposals: 8,
   evidenceIds: 32,
   sceneIds: 16,
@@ -159,8 +162,8 @@ function parseProcessMutation(value: unknown, index: number): ParseResult<Readon
   switch (kind) {
     case 'upsert_node': {
       const nodeId = parseId(value['nodeId'], `${path}.nodeId`); if (!nodeId.ok) return nodeId;
-      const label = parseText(value['label'], `${path}.label`, 200); if (!label.ok) return label;
-      const summary = parseText(value['summary'], `${path}.summary`, 1000); if (!summary.ok) return summary;
+      const label = parseText(value['label'], `${path}.label`, EXPERIENCE_PROPOSAL_LIMITS.processNodeLabel); if (!label.ok) return label;
+      const summary = parseText(value['summary'], `${path}.summary`, EXPERIENCE_PROPOSAL_LIMITS.processNodeSummary); if (!summary.ok) return summary;
       const evidenceIds = parseIdArray(value['evidenceIds'], `${path}.evidenceIds`, EXPERIENCE_PROPOSAL_LIMITS.evidenceIds); if (!evidenceIds.ok) return evidenceIds;
       return { ok: true, value: Object.freeze({ id: id.value, kind, nodeId: nodeId.value, label: label.value, summary: summary.value, evidenceIds: evidenceIds.value }) };
     }
@@ -168,7 +171,7 @@ function parseProcessMutation(value: unknown, index: number): ParseResult<Readon
       const relationshipId = parseId(value['relationshipId'], `${path}.relationshipId`); if (!relationshipId.ok) return relationshipId;
       const sourceNodeId = parseId(value['sourceNodeId'], `${path}.sourceNodeId`); if (!sourceNodeId.ok) return sourceNodeId;
       const targetNodeId = parseId(value['targetNodeId'], `${path}.targetNodeId`); if (!targetNodeId.ok) return targetNodeId;
-      const label = parseText(value['label'], `${path}.label`, 200); if (!label.ok) return label;
+      const label = parseText(value['label'], `${path}.label`, EXPERIENCE_PROPOSAL_LIMITS.processRelationshipLabel); if (!label.ok) return label;
       const evidenceIds = parseIdArray(value['evidenceIds'], `${path}.evidenceIds`, EXPERIENCE_PROPOSAL_LIMITS.evidenceIds); if (!evidenceIds.ok) return evidenceIds;
       return { ok: true, value: Object.freeze({ id: id.value, kind, relationshipId: relationshipId.value, sourceNodeId: sourceNodeId.value, targetNodeId: targetNodeId.value, label: label.value, evidenceIds: evidenceIds.value }) };
     }
