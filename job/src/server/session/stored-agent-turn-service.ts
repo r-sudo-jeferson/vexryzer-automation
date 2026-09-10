@@ -16,6 +16,7 @@ import {
   claimAgentSession,
   completeAgentSession,
   createAgentSession,
+  releaseAgentSessionLease,
   sessionTokenMatches,
   type AgentSessionEntropy,
   type AgentSessionMode,
@@ -220,6 +221,56 @@ async function finalize(
   return completedResponse(record, input.completed, false);
 }
 
+async function releaseFailedTurn(
+  repository: AgentSessionRepository,
+  claimedEtag: string,
+  claimed: Readonly<AgentSessionRecord>,
+  canonical: CanonicalSalesContext,
+  reactiveState: Readonly<ReactiveExperienceState>,
+  recentTurns: readonly Readonly<RecentContextTurn>[],
+): Promise<StoredAgentTurnResult> {
+  const leaseId = claimed.lease?.leaseId;
+  if (leaseId === undefined) {
+    return { ok: false, code: 'SESSION_CONFLICT', currentRevision: canonical.revision };
+  }
+
+  let released: Readonly<AgentSessionRecord>;
+  try {
+    released = releaseAgentSessionLease(claimed, {
+      leaseId,
+      canonical,
+      reactiveState,
+      recentTurns,
+    });
+  } catch {
+    return { ok: false, code: 'SESSION_CONFLICT', currentRevision: canonical.revision };
+  }
+
+  let write;
+  try {
+    write = await repository.compareAndSet(released.sessionId, claimedEtag, released);
+  } catch {
+    return { ok: false, code: 'STORE_UNAVAILABLE', currentRevision: canonical.revision };
+  }
+  if (!write.ok) {
+    return {
+      ok: false,
+      code: write.code === 'CONFLICT' ? 'SESSION_CONFLICT'
+        : write.code === 'STORE_UNAVAILABLE' ? 'STORE_UNAVAILABLE'
+        : 'NOT_FOUND',
+      currentRevision: canonical.revision,
+    };
+  }
+  return { ok: false, code: 'AGENT_EXECUTION_FAILED', currentRevision: canonical.revision };
+}
+
+function isProviderAvailabilityFailure(
+  result: Extract<AgentLedTurnRuntimeResult, { ok: false }>,
+): boolean {
+  return (result.code === 'SELLER_FAILED' || result.code === 'CRITIC_FAILED')
+    && ['NO_ELIGIBLE_ROUTE', 'CREDENTIAL_UNAVAILABLE', 'PROVIDER_FAILED'].includes(result.detail);
+}
+
 async function guidedRecovery(
   repository: AgentSessionRepository,
   claimedEtag: string,
@@ -342,7 +393,14 @@ export async function runStoredAgentTurn(
     },
   });
   if (!userMutation.ok) {
-    return { ok: false, code: 'AGENT_EXECUTION_FAILED', currentRevision: claimed.record.canonical.revision };
+    return releaseFailedTurn(
+      input.repository,
+      claimWrite.etag,
+      claimed.record,
+      claimed.record.canonical,
+      claimed.record.reactiveState,
+      claimed.record.recentTurns,
+    );
   }
 
   const canonicalAfterInput = userMutation.context;
@@ -383,14 +441,13 @@ export async function runStoredAgentTurn(
   try {
     agent = await dependencies.runAgentLedTurn(agentInput);
   } catch {
-    return guidedRecovery(
+    return releaseFailedTurn(
       input.repository,
       claimWrite.etag,
       claimed.record,
       canonicalAfterInput,
       claimed.record.reactiveState,
       recentWithUser,
-      input.request.expectedRevision,
     );
   }
 
@@ -401,14 +458,24 @@ export async function runStoredAgentTurn(
     const reactiveState = agent.reactiveState.basedOnRevision > canonical.revision
       ? claimed.record.reactiveState
       : agent.reactiveState;
-    return guidedRecovery(
+    if (isProviderAvailabilityFailure(agent)) {
+      return guidedRecovery(
+        input.repository,
+        claimWrite.etag,
+        claimed.record,
+        canonical,
+        reactiveState,
+        recentWithUser,
+        input.request.expectedRevision,
+      );
+    }
+    return releaseFailedTurn(
       input.repository,
       claimWrite.etag,
       claimed.record,
       canonical,
       reactiveState,
       recentWithUser,
-      input.request.expectedRevision,
     );
   }
 
