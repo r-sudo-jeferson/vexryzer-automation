@@ -184,15 +184,16 @@ test('accepts an append-only continuation that inherits the prior minimal reques
   const prior = inspectHarnessEvents([
     { type: 'request/header', data: { header: { system: 'small', tools: [{ name: 'bash' }, { name: 'str_replace_editor' }] }, reason: 'initial' } },
   ]);
-  const continuation = inspectHarnessEvents([
+  const continuationEvents = [
     { type: 'turn/start', data: { turn: 2 } },
     { type: 'step/start', data: { turn: 2, step: 1 } },
     { type: 'tool/call', data: { turn: 2, step: 1, callId: 'call-2', name: 'str_replace_editor', arguments: '{"command":"view","path":"/tmp/probe"}' } },
     { type: 'tool/result', data: { turn: 2, step: 1, message: canonicalToolResultMessage('call-2') } },
     { type: 'turn/end', data: { turn: 2, reason: { kind: 'completed' } } },
-  ]);
+  ];
+  const continuation = inspectHarnessEvents(continuationEvents);
   assert.equal(continuation.requestHeaderCount, 0);
-  assert.equal(hasToolRoundTrip(continuation), true);
+  assert.equal(hasToolRoundTrip(continuationEvents), true);
   assert.doesNotThrow(() => assertMinimalHarnessContinuationSurface(prior, continuation));
 });
 
