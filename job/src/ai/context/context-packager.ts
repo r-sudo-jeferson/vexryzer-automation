@@ -25,10 +25,18 @@ export interface RecentContextTurn {
   includedInDigest?: boolean;
 }
 
+export interface CurrentProcessNode {
+  id: string;
+  label: string;
+  kind: string;
+  provenance: 'user_stated' | 'ai_inferred' | 'user_confirmed';
+}
+
 export interface CurrentExperienceState {
   sceneId: string | null;
   focusedEntityIds: readonly string[];
   activeArtifactIds: readonly string[];
+  processNodes?: readonly Readonly<CurrentProcessNode>[];
 }
 
 export interface ContextPackagerInput {
@@ -103,6 +111,9 @@ const SAFE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const RECENT_TURN_LIMIT = 12;
 const TURN_TEXT_LIMIT = 8_000;
 const VISUAL_ID_LIMIT = 32;
+const VISUAL_NODE_LIMIT = 48;
+const VISUAL_NODE_LABEL_LIMIT = 120;
+const VISUAL_NODE_KIND_LIMIT = 48;
 const RECENT_TURN_KEYS = new Set(['id', 'role', 'text', 'includedInDigest']);
 const ATTACHMENT_KEY_PATTERN = /(attachment|file|document|ocr|embedding|upload|byte|blob)/i;
 
@@ -124,6 +135,36 @@ function uniqueBoundedIds(values: readonly string[]): readonly string[] {
 
 function freezeArray<T>(values: readonly T[]): readonly T[] {
   return Object.freeze([...values]);
+}
+
+function projectProcessNodes(
+  values: readonly Readonly<CurrentProcessNode>[] | undefined,
+): readonly Readonly<CurrentProcessNode>[] {
+  if (values === undefined) return Object.freeze([]);
+  const projected: Readonly<CurrentProcessNode>[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (
+      projected.length >= VISUAL_NODE_LIMIT
+      || !validId(value.id)
+      || seen.has(value.id)
+      || typeof value.label !== 'string'
+      || value.label.trim().length < 1
+      || value.label.trim().length > VISUAL_NODE_LABEL_LIMIT
+      || typeof value.kind !== 'string'
+      || value.kind.trim().length < 1
+      || value.kind.trim().length > VISUAL_NODE_KIND_LIMIT
+      || !['user_stated', 'ai_inferred', 'user_confirmed'].includes(value.provenance)
+    ) continue;
+    seen.add(value.id);
+    projected.push(Object.freeze({
+      id: value.id,
+      label: value.label.trim(),
+      kind: value.kind.trim(),
+      provenance: value.provenance,
+    }));
+  }
+  return Object.freeze(projected);
 }
 
 function projectConfirmedFacts(context: CanonicalSalesContext) {
@@ -288,6 +329,7 @@ function buildPack(
       sceneId: parts.visualState.sceneId,
       focusedEntityIds: freezeArray(parts.visualState.focusedEntityIds),
       activeArtifactIds: freezeArray(parts.visualState.activeArtifactIds),
+      processNodes: projectProcessNodes(parts.visualState.processNodes),
     }),
     activeArtifacts: parts.activeArtifacts,
     digestContinuity: parts.digestContinuity,
@@ -327,6 +369,7 @@ export function packageContext(input: ContextPackagerInput): ContextPackagingRes
     sceneId: input.visualState.sceneId,
     focusedEntityIds: uniqueBoundedIds(input.visualState.focusedEntityIds),
     activeArtifactIds: uniqueBoundedIds(input.visualState.activeArtifactIds),
+    processNodes: projectProcessNodes(input.visualState.processNodes),
   });
 
   const baseParts: PayloadParts = {
@@ -384,7 +427,12 @@ export function packageContext(input: ContextPackagerInput): ContextPackagingRes
       knownConsequences: Object.freeze([]),
       openUncertainties: Object.freeze([]),
     }),
-    visualState: Object.freeze({ sceneId: baseParts.visualState.sceneId, focusedEntityIds: Object.freeze([]), activeArtifactIds: baseParts.visualState.activeArtifactIds }),
+    visualState: Object.freeze({
+      sceneId: baseParts.visualState.sceneId,
+      focusedEntityIds: Object.freeze([]),
+      activeArtifactIds: baseParts.visualState.activeArtifactIds,
+      processNodes: baseParts.visualState.processNodes,
+    }),
     activeArtifacts: Object.freeze([]),
     digestContinuity: null,
     recentTurns: Object.freeze([]),
