@@ -31,7 +31,7 @@ export interface ProviderChatBody {
   messages: readonly ProviderChatMessage[];
   stream: true;
   tools: readonly LocalFunctionTool[];
-  tool_choice: 'auto';
+  tool_choice: 'required';
   include_reasoning?: false;
 }
 
@@ -173,7 +173,7 @@ export function buildProviderChatBody(input: {
     messages: Object.freeze([...input.messages]),
     stream: true,
     tools: Object.freeze([...input.tools]),
-    tool_choice: 'auto',
+    tool_choice: 'required',
     ...(input.route.family === 'groq' ? { include_reasoning: false as const } : {}),
   });
 }
