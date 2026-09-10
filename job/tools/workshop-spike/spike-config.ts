@@ -3,12 +3,34 @@ export const DEFAULT_MISTRAL_PROVIDER_ROUTE = 'mistral' as const;
 export const DEFAULT_MISTRAL_MODEL_ID = 'mistral-medium-3-5' as const;
 export const DEFAULT_MISTRAL_BASE_URL = 'https://api.mistral.ai/v1' as const;
 
+const HARNESS_BUILD_SCRIPT_POLICY = {
+  '0.1.2-rc.1': [
+    ['@deepseek-ai/dsh-subprocess-local@0.1.2-rc.1', true],
+    ['koffi@3.2.1', true],
+    ['node-pty@1.2.0-beta.15', true],
+    ['@google/genai@1.52.0', false],
+    ['protobufjs@7.6.6', false],
+  ],
+} as const;
+
 export function resolveHarnessCandidateVersion(value: string | undefined): string {
   const version = value?.trim() || HARNESS_CANDIDATE_VERSION;
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$/.test(version)) {
     throw new TypeError(`Harness version must be an exact semver; got ${version}`);
   }
   return version;
+}
+
+export function renderHarnessInstallWorkspaceYaml(harnessVersion: string): string {
+  const policy = HARNESS_BUILD_SCRIPT_POLICY[harnessVersion as keyof typeof HARNESS_BUILD_SCRIPT_POLICY];
+  if (!policy) {
+    throw new Error(`No reviewed dependency build-script policy exists for DeepSeek Harness ${harnessVersion}`);
+  }
+  return [
+    'allowBuilds:',
+    ...policy.map(([packageMatcher, allowed]) => `  '${packageMatcher}': ${allowed ? 'true' : 'false'}`),
+    '',
+  ].join('\n');
 }
 
 export interface SpikeRuntimeVersions {

@@ -19,6 +19,7 @@ import {
   DEFAULT_MISTRAL_BASE_URL,
   DEFAULT_MISTRAL_MODEL_ID,
   DEFAULT_MISTRAL_PROVIDER_ROUTE,
+  renderHarnessInstallWorkspaceYaml,
   renderMistralSettingsYaml,
   resolveHarnessCandidateVersion,
   sanitizeSpikeDiagnostic,
@@ -96,16 +97,29 @@ async function bootstrapHarnessRuntime(rootDir, harnessVersion) {
       '@deepseek-ai/dsh-sdk-client': harnessVersion,
     },
   }, null, 2));
+  await writeFile(
+    join(runtimeDir, 'pnpm-workspace.yaml'),
+    renderHarnessInstallWorkspaceYaml(harnessVersion),
+  );
 
   const pnpm = process.env.VXA_PNPM_BIN?.trim() || 'pnpm';
   const packageInstallEnv = buildPackageInstallEnv(process.env);
   const pnpmVersion = await runCommand(pnpm, ['--version'], { cwd: runtimeDir, env: packageInstallEnv });
   assertSpikePnpmVersion(pnpmVersion.stdout);
+
+  currentPhase = 'harness-package-install';
   await runCommand(pnpm, ['install', '--frozen-lockfile=false'], {
     cwd: runtimeDir,
     env: packageInstallEnv,
   });
 
+  currentPhase = 'harness-peer-check';
+  await runCommand(pnpm, ['peers', 'check'], {
+    cwd: runtimeDir,
+    env: packageInstallEnv,
+  });
+
+  currentPhase = 'harness-package-verify';
   const requireFromRuntime = createRequire(join(runtimeDir, 'package.json'));
   const sdkPackagePath = requireFromRuntime.resolve('@deepseek-ai/dsh-sdk-client/package.json');
   const dshPackagePath = requireFromRuntime.resolve('@deepseek-ai/dsh/package.json');

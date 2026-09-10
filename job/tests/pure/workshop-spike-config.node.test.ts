@@ -6,6 +6,7 @@ import {
   buildPackageInstallEnv,
   buildScrubbedHarnessEnv,
   DEFAULT_MISTRAL_MODEL_ID,
+  renderHarnessInstallWorkspaceYaml,
   renderMistralSettingsYaml,
   resolveHarnessCandidateVersion,
   sanitizeSpikeDiagnostic,
@@ -93,6 +94,24 @@ test('does not expose model credentials to temporary package installation', () =
   assert.equal(env.MISTRAL_API_KEY, undefined);
   assert.equal(env.NPM_TOKEN, undefined);
   assert.equal(env.PNPM_CONFIG_AUTO_INSTALL_PEERS, 'true');
+});
+
+test('uses an exact reviewed build-script policy instead of weakening pnpm security', () => {
+  const yaml = renderHarnessInstallWorkspaceYaml('0.1.2-rc.1');
+  assert.match(yaml, /'@deepseek-ai\/dsh-subprocess-local@0\.1\.2-rc\.1': true/);
+  assert.match(yaml, /'koffi@3\.2\.1': true/);
+  assert.match(yaml, /'node-pty@1\.2\.0-beta\.15': true/);
+  assert.match(yaml, /'@google\/genai@1\.52\.0': false/);
+  assert.match(yaml, /'protobufjs@7\.6\.6': false/);
+  assert.doesNotMatch(yaml, /dangerouslyAllowAllBuilds/);
+  assert.doesNotMatch(yaml, /strictDepBuilds:\s*false/);
+});
+
+test('refuses an unreviewed Harness release before dependency build scripts can run', () => {
+  assert.throws(
+    () => renderHarnessInstallWorkspaceYaml('0.1.1-rc.2'),
+    /No reviewed dependency build-script policy/,
+  );
 });
 
 test('can render a deliberately bounded provider timeout probe', () => {
@@ -190,7 +209,7 @@ test('requires the repository Node and pnpm runtime versions for the live spike'
   );
 });
 
-test('uses only exact Harness versions and allows controlled candidate comparison', () => {
+test('uses only exact Harness versions and allows controlled candidate selection', () => {
   assert.equal(resolveHarnessCandidateVersion(undefined), '0.1.2-rc.1');
   assert.equal(resolveHarnessCandidateVersion('0.1.1-rc.2'), '0.1.1-rc.2');
   assert.throws(() => resolveHarnessCandidateVersion('latest'), /exact semver/);
