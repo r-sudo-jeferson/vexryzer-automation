@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.netlify/
+playwright-report/
+test-results/
+coverage/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+!.env.example

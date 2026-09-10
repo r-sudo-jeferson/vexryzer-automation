@@ -1,0 +1,154 @@
+# iteration 15 final supply-chain hardening: revalidate the exact S001 candidate after pinning every executable workflow action.
+name: S001 Hosted Diagnostic
+
+on:
+  push:
+    branches:
+      - slice/vxa-s001-foundation-canvas
+    paths:
+      - .github/workflows/foundation-integrity.yml
+      - .github/workflows/s001-hosted-diagnostic.yml
+      - job/tests/pure/ci-supply-chain.node.test.ts
+      - job/tests/visual/s001.visual.spec.ts
+
+permissions:
+  contents: read
+
+jobs:
+  s001-hosted-diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact checkpoint
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm and Node.js
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with:
+          version: 11.25.0
+          runtime: node@24
+          package-json-file: job/package.json
+          install: false
+          cache: false
+
+      - name: Record toolchain
+        run: |
+          node --version
+          pnpm --version
+          git rev-parse HEAD
+
+      - name: Resolve dependencies and generate real lockfile
+        working-directory: job
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Foundation validation
+        working-directory: job
+        run: pnpm verify:foundation
+
+      - name: TypeScript strict
+        working-directory: job
+        run: pnpm typecheck
+
+      - name: Pure unit and component tests
+        working-directory: job
+        run: pnpm test
+
+      - name: Production build
+        working-directory: job
+        run: pnpm build
+
+      - name: Production bundle provider and secret scan
+        working-directory: job
+        run: pnpm verify:bundle
+
+      - name: Dependency license inventory
+        working-directory: job
+        run: pnpm licenses list --json > s001-licenses.json
+
+      - name: Production dependency audit
+        working-directory: job
+        run: pnpm audit --prod --audit-level high
+
+      - name: Install Chromium for browser GAUNTLET
+        working-directory: job
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Browser E2E accessibility interaction and performance attacks
+        working-directory: job
+        run: pnpm exec playwright test tests/e2e --output=test-results/e2e
+
+      - name: Upload E2E evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: s001-e2e-${{ github.sha }}
+          path: |
+            job/test-results/e2e
+            job/playwright-report
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Visual evidence matrix
+        working-directory: job
+        run: pnpm exec playwright test tests/visual --project=chromium-desktop --output=test-results/visual
+
+      - name: Upload visual evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: s001-visual-${{ github.sha }}
+          path: |
+            job/test-results/visual
+            job/playwright-report
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Upload resolved lockfile and dependency inventory
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: s001-dependency-resolution-${{ github.sha }}
+          path: |
+            job/pnpm-lock.yaml
+            job/s001-licenses.json
+          if-no-files-found: warn
+          retention-days: 3
+
+  capture-lockfile:
+    needs: s001-hosted-diagnostic
+    if: ${{ needs.s001-hosted-diagnostic.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout validated checkpoint
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download dependency artifact only
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: s001-dependency-resolution-${{ github.sha }}
+          path: .lock-artifact
+
+      - name: Commit only generated product lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f .lock-artifact/pnpm-lock.yaml
+          cp .lock-artifact/pnpm-lock.yaml job/pnpm-lock.yaml
+          git add job/pnpm-lock.yaml
+          if git diff --cached --quiet; then
+            echo 'Lockfile already matches validated artifact.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit \
+            -m 'chore(s001): capture validated pnpm lockfile' \
+            -m 'Binding: FORGE-VEXRYZER-AUTOMATION-v1.0.0' \
+            -m 'Slice: VXA-S001@1.0.0' \
+            -m 'Gauntlet: GNT-VXA-S001-001' \
+            -m 'Base: d6a7e1d1994003dff1a9a6871fe1015a049ecdb8'
+          git push origin "HEAD:${GITHUB_REF_NAME}"

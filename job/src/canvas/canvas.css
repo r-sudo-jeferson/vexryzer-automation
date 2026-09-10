@@ -1,0 +1,66 @@
+.vxa-canvas {
+  position: relative;
+  width: 100%;
+  min-height: clamp(32rem, 70vh, 52rem);
+  overflow: hidden;
+  border: 1px solid var(--vxa-border-subtle);
+  border-radius: var(--vxa-radius-panel);
+  background:
+    radial-gradient(circle at 68% 34%, rgba(138,185,255,0.055), transparent 28%),
+    radial-gradient(circle at 20% 80%, rgba(202,183,255,0.035), transparent 32%),
+    linear-gradient(145deg, #101216, #090a0c 62%);
+  box-shadow: var(--vxa-shadow-panel);
+  isolation: isolate;
+}
+.vxa-canvas::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.045), inset 0 -1px 0 rgba(0,0,0,0.45);
+  z-index: 5;
+}
+.vxa-canvas .react-flow__background { opacity: 0.22; }
+.vxa-canvas .react-flow__edge-path { stroke: rgba(185, 195, 209, 0.28); }
+.vxa-canvas .react-flow__node:focus-visible { border-radius: var(--vxa-radius-node); }
+.vxa-canvas .react-flow__attribution {
+  left: 0.75rem;
+  right: auto;
+  bottom: 0.75rem;
+  z-index: 7;
+  max-width: calc(100% - 1.5rem);
+  margin: 0;
+  padding: 0.22rem 0.38rem;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 0.4rem;
+  background: rgba(10,11,13,0.76);
+  color: var(--vxa-text-subtle);
+  opacity: 0.78;
+  backdrop-filter: blur(10px);
+}
+.vxa-canvas .react-flow__attribution a { color: inherit; }
+.vxa-canvas__status {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 8;
+  display: flex;
+  gap: 0.35rem;
+  pointer-events: none;
+}
+.vxa-canvas__status span {
+  padding: 0.32rem 0.5rem;
+  border: 1px solid var(--vxa-border-subtle);
+  border-radius: var(--vxa-radius-pill);
+  background: rgba(10,11,13,0.72);
+  color: var(--vxa-text-subtle);
+  font: 650 0.62rem/1 var(--vxa-font-mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  backdrop-filter: blur(10px);
+}
+@media (max-width: 720px) {
+  .vxa-canvas { min-height: 27rem; border-radius: 1.25rem; }
+  .vxa-canvas__status { right: 0.75rem; bottom: 0.75rem; }
+}

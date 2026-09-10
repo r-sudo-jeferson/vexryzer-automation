@@ -1,0 +1,67 @@
+:root {
+  color-scheme: dark;
+
+  --vxa-bg-void: #090a0c;
+  --vxa-bg-elevated: #0f1114;
+  --vxa-surface-titanium: #14171b;
+  --vxa-surface-graphite: #1a1d22;
+  --vxa-surface-platinum: #d9dde3;
+  --vxa-surface-soft: rgba(255, 255, 255, 0.045);
+
+  --vxa-text-platinum: #f3f5f7;
+  --vxa-text-primary: #e8ebef;
+  --vxa-text-muted: #9ea5af;
+  --vxa-text-subtle: #717984;
+  --vxa-text-on-light: #111317;
+
+  --vxa-border-subtle: rgba(255, 255, 255, 0.10);
+  --vxa-border-strong: rgba(255, 255, 255, 0.20);
+  --vxa-focus-ring: #b7d7ff;
+
+  --vxa-accent-intelligence: #8ab9ff;
+  --vxa-accent-intelligence-soft: rgba(138, 185, 255, 0.16);
+  --vxa-accent-evidence: #cab7ff;
+  --vxa-accent-success: #8ed6b2;
+  --vxa-accent-warning: #e5c07b;
+  --vxa-accent-danger: #e59a9a;
+
+  --vxa-space-1: 0.25rem;
+  --vxa-space-2: 0.5rem;
+  --vxa-space-3: 0.75rem;
+  --vxa-space-4: 1rem;
+  --vxa-space-5: 1.25rem;
+  --vxa-space-6: 1.5rem;
+  --vxa-space-8: 2rem;
+  --vxa-space-10: 2.5rem;
+  --vxa-space-12: 3rem;
+  --vxa-space-16: 4rem;
+
+  --vxa-radius-control: 0.875rem;
+  --vxa-radius-node: 1.25rem;
+  --vxa-radius-panel: 1.75rem;
+  --vxa-radius-pill: 999px;
+
+  --vxa-shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+  --vxa-shadow-panel: 0 28px 80px rgba(0, 0, 0, 0.34), 0 1px 0 rgba(255, 255, 255, 0.055) inset;
+  --vxa-shadow-float: 0 18px 48px rgba(0, 0, 0, 0.42), 0 0 0 1px rgba(255, 255, 255, 0.055);
+  --vxa-shadow-focus: 0 0 0 3px rgba(183, 215, 255, 0.22);
+
+  --vxa-font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --vxa-font-display: "SF Pro Display", Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --vxa-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+
+  --vxa-text-xs: 0.75rem;
+  --vxa-text-sm: 0.875rem;
+  --vxa-text-md: 1rem;
+  --vxa-text-lg: clamp(1.05rem, 1.3vw, 1.25rem);
+  --vxa-text-xl: clamp(1.5rem, 2.2vw, 2.25rem);
+  --vxa-text-hero: clamp(2.6rem, 7vw, 6.2rem);
+
+  --vxa-motion-fast: 120ms;
+  --vxa-motion-state: 180ms;
+  --vxa-motion-camera: 520ms;
+  --vxa-ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --vxa-content-max: 88rem;
+  --vxa-touch-target: 2.75rem;
+}
