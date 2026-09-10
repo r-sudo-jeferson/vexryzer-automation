@@ -77,6 +77,9 @@ export function App() {
       event.type === 'ASK_REQUESTED'
       || event.type === 'ASK_ACCEPTED'
       || event.type === 'ASK_FAILED'
+      || event.type === 'CORRECTION_REQUESTED'
+      || event.type === 'CORRECTION_ACCEPTED'
+      || event.type === 'CORRECTION_FAILED'
       || event.type === 'ASK_SESSION_RESET'
     ) {
       send(event);
@@ -138,6 +141,34 @@ export function App() {
     return true;
   }, [applyAcceptedNavigation, askAiClient, send]);
 
+  const handleApplyCorrection = useCallback(async (correctionId: string): Promise<boolean> => {
+    send({ type: 'CORRECTION_REQUESTED' });
+    const result = await askAiClient.applyCorrection(correctionId);
+    if (!result.ok) {
+      send({ type: 'CORRECTION_FAILED', code: result.code });
+      return false;
+    }
+
+    const surface = projectReactiveCanvas(
+      EMPTY_PROCESS_GRAPH,
+      result.state.reactiveState,
+      { verifiedCalculations: result.state.verifiedCalculations },
+    );
+    if (!surface.ok) {
+      send({ type: 'CORRECTION_FAILED', code: 'CLIENT_SURFACE_REJECTED' });
+      return false;
+    }
+
+    send({ type: 'CORRECTION_ACCEPTED', response: result });
+    if (
+      focusedNodeId !== null
+      && !surface.model.graph.nodes.some((node) => node.id === focusedNodeId)
+    ) {
+      applyAcceptedNavigation(null);
+    }
+    return true;
+  }, [applyAcceptedNavigation, askAiClient, focusedNodeId, send]);
+
   const resetAgentSession = useCallback(() => {
     askAiClient.reset();
     send({ type: 'ASK_SESSION_RESET' });
@@ -152,6 +183,8 @@ export function App() {
 
   const headerState = snapshot.context.agentStatus === 'requesting'
     ? 'ANALISANDO'
+    : snapshot.context.agentStatus === 'correcting'
+      ? 'CORRIGINDO'
     : liveActive
       ? snapshot.context.agentStatus === 'recovery' ? 'MODO SEGURO' : 'ASK AI ATIVO'
       : 'ASK AI PRONTO';
@@ -204,7 +237,9 @@ export function App() {
               nextQuestion={snapshot.context.agentQuestion}
               errorCode={snapshot.context.agentErrorCode}
               artifacts={agentState?.reactiveState.artifacts ?? []}
+              corrections={agentState?.reactiveState.correctionSuggestions ?? []}
               onSubmit={handleAskSubmit}
+              onApplyCorrection={handleApplyCorrection}
               onResetSession={resetAgentSession}
             />
             <aside className="vxa-principle" aria-label="Princípio da experiência">
