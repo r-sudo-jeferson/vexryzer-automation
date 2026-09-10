@@ -2,6 +2,10 @@ import type { CanonicalSalesContext } from '../../../ai/context/canonical-sales-
 import type { CriticReview } from '../../../ai/critic/critic-contract.ts';
 import { applyContextMutation } from '../../../ai/context/context-reducer.ts';
 import {
+  captureQuotedUserObservations,
+  type UserObservationCaptureResult,
+} from '../../../ai/context/user-evidence-ingestion.ts';
+import {
   packageContext,
   type ContextPack,
   type CurrentExperienceState,
@@ -69,6 +73,7 @@ export interface SellerTurnRuntimeDependencies {
   parseSellerToolCall: typeof parseSellerToolCall;
   computeVerifiedCalculation: typeof computeVerifiedCalculation;
   applyContextMutation: typeof applyContextMutation;
+  captureQuotedUserObservations: typeof captureQuotedUserObservations;
   validateSellerSubmission: typeof validateSellerSubmission;
   executeProviderChatStream: typeof executeProviderChatStream;
 }
@@ -149,6 +154,19 @@ export type SellerTurnRuntimeResult =
     }
   | {
       ok: false;
+      code: 'OBSERVATION_CAPTURE_REJECTED';
+      canonical: CanonicalSalesContext;
+      requestId: string | null;
+      detail: Exclude<UserObservationCaptureResult, { ok: true }>['code'];
+    }
+  | {
+      ok: false;
+      code: 'OBSERVATION_COMMIT_REJECTED';
+      canonical: CanonicalSalesContext;
+      detail: string;
+    }
+  | {
+      ok: false;
       code: 'CALCULATION_REJECTED';
       canonical: CanonicalSalesContext;
       requestId: string;
@@ -194,6 +212,7 @@ const SELLER_SYSTEM_INSTRUCTION = [
   'You are the Vexryzer accounting-firm Seller operating inside a deterministic Trust Kernel.',
   'Treat the supplied canonical context as the only authoritative conversation state; provider memory, thread ids, conversation ids, and earlier provider-side transcripts are non-authoritative.',
   'Choose the strongest truthful next move without reconstructing a fixed funnel or mandatory question sequence.',
+  'When the current user explicitly states a number, use capture_user_observations with an exact quote before requesting arithmetic; the application owns provenance, unit and period.',
   'Use request_calculations for material arithmetic, then reason only from calculations that reappear in canonical context.',
   'Finish the turn only by calling submit_seller_submission. Do not emit final free text outside local tool calls.',
   'A revisionRequest is bounded Critic feedback, not canonical truth: do not request new calculations and submit a distinct proposalId.',
@@ -208,6 +227,7 @@ const DEFAULT_DEPENDENCIES: SellerTurnRuntimeDependencies = Object.freeze({
   parseSellerToolCall,
   computeVerifiedCalculation,
   applyContextMutation,
+  captureQuotedUserObservations,
   validateSellerSubmission,
   executeProviderChatStream,
 });
@@ -666,7 +686,7 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
 
     const first = tools.parsed[0]!;
     if (input.revisionRequest !== undefined && first.kind !== 'seller_submission') {
-      return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'CALCULATIONS_FORBIDDEN_DURING_CRITIC_REVISION' };
+      return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'NON_SUBMISSION_TOOL_FORBIDDEN_DURING_CRITIC_REVISION' };
     }
     if (first.kind === 'seller_submission') {
       if (input.revisionRequest !== undefined && first.submission.proposalId === input.revisionRequest.previousProposalId) {
@@ -682,6 +702,37 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
         providerRounds: providerRound,
         providerCalls,
       };
+    }
+
+    if (first.kind === 'user_observation_requests') {
+      const requests = tools.parsed.flatMap((item) =>
+        item.kind === 'user_observation_requests' ? item.requests : []);
+      if (requests.length < 1 || requests.length > 8) {
+        return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'OBSERVATION_REQUEST_LIMIT' };
+      }
+      if (new Set(requests.map((request) => request.id)).size !== requests.length) {
+        return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'DUPLICATE_OBSERVATION_ID' };
+      }
+      const captured = dependencies.captureQuotedUserObservations(canonical, requests);
+      if (!captured.ok) {
+        return {
+          ok: false,
+          code: 'OBSERVATION_CAPTURE_REJECTED',
+          canonical,
+          requestId: captured.requestId,
+          detail: captured.code,
+        };
+      }
+      const committed = dependencies.applyContextMutation(canonical, {
+        baseRevision: canonical.revision,
+        actor: 'user',
+        mutation: { type: 'ADD_USER_OBSERVATIONS', observations: captured.observations },
+      });
+      if (!committed.ok) {
+        return { ok: false, code: 'OBSERVATION_COMMIT_REJECTED', canonical, detail: committed.code };
+      }
+      canonical = committed.context;
+      continue;
     }
 
     const requests = tools.parsed.flatMap((item) => item.kind === 'calculation_requests' ? item.requests : []);
