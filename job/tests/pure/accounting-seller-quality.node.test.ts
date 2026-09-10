@@ -139,13 +139,18 @@ test('no-software-fit scenarios fail when the Seller forces a software capabilit
 });
 
 test('strategy diversity counts only passing materially distinct strategy signatures', () => {
+  const diversityScenario = {
+    ...scenario,
+    expectedCapabilitiesAnyOf: ['process_data_improvement', 'bi_decision_intelligence'] as const,
+    quantitativeExpectation: 'none' as const,
+  };
   const first = evaluateAccountingSellerQuality({
-    scenario: { ...scenario, quantitativeExpectation: 'none' },
+    scenario: diversityScenario,
     submission: submission({ capabilities: ['process_data_improvement'] }),
     canonical: canonical(),
   });
   const second = evaluateAccountingSellerQuality({
-    scenario: { ...scenario, quantitativeExpectation: 'none' },
+    scenario: diversityScenario,
     submission: submission({ capabilities: ['bi_decision_intelligence'] }),
     canonical: canonical(),
   });
