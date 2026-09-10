@@ -110,9 +110,27 @@ test('stream chunk structural failure carries only a bounded diagnostic code', a
 });
 
 
-test('unsupported SSE fields fail closed with bounded shape-only diagnostics', async () => {
+test('standard SSE metadata fields are accepted but never become application authority', async () => {
   const result = await consumeProviderChatSseResponse(new Response(
-    'event: private-event-name\ndata: {"choices":[]}\n\ndata: [DONE]\n\n',
+    'event: private-event-name\nid: provider-event-42\nretry: 5000\ndata: {"choices":[]}\n\ndata: [DONE]\n\n',
+    { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+  ));
+  assert.deepEqual(result, {
+    ok: true,
+    completion: {
+      content: '',
+      toolCalls: [],
+      finishReason: null,
+    },
+  });
+  assert.equal(JSON.stringify(result).includes('private-event-name'), false);
+  assert.equal(JSON.stringify(result).includes('provider-event-42'), false);
+  assert.equal(JSON.stringify(result).includes('5000'), false);
+});
+
+test('non-standard SSE fields still fail closed with bounded shape-only diagnostics', async () => {
+  const result = await consumeProviderChatSseResponse(new Response(
+    'private-field: private-value\ndata: {"choices":[]}\n\ndata: [DONE]\n\n',
     { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
   ));
   assert.deepEqual(result, {
@@ -123,5 +141,5 @@ test('unsupported SSE fields fail closed with bounded shape-only diagnostics', a
     malformedDetail: 'sse_decode',
     sseDecodeDetail: 'unsupported_field',
   });
-  assert.equal(JSON.stringify(result).includes('private-event-name'), false);
+  assert.equal(JSON.stringify(result).includes('private-value'), false);
 });
