@@ -59,7 +59,7 @@ jobs:
         run: |
           set -euo pipefail
           pnpm typecheck
-          node --test             tests/pure/accounting-seller-quality.node.test.ts             tests/pure/provider-protocol-gate.node.test.ts             tests/pure/seller-contract.node.test.ts
+          node --test tests/pure/accounting-seller-quality.node.test.ts tests/pure/provider-protocol-gate.node.test.ts tests/pure/provider-screen-protocol.node.test.ts tests/pure/provider-wire.node.test.ts tests/pure/seller-contract.node.test.ts
 
       - name: Verify protected credential presence
         shell: bash
