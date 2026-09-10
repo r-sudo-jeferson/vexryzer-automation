@@ -12,6 +12,7 @@ on:
       - job/tools/workshop-spike/run-provider-screen.mjs
       - job/tools/workshop-spike/run-harness-provider.mjs
       - job/tests/pure/workshop-multiprovider.node.test.ts
+      - job/tests/pure/workshop-opencode.node.test.ts
   workflow_dispatch:
 
 permissions:
@@ -61,7 +62,8 @@ jobs:
             tests/pure/workshop-spike-config.node.test.ts \
             tests/pure/workshop-harness-probe-path.node.test.mjs \
             tests/pure/workshop-persistence-evidence.node.test.ts \
-            tests/pure/workshop-multiprovider.node.test.ts
+            tests/pure/workshop-multiprovider.node.test.ts \
+            tests/pure/workshop-opencode.node.test.ts
 
       - name: Verify protected free-tier credential presence
         shell: bash
