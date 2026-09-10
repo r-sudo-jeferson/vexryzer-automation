@@ -1,4 +1,4 @@
-# Diagnostic iteration 9: deterministic semantic-wheel/offscreen-focus attacks, unchanged hard gates, isolated lockfile capture.
+# Diagnostic iteration 10: root-caused React Flow wheel capture and keyboard focus-visible convergence, unchanged hard gates, isolated lockfile capture.
 name: S001 Hosted Diagnostic
 
 on:
