@@ -163,7 +163,9 @@ function visualState(
   });
 }
 
-function publicState(record: Readonly<AgentSessionRecord>): Readonly<PublicAgentSessionState> {
+export function projectPublicAgentSessionState(
+  record: Readonly<AgentSessionRecord>,
+): Readonly<PublicAgentSessionState> {
   return Object.freeze({
     sessionId: record.sessionId,
     canonicalRevision: record.canonical.revision,
@@ -188,7 +190,7 @@ function completedResponse(
     mode: completed.mode,
     narration: completed.narration,
     nextQuestion: completed.nextQuestion,
-    state: publicState(record),
+    state: projectPublicAgentSessionState(record),
   };
 }
 
