@@ -19,9 +19,22 @@ export type ProviderChatFailureClass =
   | 'network'
   | 'malformed';
 
+export type ProviderMalformedDetail =
+  | 'non_sse'
+  | 'sse_decode'
+  | 'stream_chunk'
+  | 'missing_done'
+  | 'completion_assembly';
+
 export type ProviderChatClientResult =
   | { ok: true; completion: Readonly<AssembledChatStream> }
-  | { ok: false; class: ProviderChatFailureClass; status: number | null; retryAfterMs: number | null };
+  | {
+      ok: false;
+      class: ProviderChatFailureClass;
+      status: number | null;
+      retryAfterMs: number | null;
+      malformedDetail?: ProviderMalformedDetail;
+    };
 
 const MAX_TIMEOUT_MS = 120_000;
 
@@ -36,7 +49,7 @@ export async function consumeProviderChatSseResponse(
 
   const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
   if (!contentType.startsWith('text/event-stream') || response.body === null) {
-    return { ok: false, class: 'malformed', status: response.status, retryAfterMs: null };
+    return { ok: false, class: 'malformed', status: response.status, retryAfterMs: null, malformedDetail: 'non_sse' };
   }
 
   const decoder = createChatSseDecoder();
@@ -44,13 +57,13 @@ export async function consumeProviderChatSseResponse(
   const reader = response.body.getReader();
   let sawDone = false;
 
-  const rejectMalformed = async (): Promise<ProviderChatClientResult> => {
+  const rejectMalformed = async (malformedDetail: ProviderMalformedDetail): Promise<ProviderChatClientResult> => {
     try {
       await reader.cancel();
     } catch {
       // Cancellation cleanup is best-effort and never changes the classified provider failure.
     }
-    return { ok: false, class: 'malformed', status: response.status, retryAfterMs: null };
+    return { ok: false, class: 'malformed', status: response.status, retryAfterMs: null, malformedDetail };
   };
 
   try {
@@ -62,25 +75,49 @@ export async function consumeProviderChatSseResponse(
         return { ok: false, class: 'network', status: response.status, retryAfterMs: null };
       }
       if (next.done) break;
+      let events;
       try {
-        for (const event of decoder.push(next.value)) {
-          if (event.type === 'done') sawDone = true;
-          else accumulator.accept(event.data);
-        }
+        events = decoder.push(next.value);
       } catch {
-        return await rejectMalformed();
+        return await rejectMalformed('sse_decode');
+      }
+      for (const event of events) {
+        if (event.type === 'done') {
+          sawDone = true;
+          continue;
+        }
+        try {
+          accumulator.accept(event.data);
+        } catch {
+          return await rejectMalformed('stream_chunk');
+        }
       }
     }
 
+    let finalEvents;
     try {
-      for (const event of decoder.finish()) {
-        if (event.type === 'done') sawDone = true;
-        else accumulator.accept(event.data);
+      finalEvents = decoder.finish();
+    } catch {
+      return await rejectMalformed('sse_decode');
+    }
+    for (const event of finalEvents) {
+      if (event.type === 'done') {
+        sawDone = true;
+        continue;
       }
-      if (!sawDone) return { ok: false, class: 'malformed', status: response.status, retryAfterMs: null };
+      try {
+        accumulator.accept(event.data);
+      } catch {
+        return await rejectMalformed('stream_chunk');
+      }
+    }
+    if (!sawDone) {
+      return { ok: false, class: 'malformed', status: response.status, retryAfterMs: null, malformedDetail: 'missing_done' };
+    }
+    try {
       return { ok: true, completion: accumulator.finish() };
     } catch {
-      return await rejectMalformed();
+      return await rejectMalformed('completion_assembly');
     }
   } finally {
     reader.releaseLock();
