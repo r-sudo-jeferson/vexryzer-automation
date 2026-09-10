@@ -200,9 +200,9 @@ function baseInput(
     serverConfig: Object.freeze({ cloudflareAccountId: 'account-1' }),
     timeoutMs: 10_000,
     dependencies: {
-      packageContext: packageOk as CriticTurnRuntimeDependencies['packageContext'],
+      packageContext: packageOk as unknown as CriticTurnRuntimeDependencies['packageContext'],
       buildEmergencyContinuationCapsule:
-        capsuleOk as CriticTurnRuntimeDependencies['buildEmergencyContinuationCapsule'],
+        capsuleOk as unknown as CriticTurnRuntimeDependencies['buildEmergencyContinuationCapsule'],
       validateSellerSubmission: ((value: Readonly<SellerSubmission>) => ({
         ok: true as const,
         submission: value,
