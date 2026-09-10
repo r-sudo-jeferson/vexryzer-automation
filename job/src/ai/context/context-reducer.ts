@@ -142,11 +142,11 @@ export function applyContextMutation(
         }
 
         const knownEvidence = new Set<string>();
-        for (const item of context.facts) knownEvidence.add(item.id);
-        for (const item of context.quantitativeObservations) knownEvidence.add(item.id);
-        for (const item of context.verifiedCalculations) knownEvidence.add(item.id);
-        for (const item of context.opportunities) knownEvidence.add(item.id);
-        for (const item of context.artifacts) knownEvidence.add(item.id);
+        for (const item of context.facts) if (item.status !== 'superseded') knownEvidence.add(item.id);
+        for (const item of context.quantitativeObservations) if (item.status !== 'superseded') knownEvidence.add(item.id);
+        for (const item of context.verifiedCalculations) if (item.status === 'valid') knownEvidence.add(item.id);
+        for (const item of context.opportunities) if (item.status !== 'invalidated') knownEvidence.add(item.id);
+        for (const item of context.artifacts) if (item.status !== 'invalidated') knownEvidence.add(item.id);
         for (const fact of facts) knownEvidence.add(fact.id);
 
         const opportunities: OpportunityRecord[] = [];
