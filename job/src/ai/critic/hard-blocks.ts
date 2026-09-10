@@ -32,7 +32,26 @@ const FEASIBILITY_ASSERTION = /\b(?:100%\s*(?:vi[aá]vel|fact[ií]vel)|garanto\s
 const SECRET_ASSERTION = /\b(?:usei|acessei|li|obtive|used|accessed|read|obtained)\b.{0,50}\b(?:api\s*key|chave\s+de\s+api|segredo|secret|access\s+token)\b/i;
 const TOOL_ESCALATION_ASSERTION = /\b(?:executei|rodei|chamei|executed|ran|called)\b.{0,50}\b(?:ferramenta|tool|comando|command|shell)\b.{0,50}\b(?:n[aã]o\s+autorizad|sem\s+autoriza|unauthori[sz]ed)\b/i;
 const PRODUCTION_ASSERTION = /\b(?:pronto|aprovado|seguro|ready|approved|safe)\s+(?:para|for)\s+produ[cç][aã]o\b/i;
-const MATERIAL_NUMBER_PATTERN = /(?:R\$\s*)?(-?\d+(?:[.,]\d+)?)\s*(?:%|(?:horas?|hours?|h|minutos?|minutes?|min|dias?|days?|semanas?|weeks?|mes(?:es)?|months?|clientes?|clients?|pessoas?|people|documentos?|documents?|lan[cç]amentos?|entries|ocorr[eê]ncias?|occurrences?)\b)/giu;
+type MaterialNumberKind =
+  | 'currency'
+  | 'percent'
+  | 'hour'
+  | 'minute'
+  | 'day'
+  | 'week'
+  | 'month'
+  | 'client'
+  | 'person'
+  | 'document'
+  | 'entry'
+  | 'occurrence';
+
+interface MaterialNumber {
+  value: number;
+  kind: MaterialNumberKind;
+}
+
+const MATERIAL_NUMBER_PATTERN = /(R\$\s*)?([-+]?\d[\d.,]*)(?:\s*(%|horas?|hours?|h|minutos?|minutes?|min|dias?|days?|semanas?|weeks?|m[eê]s(?:es)?|months?|clientes?|clients?|pessoas?|people|documentos?|documents?|lan[cç]amentos?|entries|ocorr[eê]ncias?|occurrences?))?/giu;
 
 function finding(code: HardBlockCode, path: string, summary: string): HardBlockFinding {
   return Object.freeze({ code, path, summary });
@@ -55,37 +74,132 @@ function collectText(value: unknown, path = 'proposal', output: { path: string; 
 
 const NEGATION_NEAR_ASSERTION = /\b(?:não|nao|not|never|cannot|can't|did\s+not|didn't)\b(?:\s+[\p{L}\p{N}_-]+){0,3}\s*$/iu;
 
-function numericValuesFromText(text: string): readonly number[] {
-  const values: number[] = [];
+function normalizeToken(value: string): string {
+  return value.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('pt-BR');
+}
+
+function parseLocalizedNumber(raw: string): number | null {
+  const token = raw.replace(/[.,]+$/, '');
+  if (!token) return null;
+  const sign = token.startsWith('-') ? -1 : 1;
+  const unsigned = token.replace(/^[-+]/, '');
+  if (!unsigned) return null;
+
+  let normalized = unsigned;
+  const comma = unsigned.lastIndexOf(',');
+  const dot = unsigned.lastIndexOf('.');
+  if (comma >= 0 && dot >= 0) {
+    const decimal = comma > dot ? ',' : '.';
+    const thousands = decimal === ',' ? /\./g : /,/g;
+    normalized = unsigned.replace(thousands, '').replace(decimal, '.');
+  } else if (comma >= 0) {
+    normalized = unsigned.replace(/\./g, '').replace(',', '.');
+  } else if (dot >= 0) {
+    const groups = unsigned.split('.');
+    normalized = groups.length > 1 && groups.slice(1).every((group) => group.length === 3)
+      ? groups.join('')
+      : unsigned;
+  }
+
+  const parsed = Number(normalized) * sign;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function materialKind(currencyPrefix: string | undefined, rawUnit: string | undefined): MaterialNumberKind | null {
+  if (currencyPrefix !== undefined) return 'currency';
+  if (rawUnit === undefined) return null;
+  const unit = normalizeToken(rawUnit);
+  if (unit === '%') return 'percent';
+  if (unit === 'h' || unit.startsWith('hora') || unit.startsWith('hour')) return 'hour';
+  if (unit === 'min' || unit.startsWith('minuto') || unit.startsWith('minute')) return 'minute';
+  if (unit.startsWith('dia') || unit.startsWith('day')) return 'day';
+  if (unit.startsWith('semana') || unit.startsWith('week')) return 'week';
+  if (unit.startsWith('mes') || unit.startsWith('month')) return 'month';
+  if (unit.startsWith('cliente') || unit.startsWith('client')) return 'client';
+  if (unit.startsWith('pessoa') || unit.startsWith('people')) return 'person';
+  if (unit.startsWith('documento') || unit.startsWith('document')) return 'document';
+  if (unit.startsWith('lancamento') || unit.startsWith('entr')) return 'entry';
+  if (unit.startsWith('ocorrencia') || unit.startsWith('occurrence')) return 'occurrence';
+  return null;
+}
+
+function materialNumbersFromText(text: string): readonly Readonly<MaterialNumber>[] {
+  const values: MaterialNumber[] = [];
   const matcher = new RegExp(MATERIAL_NUMBER_PATTERN.source, MATERIAL_NUMBER_PATTERN.flags);
   for (let match = matcher.exec(text); match !== null; match = matcher.exec(text)) {
-    const raw = match[1];
-    if (raw === undefined) continue;
-    const parsed = Number(raw.replace(',', '.'));
-    if (Number.isFinite(parsed)) values.push(parsed);
+    const kind = materialKind(match[1], match[3]);
+    const raw = match[2];
+    if (kind === null || raw === undefined) continue;
+    const value = parseLocalizedNumber(raw);
+    if (value !== null) values.push(Object.freeze({ value, kind }));
     if (match[0].length === 0) matcher.lastIndex += 1;
   }
   return Object.freeze(values);
 }
 
-function supportedCanonicalNumbers(context: CanonicalSalesContext): readonly number[] {
-  const values: number[] = [];
+function calculationResultKind(resultUnit: string): MaterialNumberKind | null {
+  const unit = normalizeToken(resultUnit);
+  if (unit.includes('currency') || unit.includes('brl') || unit.includes('real')) return 'currency';
+  if (unit.includes('percent') || unit.includes('%')) return 'percent';
+  if (unit.includes('hour') || unit.includes('hora')) return 'hour';
+  if (unit.includes('minute') || unit.includes('minuto')) return 'minute';
+  if (unit.includes('day') || unit.includes('dia')) return 'day';
+  if (unit.includes('week') || unit.includes('semana')) return 'week';
+  if (unit.includes('month') || unit.includes('mes')) return 'month';
+  if (unit.includes('client') || unit.includes('cliente')) return 'client';
+  if (unit.includes('person') || unit.includes('pessoa')) return 'person';
+  if (unit.includes('document')) return 'document';
+  if (unit.includes('entry') || unit.includes('lancamento')) return 'entry';
+  if (unit.includes('occurrence') || unit.includes('ocorrencia')) return 'occurrence';
+  return null;
+}
+
+function observationKind(unit: CanonicalSalesContext['quantitativeObservations'][number]['unit']): MaterialNumberKind | null {
+  switch (unit) {
+    case 'currency':
+    case 'percent':
+    case 'hour':
+    case 'minute':
+    case 'day':
+    case 'client':
+    case 'person':
+    case 'document':
+    case 'entry':
+    case 'occurrence':
+      return unit;
+    case 'other':
+      return null;
+  }
+}
+
+function supportedCanonicalNumbers(context: CanonicalSalesContext): readonly Readonly<MaterialNumber>[] {
+  const values: MaterialNumber[] = [];
   for (const fact of context.facts) {
-    if (fact.status !== 'confirmed') continue;
-    if (typeof fact.value === 'number' && Number.isFinite(fact.value)) values.push(fact.value);
-    else if (typeof fact.value === 'string') values.push(...numericValuesFromText(fact.value));
+    if (fact.status !== 'confirmed' || typeof fact.value !== 'string') continue;
+    values.push(...materialNumbersFromText(fact.value));
   }
   for (const observation of context.quantitativeObservations) {
-    if (observation.status !== 'superseded' && Number.isFinite(observation.value)) values.push(observation.value);
+    if (observation.status !== 'confirmed') continue;
+    const kind = observationKind(observation.unit);
+    if (kind !== null && Number.isFinite(observation.value)) {
+      values.push(Object.freeze({ value: observation.value, kind }));
+    }
   }
   for (const calculation of context.verifiedCalculations) {
-    if (calculation.status === 'valid' && Number.isFinite(calculation.resultValue)) values.push(calculation.resultValue);
+    if (calculation.status !== 'valid' || !Number.isFinite(calculation.resultValue)) continue;
+    const kind = calculationResultKind(calculation.resultUnit);
+    if (kind !== null) values.push(Object.freeze({ value: calculation.resultValue, kind }));
   }
   return Object.freeze(values);
 }
 
-function hasUnsupportedMaterialNumber(text: string, supported: readonly number[]): boolean {
-  return numericValuesFromText(text).some((value) => !supported.some((candidate) => Math.abs(candidate - value) <= 1e-9));
+function hasUnsupportedMaterialNumber(
+  text: string,
+  supported: readonly Readonly<MaterialNumber>[],
+): boolean {
+  return materialNumbersFromText(text).some((claim) => !supported.some(
+    (candidate) => candidate.kind === claim.kind && Math.abs(candidate.value - claim.value) <= 1e-9,
+  ));
 }
 
 function hasUnnegatedAssertion(text: string, pattern: RegExp): boolean {
@@ -144,7 +258,8 @@ export function evaluateHardBlocks(input: HardBlockInput): readonly HardBlockFin
 
   const supportedNumbers = supportedCanonicalNumbers(input.canonical);
   for (const item of collectText(input.proposal)) {
-    if (hasUnsupportedMaterialNumber(item.text, supportedNumbers)) findings.push(finding('UNSUPPORTED_NUMERIC_CLAIM', item.path, 'Proposal text contains a material numeric value that is not present in canonical evidence or a valid application calculation.'));
+    const correctionSuggestion = item.path.startsWith('proposal.correctionProposals[');
+    if (!correctionSuggestion && hasUnsupportedMaterialNumber(item.text, supportedNumbers)) findings.push(finding('UNSUPPORTED_NUMERIC_CLAIM', item.path, 'Proposal text contains a material numeric value/unit pair that is not present in confirmed canonical evidence or a valid application calculation.'));
     if (hasUnnegatedAssertion(item.text, ATTACHMENT_ASSERTION)) findings.push(finding('ATTACHMENT_ACCESS_CLAIM', item.path, 'Proposal text claims attachment-content access that S002 forbids.'));
     if (hasUnnegatedAssertion(item.text, PRICE_ASSERTION)) findings.push(finding('AUTHORITATIVE_PRICE_OR_DISCOUNT', item.path, 'Proposal text asserts Vexryzer price or discount authority unavailable in S002.'));
     if (hasUnnegatedAssertion(item.text, FEASIBILITY_ASSERTION)) findings.push(finding('UNSUPPORTED_FEASIBILITY', item.path, 'Proposal text asserts unsupported technical feasibility.'));
