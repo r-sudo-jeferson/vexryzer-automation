@@ -237,3 +237,69 @@ test('stream accumulator reports bounded structural error codes without embeddin
       && !error.message.includes('private-payload'),
   );
 });
+
+
+test('stream accumulator treats null optional tool-call deltas as absence but still requires a complete safe final call', () => {
+  const accumulator = createChatStreamAccumulator();
+  accumulator.accept({
+    choices: [{
+      index: 0,
+      delta: {
+        tool_calls: [{
+          index: 0,
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'capture_signal', arguments: '{"value":' },
+        }],
+      },
+      finish_reason: null,
+    }],
+  });
+  accumulator.accept({
+    choices: [{
+      index: 0,
+      delta: {
+        tool_calls: [{
+          index: 0,
+          id: null,
+          type: null,
+          function: { name: null, arguments: '"ok"}' },
+        }],
+      },
+      finish_reason: 'tool_calls',
+    }],
+  });
+  assert.deepEqual(accumulator.finish().toolCalls, [{
+    id: 'call-1',
+    type: 'function',
+    function: { name: 'capture_signal', arguments: '{"value":"ok"}' },
+  }]);
+});
+
+test('stream accumulator still rejects conflicting non-null tool ids after allowing null deltas', () => {
+  const accumulator = createChatStreamAccumulator();
+  accumulator.accept({
+    choices: [{
+      index: 0,
+      delta: {
+        tool_calls: [{
+          index: 0,
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'capture_signal', arguments: '{}' },
+        }],
+      },
+    }],
+  });
+  assert.throws(
+    () => accumulator.accept({
+      choices: [{
+        index: 0,
+        delta: {
+          tool_calls: [{ index: 0, id: 'call-2', type: null, function: null }],
+        },
+      }],
+    }),
+    (error: unknown) => error instanceof ChatStreamChunkError && error.code === 'tool_id',
+  );
+});
