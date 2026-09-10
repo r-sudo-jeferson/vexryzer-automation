@@ -145,6 +145,103 @@ test('canonical correction invalidates an already displayed calculation instead 
   assert.equal(reconciled.actions[0]?.invalidatedReason, 'canonical-calculation-invalidated');
 });
 
+test('correction proposals remain non-authoritative pending suggestions and invalidate after the user changes canonical truth', () => {
+  const confirmedFact = {
+    id: 'fact-old',
+    subject: 'fechamento',
+    predicate: 'leva',
+    value: '5 dias',
+    status: 'confirmed' as const,
+    source: 'user' as const,
+    confidence: 1,
+    supportingTurnIds: ['turn-7'],
+    confirmedByTurnId: 'turn-7',
+  };
+  const before = { ...canonical(), facts: [confirmedFact] } as const;
+  const initial = createReactiveExperienceState({ basedOnRevision: 7 });
+  const correctionProposal = proposal({
+    correctionProposals: [{
+      id: 'correction-1',
+      targetEvidenceId: 'fact-old',
+      reason: 'O usuário indicou que o ciclo parece ter mudado.',
+      replacementValue: '3 dias',
+      supportingTurnIds: ['turn-7'],
+    }],
+  });
+
+  const projected = projectExperienceProposal(initial, correctionProposal, before);
+  assert.equal(projected.ok, true);
+  if (!projected.ok) return;
+  assert.equal(projected.state.correctionSuggestions.length, 1);
+  assert.equal(projected.state.correctionSuggestions[0]?.status, 'pending');
+  assert.equal(projected.state.correctionSuggestions[0]?.correction.replacementValue, '3 dias');
+  assert.equal(before.facts[0]?.value, '5 dias');
+  assert.equal(before.facts[0]?.status, 'confirmed');
+
+  const replay = projectExperienceProposal(projected.state, {
+    ...correctionProposal,
+    correctionProposals: [{
+      ...correctionProposal.correctionProposals[0]!,
+      id: 'correction-equivalent-id',
+    }],
+  }, before);
+  assert.equal(replay.ok, true);
+  if (!replay.ok) return;
+  assert.equal(replay.deduplicated, true);
+  assert.equal(replay.state.correctionSuggestions.length, 1);
+
+  const afterUserCorrection = {
+    ...canonical(8),
+    facts: [{ ...confirmedFact, status: 'superseded' as const }],
+  } as const;
+  const reconciled = reconcileReactiveExperience(projected.state, afterUserCorrection);
+  assert.equal(reconciled.basedOnRevision, 8);
+  assert.equal(reconciled.correctionSuggestions[0]?.status, 'invalidated');
+  assert.equal(reconciled.correctionSuggestions[0]?.invalidatedReason, 'canonical-evidence-invalidated');
+});
+
+test('correction proposals cannot target calculations, artifacts, missing ids, or superseded evidence', async (t) => {
+  const base = createReactiveExperienceState({ basedOnRevision: 7 });
+  const correction = {
+    id: 'correction-invalid',
+    reason: 'Tentativa inválida.',
+    replacementValue: 10,
+    supportingTurnIds: ['turn-7'],
+  };
+
+  for (const targetEvidenceId of ['calc-1', 'artifact-1', 'missing']) {
+    await t.test(targetEvidenceId, () => {
+      const result = projectExperienceProposal(base, proposal({
+        correctionProposals: [{ ...correction, targetEvidenceId }],
+      }), canonical());
+      assert.equal(result.ok, false);
+      if (result.ok) return;
+      assert.equal(result.code, 'INVALID_CORRECTION_REFERENCE');
+      assert.equal(result.state, base);
+    });
+  }
+
+  const superseded = {
+    ...canonical(),
+    facts: [{
+      id: 'fact-superseded',
+      subject: 'fechamento',
+      predicate: 'leva',
+      value: '5 dias',
+      status: 'superseded' as const,
+      source: 'user' as const,
+      confidence: 1,
+      supportingTurnIds: ['turn-7'],
+      confirmedByTurnId: 'turn-7',
+    }],
+  } as const;
+  const stale = projectExperienceProposal(base, proposal({
+    correctionProposals: [{ ...correction, targetEvidenceId: 'fact-superseded' }],
+  }), superseded);
+  assert.equal(stale.ok, false);
+  if (!stale.ok) assert.equal(stale.code, 'INVALID_CORRECTION_REFERENCE');
+});
+
 test('user interaction interrupts non-essential camera choreography and equivalent replay cannot restart it', () => {
   const p = proposal({
     intent: { ...proposal().intent, actions: [{ id: 'action-focus', kind: 'focus', targetId: 'closing', reason: 'Foco útil.' }] },
