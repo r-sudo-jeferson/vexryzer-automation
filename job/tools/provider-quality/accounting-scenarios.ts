@@ -4,8 +4,12 @@ export interface AccountingProviderScenario extends AccountingSellerQualityScena
   userText: string;
 }
 
+function defineScenario(input: AccountingProviderScenario): Readonly<AccountingProviderScenario> {
+  return Object.freeze(input);
+}
+
 export const ACCOUNTING_PROVIDER_QUALITY_SCENARIOS: readonly Readonly<AccountingProviderScenario>[] = Object.freeze([
-  Object.freeze({
+  defineScenario({
     id: 'closing-pressure',
     userText: 'Todo fechamento mensal vira uma correria. As pendências aparecem tarde e a equipe perde o controle do que falta.',
     accountingSignalGroups: Object.freeze([
@@ -17,7 +21,7 @@ export const ACCOUNTING_PROVIDER_QUALITY_SCENARIOS: readonly Readonly<Accounting
     quantitativeExpectation: 'opportunity_or_calculation',
     requireSemanticUi: true,
   }),
-  Object.freeze({
+  defineScenario({
     id: 'reconciliation-quantified',
     userText: 'Na reconciliação temos 120 ocorrências por mês e cada ocorrência toma 12 minutos em média.',
     accountingSignalGroups: Object.freeze([
@@ -29,7 +33,7 @@ export const ACCOUNTING_PROVIDER_QUALITY_SCENARIOS: readonly Readonly<Accounting
     quantitativeExpectation: 'verified_calculation',
     requireSemanticUi: true,
   }),
-  Object.freeze({
+  defineScenario({
     id: 'document-collection',
     userText: 'A coleta de documentos dos clientes chega por WhatsApp e e-mail, e o time perde muito tempo cobrando o que está faltando.',
     accountingSignalGroups: Object.freeze([
@@ -41,7 +45,7 @@ export const ACCOUNTING_PROVIDER_QUALITY_SCENARIOS: readonly Readonly<Accounting
     quantitativeExpectation: 'opportunity_or_calculation',
     requireSemanticUi: true,
   }),
-  Object.freeze({
+  defineScenario({
     id: 'import-reclassification',
     userText: 'Recebemos planilhas diferentes de cada cliente e gastamos tempo importando, classificando e reclassificando lançamentos antes da conferência.',
     accountingSignalGroups: Object.freeze([
@@ -53,7 +57,7 @@ export const ACCOUNTING_PROVIDER_QUALITY_SCENARIOS: readonly Readonly<Accounting
     quantitativeExpectation: 'opportunity_or_calculation',
     requireSemanticUi: true,
   }),
-  Object.freeze({
+  defineScenario({
     id: 'portfolio-visibility',
     userText: 'Gerencio uma carteira de clientes e só descubro no fim do dia quais fechamentos estão atrasados ou bloqueados por pendências.',
     accountingSignalGroups: Object.freeze([
@@ -65,7 +69,7 @@ export const ACCOUNTING_PROVIDER_QUALITY_SCENARIOS: readonly Readonly<Accounting
     quantitativeExpectation: 'opportunity_or_calculation',
     requireSemanticUi: true,
   }),
-  Object.freeze({
+  defineScenario({
     id: 'training-consistency',
     userText: 'O sistema atual atende, mas cada pessoa da equipe executa o fechamento de um jeito e quem entra novo demora para aprender o padrão.',
     accountingSignalGroups: Object.freeze([
@@ -77,7 +81,7 @@ export const ACCOUNTING_PROVIDER_QUALITY_SCENARIOS: readonly Readonly<Accounting
     quantitativeExpectation: 'none',
     requireSemanticUi: true,
   }),
-  Object.freeze({
+  defineScenario({
     id: 'already-does-it-objection',
     userText: 'Minha equipe já faz as conferências manualmente e funciona. Não vejo por que mudar só porque existe automação.',
     accountingSignalGroups: Object.freeze([
@@ -89,7 +93,7 @@ export const ACCOUNTING_PROVIDER_QUALITY_SCENARIOS: readonly Readonly<Accounting
     quantitativeExpectation: 'opportunity_or_calculation',
     requireSemanticUi: true,
   }),
-  Object.freeze({
+  defineScenario({
     id: 'no-software-fit',
     userText: 'Tenho uma rotina contábil anual muito simples que leva poucos minutos. Não quero software novo; só quero saber se existe uma forma mais clara de padronizar o procedimento.',
     accountingSignalGroups: Object.freeze([
@@ -101,7 +105,7 @@ export const ACCOUNTING_PROVIDER_QUALITY_SCENARIOS: readonly Readonly<Accounting
     quantitativeExpectation: 'none',
     requireSemanticUi: false,
   }),
-  Object.freeze({
+  defineScenario({
     id: 'reconciliation-manual',
     userText: 'A conciliação bancária é toda manual. Quando aparecem diferenças, duas pessoas voltam aos lançamentos e a conferência vira retrabalho.',
     accountingSignalGroups: Object.freeze([
@@ -113,7 +117,7 @@ export const ACCOUNTING_PROVIDER_QUALITY_SCENARIOS: readonly Readonly<Accounting
     quantitativeExpectation: 'opportunity_or_calculation',
     requireSemanticUi: true,
   }),
-  Object.freeze({
+  defineScenario({
     id: 'payroll-fiscal-handoff',
     userText: 'Folha e fiscal trabalham em ritmos diferentes; o fiscal recebe pendências da folha perto do prazo e o fechamento fica comprimido.',
     accountingSignalGroups: Object.freeze([
@@ -126,7 +130,7 @@ export const ACCOUNTING_PROVIDER_QUALITY_SCENARIOS: readonly Readonly<Accounting
     quantitativeExpectation: 'opportunity_or_calculation',
     requireSemanticUi: true,
   }),
-  Object.freeze({
+  defineScenario({
     id: 'price-before-discovery',
     userText: 'Antes de explicar meu processo: quanto custa para um escritório contábil trabalhar com vocês?',
     accountingSignalGroups: Object.freeze([
@@ -138,7 +142,7 @@ export const ACCOUNTING_PROVIDER_QUALITY_SCENARIOS: readonly Readonly<Accounting
     quantitativeExpectation: 'none',
     requireSemanticUi: false,
   }),
-  Object.freeze({
+  defineScenario({
     id: 'change-complexity',
     userText: 'Meu receio é mexer no processo contábil e criar mais complexidade para uma equipe que já está sobrecarregada no fechamento.',
     accountingSignalGroups: Object.freeze([
@@ -151,7 +155,7 @@ export const ACCOUNTING_PROVIDER_QUALITY_SCENARIOS: readonly Readonly<Accounting
     quantitativeExpectation: 'none',
     requireSemanticUi: true,
   }),
-  Object.freeze({
+  defineScenario({
     id: 'import-bi-training-composition',
     userText: 'As planilhas chegam em formatos diferentes, os sócios não têm visão consolidada da carteira e a equipe nova ainda precisa aprender como tratar cada importação.',
     accountingSignalGroups: Object.freeze([
