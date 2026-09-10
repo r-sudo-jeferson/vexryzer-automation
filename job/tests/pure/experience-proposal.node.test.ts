@@ -76,6 +76,34 @@ test('rejects raw JSX, script/module/url surfaces and raw viewport coordinates',
   assert.equal(textualUrl.ok, true);
 });
 
+test('process mutation text bounds cannot exceed the Canvas domain that will render an accepted proposal', () => {
+  const tooLongLabel = validateExperienceProposal(baseProposal({
+    processMutations: [{
+      id: 'mutation-label-bound',
+      kind: 'upsert_node',
+      nodeId: 'node-closing',
+      label: 'L'.repeat(EXPERIENCE_PROPOSAL_LIMITS.processNodeLabel + 1),
+      summary: 'Resumo seguro.',
+      evidenceIds: [],
+    }],
+  }));
+  assert.equal(tooLongLabel.ok, false);
+  if (!tooLongLabel.ok) assert.equal(tooLongLabel.path, 'proposal.processMutations[0].label');
+
+  const tooLongSummary = validateExperienceProposal(baseProposal({
+    processMutations: [{
+      id: 'mutation-summary-bound',
+      kind: 'upsert_node',
+      nodeId: 'node-closing',
+      label: 'Fechamento',
+      summary: 'S'.repeat(EXPERIENCE_PROPOSAL_LIMITS.processNodeSummary + 1),
+      evidenceIds: [],
+    }],
+  }));
+  assert.equal(tooLongSummary.ok, false);
+  if (!tooLongSummary.ok) assert.equal(tooLongSummary.path, 'proposal.processMutations[0].summary');
+});
+
 test('rejects executable process mutations, duplicate ids across coordinated effects, and excess mutation choreography', () => {
   const executableMutation = validateExperienceProposal(baseProposal({ processMutations: [
     { id: 'mutation-one', kind: 'upsert_node', nodeId: 'node-closing', label: 'Fechamento', summary: 'Resumo seguro.', evidenceIds: [], component: 'RemoteWidget', module: './RemoteWidget.tsx' },
