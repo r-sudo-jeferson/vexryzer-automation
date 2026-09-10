@@ -256,6 +256,9 @@ test('builds every Seller provider message from the revision-bound dispatch cont
   const messages = buildSellerProviderMessages(envelope);
   assert.equal(messages.length, 2);
   assert.equal(messages[0]?.role, 'system');
+  if (messages[0] === undefined || messages[0].role !== 'system') throw new Error('expected Seller system instruction');
+  assert.match(messages[0].content, /canonicalRevision.*baseRevision/i);
+  assert.match(messages[0].content, /quote.*unit.*period/i);
   assert.equal(messages[1]?.role, 'user');
   const userMessage = messages[1];
   if (userMessage === undefined || userMessage.role !== 'user') throw new Error('expected bounded user context message');
