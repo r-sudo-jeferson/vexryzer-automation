@@ -1,4 +1,4 @@
-# S002 deterministic candidate gate. Increment this marker only when a remote gate is intentionally warranted: iteration 5.
+# S002 deterministic candidate gate. Increment this marker only when a remote gate is intentionally warranted: iteration 6.
 name: S002 Candidate Gate
 
 on:
@@ -119,16 +119,33 @@ jobs:
           if-no-files-found: ignore
           retention-days: 3
 
+      - name: Stage candidate dependency evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_dir="$RUNNER_TEMP/s002-dependency-artifact"
+          rm -rf "$artifact_dir"
+          mkdir -p "$artifact_dir/job" "$artifact_dir/evidence"
+          if [ -f job/pnpm-lock.yaml ]; then
+            cp job/pnpm-lock.yaml "$artifact_dir/job/pnpm-lock.yaml"
+          fi
+          if [ -f job/s002-licenses.json ]; then
+            cp job/s002-licenses.json "$artifact_dir/job/s002-licenses.json"
+          fi
+          if [ -f "$RUNNER_TEMP/s002-evidence/s002-changed-files.txt" ]; then
+            cp "$RUNNER_TEMP/s002-evidence/s002-changed-files.txt" "$artifact_dir/evidence/s002-changed-files.txt"
+          fi
+          if [ -f "$RUNNER_TEMP/s002-evidence/s002-lockfile.sha256" ]; then
+            cp "$RUNNER_TEMP/s002-evidence/s002-lockfile.sha256" "$artifact_dir/evidence/s002-lockfile.sha256"
+          fi
+
       - name: Upload candidate dependency evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: s002-dependency-resolution-${{ github.sha }}
-          path: |
-            job/pnpm-lock.yaml
-            job/s002-licenses.json
-            ${{ runner.temp }}/s002-evidence/s002-changed-files.txt
-            ${{ runner.temp }}/s002-evidence/s002-lockfile.sha256
+          path: ${{ runner.temp }}/s002-dependency-artifact
           if-no-files-found: warn
           retention-days: 3
 
