@@ -4,7 +4,8 @@ binding_id: `FORGE-VEXRYZER-AUTOMATION-v1.0.0`
 slice_id: `VXA-S002`
 slice_version: `1.0.0`
 gauntlet_id: `GNT-VXA-S002-001`
-status: `IN_PROGRESS`
+status: `BLOCKED`
+blocker: `MISTRAL_PROVIDER_RATE_LIMIT`
 execution_branch: `slice/vxa-s002-ask-ai-adaptive-experience`
 authorized_base_sha: `6244a246d8faf73e772fc944a398a71a02fb97e0`
 latest_spike_checkpoint_sha: `6973d15234674674b582f35e0de58163cdb971a9`
@@ -75,18 +76,41 @@ Current Mistral documentation confirms `mistral-medium-3-5` supports function ca
 
 The exact DeepSeek Harness `0.1.2-rc.1` `llm-pi-ai` source documents catalog-backed provider routes: a route naming an installed catalog provider can reuse the catalog provider/model defaults, while hand-declared routes can provide explicit protocol/base URL/model data.
 
-Task 1 Step 4 requires strict evaluation order: pinned Harness Mistral catalog route first; configured `llm-pi-ai` Mistral route second; custom adapter only if required behavior still fails. The current spike renders an explicit `llm-pi-ai` Mistral profile. Before the next credentialed compatibility retry, Engineering must reconcile this with the mandated catalog-first ordering rather than silently treating the explicit profile as equivalent.
+The exact `@earendil-works/pi-ai@0.84.2` source used by this Harness train contains a built-in `mistral` provider whose base URL is `https://api.mistral.ai`, whose credential discovery includes `MISTRAL_API_KEY`, and whose backend is the native `mistral-conversations` implementation. That native implementation contains first-class Mistral tool serialization, tool-call replay normalization, and streaming handling. The spike's current explicit route instead overrides the backend to `openai-completions` and the base URL to `/v1`, so the two paths are materially distinct.
+
+Task 1 Step 4 requires strict evaluation order: pinned Harness Mistral catalog route first; configured `llm-pi-ai` Mistral route second; custom adapter only if required behavior still fails. The current spike reached the explicit route before this ordering discrepancy was identified. Its `RATE_LIMIT` failure is operational, not a valid compatibility failure that authorizes skipping the catalog route.
+
+## Next authorized compatibility probe
+
+When Mistral rate capacity is available again, the next code candidate must make the normal compatibility probe register the catalog-backed route without overriding provider protocol, endpoint, compatibility switches, or model catalog. The intended settings shape is equivalent to:
+
+```yaml
+llm-pi-ai:
+  providers:
+    mistral:
+      apiKeyEnv: MISTRAL_API_KEY
+```
+
+The SDK route/model remain `mistral` / `mistral-medium-3-5`. `MISTRAL_API_KEY` remains available only through the scrubbed child environment.
+
+The timeout probe can use the same catalog route in its separate `DSH_HOME`, adding only the bounded timeout fields required for the timeout-mapping test. It does not need a synthetic hand-declared provider route merely for isolation because its settings home is already isolated.
+
+If the catalog-backed route then produces a reproducible compatibility failure rather than an operational condition such as `RATE_LIMIT`, Engineering may proceed to the second mandated path: an explicit configured `llm-pi-ai` Mistral route. A custom adapter remains prohibited until both supported paths have been evaluated against the required behavior.
+
+No new credentialed CI run should be dispatched solely to check whether the same provider rate-limit condition has disappeared.
 
 ## Current truth
 
-- S002: `IN_PROGRESS`.
-- Task 1: `IN_PROGRESS`.
-- latest spike checkpoint: `6973d15234674674b582f35e0de58163cdb971a9`.
+- S002: `BLOCKED` on the mandatory first technical gate.
+- Task 1: `BLOCKED` on `MISTRAL_PROVIDER_RATE_LIMIT`.
+- branch documentation head after this note: determined by the commit containing this update.
+- latest executable spike checkpoint: `6973d15234674674b582f35e0de58163cdb971a9`.
 - bounded diagnostic extraction: verified by TDD locally and by hosted Node-24 pure contracts.
 - DeepSeek Harness `0.1.2-rc.1` + Mistral real-provider compatibility: `NOT_VERIFIED`.
-- immediate credentialed gate blocker: provider `RATE_LIMIT`.
+- `mistral-medium-3-5` function-calling capability: supported by current Mistral documentation; Harness compatibility still unproven.
+- catalog-backed `mistral` route existence/native Mistral backend: verified from the exact `pi-ai@0.84.2` source; selected-model presence in the packaged catalog remains `NOT_VERIFIED` until the catalog-first probe resolves it.
 - root `job/package.json` Harness dependency commitment: prohibited until the real-provider proof passes.
 - GAUNTLET: `NOT_RUN`.
 - candidate: `NOT_FROZEN`.
 - promotion: `NOT_STARTED`.
-- no additional credential action is required from the Founder based on current evidence.
+- no additional credential action is required from the Founder based on current evidence; immediate progress requires provider rate capacity, not a new secret.
