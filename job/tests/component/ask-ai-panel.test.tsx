@@ -10,7 +10,9 @@ function renderPanel(overrides: Partial<ComponentProps<typeof AskAiPanel>> = {})
     nextQuestion: null,
     errorCode: null,
     artifacts: [],
+    corrections: [],
     onSubmit: vi.fn(async () => true),
+    onApplyCorrection: vi.fn(async () => true),
     onResetSession: vi.fn(),
     ...overrides,
   };
@@ -46,7 +48,9 @@ describe('ASK AI panel', () => {
         nextQuestion={null}
         errorCode={null}
         artifacts={[]}
+        corrections={[]}
         onSubmit={failedSubmit}
+        onApplyCorrection={async () => true}
         onResetSession={() => {}}
       />,
     );
@@ -64,7 +68,9 @@ describe('ASK AI panel', () => {
         nextQuestion={null}
         errorCode={null}
         artifacts={[]}
+        corrections={[]}
         onSubmit={acceptedSubmit}
+        onApplyCorrection={async () => true}
         onResetSession={() => {}}
       />,
     );
@@ -81,7 +87,9 @@ describe('ASK AI panel', () => {
         nextQuestion={null}
         errorCode={null}
         artifacts={[]}
+        corrections={[]}
         onSubmit={async () => false}
+        onApplyCorrection={async () => true}
         onResetSession={() => {}}
       />,
     );
@@ -95,12 +103,57 @@ describe('ASK AI panel', () => {
         nextQuestion={null}
         errorCode="AGENT_EXECUTION_FAILED"
         artifacts={[]}
+        corrections={[]}
         onSubmit={async () => false}
+        onApplyCorrection={async () => true}
         onResetSession={() => {}}
       />,
     );
     expect(screen.getByText('Resposta não aplicada')).toBeTruthy();
     expect(screen.getByText(/não passou pelo ciclo de validação/i)).toBeTruthy();
+  });
+
+  it('renders pending correction as an explicit user decision and never auto-applies it', () => {
+    const onApplyCorrection = vi.fn(async () => true);
+    renderPanel({
+      onApplyCorrection,
+      corrections: [{
+        sourceCorrectionId: 'correction-one',
+        correction: {
+          id: 'correction-one',
+          targetEvidenceId: 'fact-old',
+          reason: 'O prazo informado parece ter mudado.',
+          replacementValue: '3 dias',
+          supportingTurnIds: ['turn-one'],
+        },
+        status: 'pending',
+        invalidatedReason: null,
+      }],
+    });
+
+    expect(screen.getByText('O prazo informado parece ter mudado.')).toBeTruthy();
+    expect(screen.getByText(/Valor proposto: 3 dias/)).toBeTruthy();
+    expect(onApplyCorrection).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar correção' }));
+    expect(onApplyCorrection).toHaveBeenCalledWith('correction-one');
+  });
+
+  it('does not render invalidated correction as a pending decision', () => {
+    renderPanel({
+      corrections: [{
+        sourceCorrectionId: 'correction-old',
+        correction: {
+          id: 'correction-old',
+          targetEvidenceId: 'fact-old',
+          reason: 'Correção já resolvida.',
+          replacementValue: '3 dias',
+          supportingTurnIds: ['turn-one'],
+        },
+        status: 'invalidated',
+        invalidatedReason: 'canonical-evidence-invalidated',
+      }],
+    });
+    expect(screen.queryByRole('button', { name: 'Aplicar correção' })).toBeNull();
   });
 
   it('renders conceptual/prototype truth explicitly and never executes artifact content', () => {
@@ -134,7 +187,9 @@ describe('ASK AI panel', () => {
         nextQuestion={null}
         errorCode="SESSION_CONFLICT"
         artifacts={[]}
+        corrections={[]}
         onSubmit={async () => false}
+        onApplyCorrection={async () => true}
         onResetSession={onResetSession}
       />,
     );
@@ -148,7 +203,9 @@ describe('ASK AI panel', () => {
         nextQuestion={null}
         errorCode="STORE_UNAVAILABLE"
         artifacts={[]}
+        corrections={[]}
         onSubmit={async () => false}
+        onApplyCorrection={async () => true}
         onResetSession={onResetSession}
       />,
     );
