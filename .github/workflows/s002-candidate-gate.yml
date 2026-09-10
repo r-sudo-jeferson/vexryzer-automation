@@ -1,4 +1,4 @@
-# S002 deterministic candidate gate. Increment this marker only when a remote gate is intentionally warranted: iteration 1.
+# S002 deterministic candidate gate. Increment this marker only when a remote gate is intentionally warranted: iteration 2.
 name: S002 Candidate Gate
 
 on:
@@ -38,7 +38,11 @@ jobs:
           set -euo pipefail
           BASE='6244a246d8faf73e772fc944a398a71a02fb97e0a'
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          test "$(git merge-base "$BASE" HEAD)" = "$BASE"
+          git cat-file -e "${BASE}^{commit}"
+          resolved_base="$(git rev-parse "${BASE}^{commit}")"
+          merge_base="$(git merge-base "$BASE" HEAD)"
+          printf 'authorized_base=%s\nresolved_base=%s\nresolved_merge_base=%s\n' "$BASE" "$resolved_base" "$merge_base"
+          git merge-base --is-ancestor "$BASE" HEAD
           git diff --name-only "$BASE"...HEAD | tee s002-changed-files.txt
           unexpected="$(grep -Ev '^(job/|\.github/workflows/[^/]+\.ya?ml$|AGENTS\.md$|README\.md$)' s002-changed-files.txt || true)"
           if [ -n "$unexpected" ]; then
