@@ -184,21 +184,21 @@ export function createChatStreamAccumulator(): ChatStreamAccumulator {
           }
           const index = raw['index'] as number;
           const current = tools.get(index) ?? { id: '', type: 'function' as const, name: '', arguments: '' };
-          if (raw['id'] !== undefined) {
+          if (raw['id'] !== undefined && raw['id'] !== null) {
             if (typeof raw['id'] !== 'string' || raw['id'].length === 0 || (current.id && current.id !== raw['id'])) {
               rejectChunk('tool_id');
             }
             current.id = raw['id'];
           }
-          if (raw['type'] !== undefined && raw['type'] !== 'function') rejectChunk('tool_type');
+          if (raw['type'] !== undefined && raw['type'] !== null && raw['type'] !== 'function') rejectChunk('tool_type');
           const fn = raw['function'];
-          if (fn !== undefined) {
+          if (fn !== undefined && fn !== null) {
             if (!isRecord(fn)) rejectChunk('tool_function');
-            if (fn['name'] !== undefined) {
+            if (fn['name'] !== undefined && fn['name'] !== null) {
               if (typeof fn['name'] !== 'string') rejectChunk('tool_name');
               current.name += fn['name'];
             }
-            if (fn['arguments'] !== undefined) {
+            if (fn['arguments'] !== undefined && fn['arguments'] !== null) {
               if (typeof fn['arguments'] !== 'string') rejectChunk('tool_arguments');
               current.arguments += fn['arguments'];
               if (utf8Bytes(current.arguments) > MAX_TOOL_ARGUMENT_BYTES) rejectChunk('tool_arguments_limit');
