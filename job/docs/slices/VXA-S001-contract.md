@@ -4,11 +4,12 @@ slice_id: `VXA-S001`
 slice_version: `1.0.0`
 initiative_id: `VXA-001`
 binding_id: `FORGE-VEXRYZER-AUTOMATION-v1.0.0`
-status: `PLANNED_NOT_AUTHORIZED`
+status: `IN_PROGRESS`
 predecessors: none
 repository: `r-sudo-jeferson/vexryzer-automation`
 product_root: `job`
-base_sha: `1ebb32587bded772bbb18b053865bdfee00407bc`
+base_sha: `d6a7e1d1994003dff1a9a6871fe1015a049ecdb8`
+planning_bootstrap_sha: `1ebb32587bded772bbb18b053865bdfee00407bc`
 gauntlet_id: `GNT-VXA-S001-001`
 
 ## Objective
