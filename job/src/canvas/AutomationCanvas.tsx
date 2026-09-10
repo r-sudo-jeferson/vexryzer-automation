@@ -13,6 +13,8 @@ import {
 import '@xyflow/react/dist/style.css';
 import { createCameraPlan, type CameraMode } from './camera.ts';
 import type { ProcessFixture } from './fixtures.ts';
+import type { ProcessGraph } from './domain.ts';
+import type { CanvasNodeSemanticOverlay } from './reactive-graph-adapter.ts';
 import { layoutProcessGraph } from './layout.ts';
 import { resolveZoomBand, type ZoomBand } from './semantic-zoom.ts';
 import { OriginNode, type OriginFlowNode } from './nodes/OriginNode.tsx';
@@ -29,13 +31,24 @@ const nodeTypes = {
 
 interface AutomationCanvasProps {
   fixture: ProcessFixture;
+  graph?: ProcessGraph;
+  semanticOverlays?: readonly Readonly<CanvasNodeSemanticOverlay>[];
   mode: CameraMode;
   focusedNodeId: string | null;
   motionPolicy: MotionPolicy;
   onFocusNode: (nodeId: string) => void;
 }
 
-function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode }: AutomationCanvasProps) {
+function CanvasSurface({
+  fixture,
+  graph: graphOverride,
+  semanticOverlays = [],
+  mode,
+  focusedNodeId,
+  motionPolicy,
+  onFocusNode,
+}: AutomationCanvasProps) {
+  const graph = graphOverride ?? fixture.graph;
   const [instance, setInstance] = useState<ReactFlowInstance<CanvasNode, Edge> | null>(null);
   const [zoomBand, setZoomBand] = useState<ZoomBand>('medium');
   const zoomBandRef = useRef<ZoomBand>('medium');
@@ -46,8 +59,12 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
   const [viewportRevision, setViewportRevision] = useState(0);
   const [directedMobile, setDirectedMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 720px), (pointer: coarse)').matches);
   const cameraIntent = `${mode}:${focusedNodeId ?? 'none'}:${motionPolicy.reduced ? 'reduced' : 'standard'}:${directedMobile ? 'directed-mobile' : 'canvas'}`;
-  const processNodeIds = useMemo(() => new Set(fixture.graph.nodes.map((node) => node.id)), [fixture]);
-  const stepCount = fixture.graph.nodes.length;
+  const processNodeIds = useMemo(() => new Set(graph.nodes.map((node) => node.id)), [graph]);
+  const overlayByNodeId = useMemo(
+    () => new Map(semanticOverlays.map((overlay) => [overlay.nodeId, overlay] as const)),
+    [semanticOverlays],
+  );
+  const stepCount = graph.nodes.length;
 
   useEffect(() => {
     if (window.__VXA_PERF__) window.__VXA_PERF__.canvasCommits += 1;
@@ -76,22 +93,25 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
   }, []);
 
   const nodes = useMemo<CanvasNode[]>(() => {
-    const positions = layoutProcessGraph(fixture.graph, { columns: directedMobile ? 2 : 4 });
-    const processNodes: ProcessFlowNode[] = fixture.graph.nodes.map((model) => ({
+    const positions = layoutProcessGraph(graph, { columns: directedMobile ? 2 : 4 });
+    const processNodes: ProcessFlowNode[] = graph.nodes.map((model) => ({
       id: model.id,
       type: 'process',
       position: positions.get(model.id) ?? { x: 0, y: 0 },
       data: {
         model,
         zoomBand,
-        muted: mode === 'origin' || (mode === 'focus' && focusedNodeId !== model.id),
+        muted: mode === 'origin'
+          || (mode === 'focus' && focusedNodeId !== model.id)
+          || overlayByNodeId.get(model.id)?.deEmphasized === true,
+        overlay: overlayByNodeId.get(model.id),
       },
       selected: mode === 'focus' && focusedNodeId === model.id,
       draggable: false,
       connectable: false,
       selectable: mode !== 'origin',
       focusable: mode !== 'origin',
-      ariaLabel: processNodeAccessibleLabel(model),
+      ariaLabel: processNodeAccessibleLabel(model, overlayByNodeId.get(model.id)),
       deletable: false,
     }));
 
@@ -110,9 +130,9 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
     };
 
     return [origin, ...processNodes];
-  }, [directedMobile, fixture, focusedNodeId, mode, zoomBand]);
+  }, [directedMobile, focusedNodeId, graph, mode, overlayByNodeId, zoomBand]);
 
-  const edges = useMemo<Edge[]>(() => fixture.graph.edges.map((edge) => ({
+  const edges = useMemo<Edge[]>(() => graph.edges.map((edge) => ({
     ...edge,
     type: 'smoothstep',
     selectable: false,
@@ -120,7 +140,7 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
     deletable: false,
     animated: false,
     style: { strokeWidth: 1.25 },
-  })), [fixture]);
+  })), [graph]);
 
   useEffect(() => {
     if (!instance) return;
