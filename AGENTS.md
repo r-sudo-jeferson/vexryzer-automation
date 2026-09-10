@@ -69,6 +69,35 @@ Any candidate change after CI invalidates candidate-specific PASS. Run the relev
 
 The free-tier lock applies to CI: never enable paid runner overage, paid add-ons or spending merely to obtain a green check without explicit Founder authorization and a corresponding contract decision.
 
+## GitHub plugin capability-aware execution
+
+The GitHub connector/plugin is an execution surface whose available actions may vary by session, permission, product surface and repository. Never assume a capability from memory or from another session. Before relying on a GitHub operation, discover the action actually exposed and distinguish `AVAILABLE`, `AVAILABLE_READ_ONLY`, `AVAILABLE_WRITE`, `NOT_EXPOSED`, `NOT_VERIFIED` and `BLOCKED_BY_PERMISSION`.
+
+Use the GitHub capabilities available in the current session at the stage where they add the strongest evidence with the least unnecessary churn:
+
+1. **Inspect before writing.** Resolve repository metadata, permissions, branch/ref and exact base SHA first. Use repository/code search for discovery and exact file/commit reads for authoritative inspection. Never develop from a stale default-branch assumption when an authorized base SHA exists.
+2. **Bind every candidate to a SHA.** Treat `base_sha -> candidate_sha` as the identity of a change. Use commit/ref comparison to verify the real delta. Tests, Actions runs, artifacts, reviews and GAUNTLET evidence are valid only for the exact candidate they actually exercised.
+3. **Choose the correct write primitive.** For a truly isolated single-file change, file create/update/delete actions are appropriate. For one logical multi-file change, prefer atomic Git primitives when exposed: create blobs, create a tree, create one commit, then fast-forward the branch ref. Do not manufacture one commit per file merely because the Contents API writes one path at a time.
+4. **Capture returned identity after writes.** Every write that produces a commit or moves a ref must be followed using the returned SHA/current branch state. Never assume the branch still points to the previously observed commit.
+5. **Use CI as evidence, not as a debugger.** Stabilize a coherent candidate with all verification available in the current execution environment before relying on remote CI. Do not create speculative commits merely to obtain another hosted run.
+6. **Walk CI evidence to root cause.** When Actions evidence exists, inspect candidate SHA -> workflow run -> jobs -> steps -> logs when needed -> artifacts -> commit checks/status. A green top-level badge is weaker evidence than the underlying gates; a red badge is not a diagnosis.
+7. **Treat artifacts as candidate evidence.** Inspect and, when necessary, download artifacts such as E2E reports, screenshots, visual matrices, coverage, mutation reports, dependency inventories, security reports and build outputs. Verify that the artifact's workflow run is tied to the exact candidate SHA.
+8. **Rerun only with a reason.** A deterministic code/test/workflow failure requires root-cause correction before another run. Rerun a specific failed job or failed jobs only when evidence supports a transient/flaky/external cause or when rerun itself is a deliberate diagnostic step. Never rerun unchanged deterministic failures until they happen to pass.
+9. **Review the diff, not the PR prose.** For review, enumerate changed files and inspect the full patch or critical file patches. Attack contract compliance, regressions, authorization, tenant isolation, security, races, idempotency, migrations, errors/retries, performance, observability, UX, accessibility, deployment and test integrity.
+10. **Use real review state when available.** `COMMENT` is non-blocking feedback; `REQUEST_CHANGES` is for material defects; `APPROVE` requires sufficient independent evidence. Resolve review threads only after the underlying issue is actually addressed. Builder self-confidence is never a substitute for review evidence.
+11. **Revalidate after review changes.** Any post-review code change creates a new candidate SHA. Compare the new delta, determine which evidence was invalidated, rerun affected verification and reassess review state. Never transfer PASS blindly between SHAs.
+12. **Freeze before integration.** Before merge or any release/promotion step, record the exact candidate SHA, required checks, relevant artifacts, review state, unresolved threads and `NOT_VERIFIED` items. A change after freeze invalidates the freeze.
+13. **Use race-safe merge.** When direct merge is authorized and the connector exposes it, pass the frozen candidate as `expected_head_sha` so GitHub rejects a merge if the PR head changed after validation. Do not merge an unverified successor commit under an earlier approval.
+14. **Verify after integration.** A successful mutation response is not the same as product completion. Verify the resulting merged/ref SHA and any applicable post-merge checks before making a completion claim.
+15. **Respect capability boundaries.** If the current GitHub surface does not expose an operation such as generic workflow dispatch, Projects mutation, Ruleset/branch-protection mutation, Releases/tags, Environments/deployments or secrets management, do not pretend it was performed. Use another explicitly authorized tool when available or mark the operation `NOT_EXPOSED`/`NOT_VERIFIED` without weakening the requirement.
+16. **Never confuse repository permission with tool capability.** `push` or `admin` permission on a repository does not imply that every GitHub API operation is exposed through the current plugin. Both permission and action availability must be true before execution is claimed.
+
+Operational GitHub loop when applicable:
+
+`DISCOVER CAPABILITIES -> VERIFY PERMISSION/BASE -> INSPECT -> ISOLATE -> BUILD -> COMMIT ATOMICALLY -> COMPARE CANDIDATE -> VERIFY -> INSPECT CI EVIDENCE -> INDEPENDENT REVIEW -> ROOT-CAUSE CONVERGENCE -> FREEZE SHA -> RACE-SAFE INTEGRATION -> VERIFY RESULT`
+
+This section governs how agents use the GitHub execution surface. It does not create product requirements, redefine an authorized Slice, replace GAUNTLET, or authorize work that is otherwise out of scope.
+
 ## Product mission
 
 Build an ultra-premium commercial intake experience, not a generic chatbot or CRUD app. ASK AI must help the visitor turn an operational pain into a qualified automation request. Infinite Canvas visualizes the process as it is understood. The cycle ends only when the request and any accepted files are durably recorded and the notification path is attempted.
