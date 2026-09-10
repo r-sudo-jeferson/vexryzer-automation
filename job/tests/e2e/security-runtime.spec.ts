@@ -18,8 +18,15 @@ test('markup-shaped fixture content remains literal text and cannot execute', as
   await page.goto('/?fixture=adversarialText');
   await page.getByRole('button', { name: /Explorar um processo/i }).click();
 
-  await expect(page.getByText(/<img src=x onerror=/i)).toBeVisible();
+  const markupPattern = /<img src=x onerror=/i;
+  const markupHeading = page.getByRole('heading', { name: markupPattern });
+  const markupStep = page.getByRole('button', { name: /01 <img src=x onerror=/i });
+  await expect(markupHeading).toBeVisible();
+  await expect(markupStep).toBeVisible();
+  await markupStep.click();
+
   await expect(page.getByText(/<script>window\.__VXA_INJECTED__=true<\/script>/i)).toBeVisible();
   await expect(page.locator('img[src="x"]')).toHaveCount(0);
+  await expect(page.locator('script:not([src])')).toHaveCount(0);
   expect(await page.evaluate(() => Object.hasOwn(window, '__VXA_INJECTED__'))).toBe(false);
 });
