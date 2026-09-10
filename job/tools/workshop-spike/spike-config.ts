@@ -198,5 +198,5 @@ export function sanitizeSpikeDiagnostic(message: string, secret: string | undefi
   let sanitized = message.replace(/[\r\n\t]+/g, ' ').trim();
   if (secret?.trim()) sanitized = sanitized.split(secret.trim()).join('[REDACTED]');
   sanitized = sanitized.replace(/(MISTRAL_API_KEY\s*[=:]\s*)\S+/gi, '$1[REDACTED]');
-  return sanitized.slice(0, 800);
+  return sanitized.slice(-800);
 }
