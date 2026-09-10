@@ -20,7 +20,7 @@ export interface ProviderDispatchEnvelope<TContext extends CanonicalDispatchCont
 
 export type ProviderDispatchResult<TContext extends CanonicalDispatchContext = CanonicalDispatchContext> =
   | { ok: true; envelope: Readonly<ProviderDispatchEnvelope<TContext>> }
-  | { ok: false; code: 'CLIENT_CREDENTIAL_FORBIDDEN' | 'ROUTE_NOT_ACTIVE' | 'CANONICAL_REVISION_MISMATCH' };
+  | { ok: false; code: 'CLIENT_CREDENTIAL_FORBIDDEN' | 'ROUTE_NOT_ACTIVE' | 'SELECTED_CONTEXT_MISSING' | 'CANONICAL_REVISION_MISMATCH' };
 
 function routeHasRequiredRoleQuality(decision: Readonly<ProviderRouteDecision>): boolean {
   const route = decision.route;
@@ -68,20 +68,18 @@ export function createProviderDispatchEnvelope<
   TEmergency extends CanonicalDispatchContext,
 >(input: {
   decision: Readonly<ProviderRouteDecision>;
-  fullContext: TFull;
-  emergencyCapsule: TEmergency;
+  fullContext?: TFull;
+  emergencyCapsule?: TEmergency;
 }): ProviderDispatchResult<TFull | TEmergency> {
   const route = input.decision.route;
   if (route.credentialScope !== 'server') return { ok: false, code: 'CLIENT_CREDENTIAL_FORBIDDEN' };
   if (!routeIsStaticallyDispatchable(input.decision)) return { ok: false, code: 'ROUTE_NOT_ACTIVE' };
-  if (
-    input.fullContext.canonicalRevision !== input.decision.canonicalRevision ||
-    input.emergencyCapsule.canonicalRevision !== input.decision.canonicalRevision
-  ) {
+  const context = input.decision.contextMode === 'full' ? input.fullContext : input.emergencyCapsule;
+  if (context === undefined) return { ok: false, code: 'SELECTED_CONTEXT_MISSING' };
+  if (context.canonicalRevision !== input.decision.canonicalRevision) {
     return { ok: false, code: 'CANONICAL_REVISION_MISMATCH' };
   }
 
-  const context = input.decision.contextMode === 'full' ? input.fullContext : input.emergencyCapsule;
   return {
     ok: true,
     envelope: Object.freeze({

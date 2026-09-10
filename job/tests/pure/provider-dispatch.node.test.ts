@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createVerifiedRouteFixture } from './provider-test-fixtures.ts';
 import { createProviderDispatchEnvelope } from '../../src/ai/providers/provider-dispatch.ts';
+import { selectProviderRoute } from '../../src/ai/providers/provider-router.ts';
 
 const DEFAULT_REQUIREMENTS = Object.freeze({
   inputTokens: 100,
@@ -141,4 +142,40 @@ test('dispatch rejects forged tier/context-mode or fallback-reason combinations'
     emergencyCapsule: { schemaVersion: 1, canonicalRevision: 1 },
   });
   assert.equal(fallbackFull.ok, false);
+});
+
+test('dispatch requires only the context selected by contextMode', () => {
+  const primaryRoute = createVerifiedRouteFixture({ routeId: 'primary-selected-context', tier: 'primary' });
+  const primaryDecision = selectProviderRoute([primaryRoute], {
+    role: 'seller', canonicalRevision: 31, fullContextInputTokens: 200, emergencyCapsuleInputTokens: 100,
+    requiresStreaming: true, requiresTools: true, requiresStructuredArguments: true,
+  }, [{ routeId: primaryRoute.routeId, circuit: 'closed', quota: 'available' }]);
+  assert.equal(primaryDecision.ok, true);
+  if (!primaryDecision.ok) return;
+
+  const primary = createProviderDispatchEnvelope({
+    decision: primaryDecision,
+    fullContext: { schemaVersion: 1, canonicalRevision: 31, payload: 'full' },
+  });
+  assert.equal(primary.ok, true);
+  if (primary.ok) assert.equal(primary.envelope.contextMode, 'full');
+
+  const fallbackRoute = createVerifiedRouteFixture({ routeId: 'fallback-selected-context', tier: 'independent_fallback' });
+  const blockedPrimary = createVerifiedRouteFixture({ routeId: 'blocked-primary', tier: 'primary', runtimeActivation: 'FAIL' });
+  const fallbackDecision = selectProviderRoute([blockedPrimary, fallbackRoute], {
+    role: 'seller', canonicalRevision: 32, fullContextInputTokens: 200, emergencyCapsuleInputTokens: 100,
+    requiresStreaming: true, requiresTools: true, requiresStructuredArguments: true,
+  }, [
+    { routeId: blockedPrimary.routeId, circuit: 'closed', quota: 'available' },
+    { routeId: fallbackRoute.routeId, circuit: 'closed', quota: 'available' },
+  ]);
+  assert.equal(fallbackDecision.ok, true);
+  if (!fallbackDecision.ok) return;
+
+  const fallback = createProviderDispatchEnvelope({
+    decision: fallbackDecision,
+    emergencyCapsule: { schemaVersion: 1, canonicalRevision: 32, payload: 'emergency' },
+  });
+  assert.equal(fallback.ok, true);
+  if (fallback.ok) assert.equal(fallback.envelope.contextMode, 'emergency_capsule');
 });
