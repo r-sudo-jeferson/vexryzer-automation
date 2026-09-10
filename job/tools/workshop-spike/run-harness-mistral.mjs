@@ -179,6 +179,7 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
 
   let first;
   let second;
+  let firstEvidence;
   try {
     currentPhase = 'normal-turn-write';
     first = await withWallTimeout(harness.run(
@@ -186,9 +187,10 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
       { sessionId },
     ), 'first Harness turn', NORMAL_TURN_WALL_MS);
 
+    firstEvidence = inspectHarnessEvents(first.events);
     const fileContent = await readFile(join(workspace, probeFile), 'utf8').catch(() => '');
     if (fileContent.trim() !== nonce) {
-      throw new Error('Harness tool probe did not create the exact expected workspace artifact');
+      throw new Error(`Harness tool probe did not create the exact expected workspace artifact; evidence=${JSON.stringify(firstEvidence)}`);
     }
 
     currentPhase = 'normal-turn-read';
@@ -200,7 +202,6 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
     await harness.close();
   }
 
-  const firstEvidence = inspectHarnessEvents(first.events);
   const secondEvidence = inspectHarnessEvents(second.events);
   const streaming = hasStreamingChunks(first.events) || hasStreamingChunks(second.events);
   const toolCalls = hasToolRoundTrip(first.events) && hasToolRoundTrip(second.events);

@@ -4,8 +4,11 @@ export interface HarnessEventEvidence {
   assistantChunkCount: number;
   toolCallCount: number;
   toolResultCount: number;
+  toolErrorCount: number;
+  toolErrorCodes: string[];
   structuredToolArguments: boolean;
   turnCompleted: boolean;
+  turnEndReasons: string[];
   toolNames: string[];
 }
 
@@ -46,6 +49,16 @@ function validStructuredArguments(value: unknown): boolean {
   }
 }
 
+function toolErrorCode(value: unknown): string | null {
+  const error = record(eventData(value)?.error);
+  return typeof error?.code === 'string' ? error.code : null;
+}
+
+function turnEndReason(value: unknown): string | null {
+  const reason = record(eventData(value)?.reason);
+  return typeof reason?.kind === 'string' ? reason.kind : null;
+}
+
 export function hasStreamingChunks(events: readonly unknown[]): boolean {
   return events.some((event) => eventType(event) === 'assistant/chunk');
 }
@@ -71,19 +84,18 @@ export function inspectHarnessEvents(events: readonly unknown[]): HarnessEventEv
     const name = eventData(event)?.name;
     return typeof name === 'string' ? [name] : [];
   }))];
-
-  const completed = events.some((event) => {
-    if (eventType(event) !== 'turn/end') return false;
-    const reason = record(eventData(event)?.reason);
-    return reason?.kind === 'completed';
-  });
+  const toolErrorCodes = [...new Set(toolResults.map(toolErrorCode).filter((code): code is string => code !== null))];
+  const turnEndReasons = events.map(turnEndReason).filter((reason): reason is string => reason !== null);
 
   return {
     assistantChunkCount: events.filter((event) => eventType(event) === 'assistant/chunk').length,
     toolCallCount: toolCalls.length,
     toolResultCount: toolResults.length,
+    toolErrorCount: toolResults.filter((event) => record(eventData(event)?.error) !== null).length,
+    toolErrorCodes,
     structuredToolArguments: toolCalls.length > 0 && toolCalls.every(validStructuredArguments),
-    turnCompleted: completed,
+    turnCompleted: turnEndReasons.includes('completed'),
+    turnEndReasons,
     toolNames,
   };
 }

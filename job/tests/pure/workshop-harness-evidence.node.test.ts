@@ -20,8 +20,11 @@ test('extracts only bounded evidence from Harness session events', () => {
     assistantChunkCount: 2,
     toolCallCount: 1,
     toolResultCount: 1,
+    toolErrorCount: 0,
+    toolErrorCodes: [],
     structuredToolArguments: true,
     turnCompleted: true,
+    turnEndReasons: ['completed'],
     toolNames: ['bash'],
   });
 });
@@ -44,4 +47,23 @@ test('does not infer a tool round trip from unrelated tool counts', () => {
     { type: 'tool/result', data: { message: { toolCallId: 'call-2' } } },
   ];
   assert.equal(hasToolRoundTrip(unrelated), false);
+});
+
+test('reports tool failure codes without exposing result content', () => {
+  const failed = [
+    { type: 'tool/call', data: { callId: 'call-9', name: 'bash', arguments: '{"command":"probe"}' } },
+    {
+      type: 'tool/result',
+      data: {
+        message: { toolCallId: 'call-9', content: [{ type: 'text', text: 'sensitive-result' }] },
+        error: { name: 'ToolExecutionError', code: 'PERMISSION_DENIED' },
+      },
+    },
+    { type: 'turn/end', data: { reason: { kind: 'error' } } },
+  ];
+  const evidence = inspectHarnessEvents(failed);
+  assert.equal(evidence.toolErrorCount, 1);
+  assert.deepEqual(evidence.toolErrorCodes, ['PERMISSION_DENIED']);
+  assert.deepEqual(evidence.turnEndReasons, ['error']);
+  assert.equal(JSON.stringify(evidence).includes('sensitive-result'), false);
 });
