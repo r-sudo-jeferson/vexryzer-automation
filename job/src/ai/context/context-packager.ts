@@ -70,7 +70,7 @@ export interface ContextPack {
     openUncertainties: readonly string[];
   };
   visualState: CurrentExperienceState;
-  activeArtifacts: readonly Pick<ArtifactRecord, 'id' | 'kind' | 'title' | 'status'>[];
+  activeArtifacts: readonly Pick<ArtifactRecord, 'id' | 'kind' | 'title' | 'summary' | 'maturity' | 'status'>[];
   digestContinuity: { basedOnRevision: number; activeOpportunityIds: readonly string[] } | null;
   recentTurns: readonly Omit<RecentContextTurn, 'includedInDigest'>[];
   metadata: ContextPackMetadata;
@@ -199,7 +199,14 @@ function projectActiveArtifacts(context: CanonicalSalesContext, visual: CurrentE
   const active = new Set(visual.activeArtifactIds);
   return freezeArray(context.artifacts
     .filter((artifact) => artifact.status !== 'invalidated' && active.has(artifact.id))
-    .map((artifact) => Object.freeze({ id: artifact.id, kind: artifact.kind, title: artifact.title, status: artifact.status })));
+    .map((artifact) => Object.freeze({
+      id: artifact.id,
+      kind: artifact.kind,
+      title: artifact.title,
+      summary: artifact.summary,
+      maturity: artifact.maturity,
+      status: artifact.status,
+    })));
 }
 
 function prepareRecentTurns(
