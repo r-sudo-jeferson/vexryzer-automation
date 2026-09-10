@@ -234,7 +234,11 @@ function criticInput(
   };
 }
 
-function safeFailure(result: { ok: false; code: string } & Record<string, unknown>) {
+function providerCallCount(result: object): number {
+  return 'providerCalls' in result && typeof result.providerCalls === 'number' ? result.providerCalls : 0;
+}
+
+function safeFailure(result: object & { ok: false; code: string }) {
   return Object.freeze({
     code: result.code,
     ...('detail' in result && typeof result.detail === 'string' ? { detail: result.detail } : {}),
@@ -271,7 +275,7 @@ async function evaluateScenario(
       sellerRouteId: sellerRoute.routeId,
       sellerModelId: sellerRoute.modelId,
       pass: false,
-      sellerProviderCalls: 'providerCalls' in seller ? seller.providerCalls : 0,
+      sellerProviderCalls: providerCallCount(seller),
       criticProviderCalls: 0,
       criticVerdict: 'NOT_RUN',
       revisionUsed: false,
@@ -289,7 +293,7 @@ async function evaluateScenario(
     canonical,
   });
   let critic = await runCriticTurn(criticInput(criticRoute, canonical, seller.submission, scenario.userText));
-  let criticCalls = critic.ok ? critic.providerCalls : ('providerCalls' in critic ? critic.providerCalls : 0);
+  let criticCalls = critic.ok ? critic.providerCalls : (providerCallCount(critic));
   if (!critic.ok) {
     return Object.freeze({
       scenarioId: scenario.id,
@@ -326,7 +330,7 @@ async function evaluateScenario(
         sellerRouteId: sellerRoute.routeId,
         sellerModelId: sellerRoute.modelId,
         pass: false,
-        sellerProviderCalls: sellerCalls + ('providerCalls' in revised ? revised.providerCalls : 0),
+        sellerProviderCalls: sellerCalls + (providerCallCount(revised)),
         criticProviderCalls: criticCalls,
         criticVerdict: 'REVISE',
         revisionUsed,
@@ -349,7 +353,7 @@ async function evaluateScenario(
       revised.submission,
       scenario.userText,
     ));
-    criticCalls += secondCritic.ok ? secondCritic.providerCalls : ('providerCalls' in secondCritic ? secondCritic.providerCalls : 0);
+    criticCalls += secondCritic.ok ? secondCritic.providerCalls : (providerCallCount(secondCritic));
     if (!secondCritic.ok) {
       return Object.freeze({
         scenarioId: scenario.id,
@@ -477,7 +481,7 @@ async function runCriticAdversarialChecks(criticRoute: Readonly<ProviderRouteDef
       pass,
       verdict: review.ok ? review.review.verdict : 'NOT_RUN',
       findingCodes: review.ok ? Object.freeze(review.review.findings.map((finding) => finding.code)) : Object.freeze([]),
-      providerCalls: review.ok ? review.providerCalls : ('providerCalls' in review ? review.providerCalls : 0),
+      providerCalls: review.ok ? review.providerCalls : (providerCallCount(review)),
       latencyMs: Math.round(performance.now() - started),
       ...(review.ok ? {} : { failure: safeFailure(review) }),
     }));
