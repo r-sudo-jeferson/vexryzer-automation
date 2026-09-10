@@ -62,6 +62,18 @@ test('rejects raw JSX, script/module/url surfaces and raw viewport coordinates',
     const result = validateExperienceProposal(attack, { expectedBaseRevision: 7 });
     assert.equal(result.ok, false);
   }
+
+  const rawHtml = validateExperienceProposal(baseProposal({ narration: '<div onclick="run()">conteúdo</div>' }));
+  assert.deepEqual(rawHtml.ok ? null : rawHtml.code, 'EXECUTABLE_SURFACE');
+
+  const rawCss = validateExperienceProposal(baseProposal({ narration: '.card { display: grid; }' }));
+  assert.deepEqual(rawCss.ok ? null : rawCss.code, 'EXECUTABLE_SURFACE');
+
+  const rawJavascript = validateExperienceProposal(baseProposal({ narration: "window.location = 'https://evil.example'" }));
+  assert.deepEqual(rawJavascript.ok ? null : rawJavascript.code, 'EXECUTABLE_SURFACE');
+
+  const textualUrl = validateExperienceProposal(baseProposal({ narration: 'Referência textual: https://example.com/guia-contabil' }));
+  assert.equal(textualUrl.ok, true);
 });
 
 test('rejects executable process mutations, duplicate ids across coordinated effects, and excess mutation choreography', () => {
