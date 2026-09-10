@@ -66,13 +66,15 @@ test('keyboard focus auto-pans a proven-offscreen process node back into view', 
 
   const canvas = page.locator('.vxa-canvas');
   const firstNode = page.locator('.react-flow__node-process').first();
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
     const nodeBox = await firstNode.boundingBox();
     const canvasBox = await canvas.boundingBox();
     expect(nodeBox).toBeTruthy();
     expect(canvasBox).toBeTruthy();
     if (outside(nodeBox!, canvasBox!)) break;
+    const beforePan = await readViewportMatrix(page);
     await mousePan(page, { x: 180, y: 110 });
+    await expectViewportChanged(page, beforePan);
   }
 
   const displacedNodeBox = await firstNode.boundingBox();
