@@ -49,6 +49,17 @@ const visualState = {
   sceneId: 'scene-closing',
   focusedEntityIds: ['fact-confirmed'],
   activeArtifactIds: ['artifact-1'],
+  processNodes: [{
+    id: 'manual-review',
+    label: 'Conferência manual',
+    kind: 'manual_action',
+    provenance: 'user_confirmed',
+  }, {
+    id: 'rework-loop',
+    label: 'Retrabalho',
+    kind: 'evidence',
+    provenance: 'ai_inferred',
+  }],
 } as const;
 
 const generousBudget = { maxInputTokens: 10_000, reservedOutputTokens: 2_000, emergencyInputTokens: 2_000 } as const;
@@ -99,6 +110,8 @@ test('prioritizes latest intent, confirmed truth, objections and quantitative ev
   assert.equal(result.pack.quantitativeEvidence.calculations.some((item: { id: string }) => item.id === 'calc-hours'), true);
   assert.equal(result.pack.activeArtifacts[0]?.maturity, 'conceptual');
   assert.equal(result.pack.activeArtifacts[0]?.summary, 'Visão operacional conceitual do fechamento.');
+  assert.deepEqual(result.pack.visualState.processNodes?.map((item) => item.id), ['manual-review', 'rework-loop']);
+  assert.equal(result.pack.visualState.processNodes?.[0]?.provenance, 'user_confirmed');
   assert.equal(result.pack.recentTurns.some((item: { id: string }) => item.id === 'turn-old'), false);
   assert.equal(calls.length, 2);
 });
