@@ -1,4 +1,5 @@
 export const HARNESS_CANDIDATE_VERSION = '0.1.2-rc.1' as const;
+export const HARNESS_SPIKE_PROFILE = 'sdk-minimal' as const;
 export const DEFAULT_MISTRAL_PROVIDER_ROUTE = 'mistral' as const;
 export const DEFAULT_MISTRAL_MODEL_ID = 'mistral-medium-3-5' as const;
 export const DEFAULT_MISTRAL_BASE_URL = 'https://api.mistral.ai/v1' as const;
@@ -45,6 +46,7 @@ export function renderHarnessInstallPackageJson(harnessVersion: string): string 
     dependencies: {
       '@deepseek-ai/dsh': harnessVersion,
       '@deepseek-ai/dsh-sdk-client': harnessVersion,
+      '@deepseek-ai/dsh-llm-pi-ai': harnessVersion,
       react: anchors.react,
       'react-dom': anchors.reactDom,
     },
@@ -102,12 +104,14 @@ export interface MistralRouteConfig extends Omit<SpikeInputs, 'mistralApiKey'> {
 export interface HarnessSdkOptionsInput {
   workspace: string;
   dshHome: string;
+  patchPath: string;
   maxTokens: number;
   input: SpikeInputs;
 }
 
 export interface HarnessSdkOptions {
-  profile: 'sdk';
+  profile: typeof HARNESS_SPIKE_PROFILE;
+  patches: string[];
   dshHome: string;
   processCwd: string;
   env: NodeJS.ProcessEnv;
@@ -198,12 +202,14 @@ export function buildHarnessSdkOptions(
   validateSpikeInputs(options.input);
   requireAbsoluteLikePath('workspace', options.workspace);
   requireAbsoluteLikePath('dshHome', options.dshHome);
+  requireAbsoluteLikePath('patchPath', options.patchPath);
   if (!Number.isSafeInteger(options.maxTokens) || options.maxTokens <= 0) {
     throw new TypeError('maxTokens must be a positive safe integer');
   }
 
   return {
-    profile: 'sdk',
+    profile: HARNESS_SPIKE_PROFILE,
+    patches: [options.patchPath],
     dshHome: options.dshHome,
     processCwd: options.workspace,
     env: buildScrubbedHarnessEnv(parentEnv, {
@@ -221,41 +227,48 @@ export function buildHarnessSdkOptions(
   };
 }
 
-function renderSpikeRetryPolicyLines(disableRetries: boolean): string[] {
+function renderSpikeRetryPolicyLines(disableRetries: boolean, indent: string): string[] {
+  const child = `${indent}  `;
+  const grandchild = `${child}  `;
   return [
-    '      retryPolicy:',
-    '        mode: normal',
-    `        maxRetries: ${disableRetries ? 0 : MISTRAL_SPIKE_MAX_RETRIES}`,
-    '        retryableCodes:',
-    '          - RATE_LIMIT',
-    '        backoff:',
-    `          initialDelayMs: ${MISTRAL_RATE_LIMIT_WINDOW_MS}`,
-    `          maxDelayMs: ${MISTRAL_RATE_LIMIT_WINDOW_MS}`,
-    '          jitterRatio: 0',
+    `${indent}retryPolicy:`,
+    `${child}mode: normal`,
+    `${child}maxRetries: ${disableRetries ? 0 : MISTRAL_SPIKE_MAX_RETRIES}`,
+    `${child}retryableCodes:`,
+    `${grandchild}- RATE_LIMIT`,
+    `${child}backoff:`,
+    `${grandchild}initialDelayMs: ${MISTRAL_RATE_LIMIT_WINDOW_MS}`,
+    `${grandchild}maxDelayMs: ${MISTRAL_RATE_LIMIT_WINDOW_MS}`,
+    `${grandchild}jitterRatio: 0`,
   ];
 }
 
-export function renderMistralSettingsYaml(input: MistralRouteConfig): string {
+export function renderMistralMinimalProfilePatchYaml(input: MistralRouteConfig): string {
   validateSpikeInputs({ ...input, mistralApiKey: 'redacted-validation-key' });
   validateOptionalTimeout('timeoutMs', input.timeoutMs);
   validateOptionalTimeout('streamIdleTimeoutMs', input.streamIdleTimeoutMs);
   const timeoutProbe = input.timeoutMs !== undefined || input.streamIdleTimeoutMs !== undefined;
   return [
-    'llm-pi-ai:',
-    '  providers:',
-    `    ${input.providerRoute}:`,
-    '      displayName: Mistral',
-    '      apiKeyEnv: MISTRAL_API_KEY',
-    '      api: openai-completions',
-    `      baseURL: ${input.baseUrl}`,
-    ...(input.timeoutMs === undefined ? [] : [`      timeoutMs: ${input.timeoutMs}`]),
-    ...(input.streamIdleTimeoutMs === undefined ? [] : [`      streamIdleTimeoutMs: ${input.streamIdleTimeoutMs}`]),
-    ...renderSpikeRetryPolicyLines(timeoutProbe),
-    '      compat:',
-    '        supportsDeveloperRole: false',
-    '        maxTokensField: max_tokens',
-    '      models:',
-    `        - id: ${input.modelId}`,
+    '- id: llm-deepseek',
+    '  disabled: true',
+    '- insert:',
+    '    - id: llm-pi-ai',
+    "      name: '@deepseek-ai/dsh-llm-pi-ai'",
+    '      config:',
+    '        providers:',
+    `          ${input.providerRoute}:`,
+    '            displayName: Mistral',
+    '            apiKeyEnv: MISTRAL_API_KEY',
+    '            api: openai-completions',
+    `            baseURL: ${input.baseUrl}`,
+    ...(input.timeoutMs === undefined ? [] : [`            timeoutMs: ${input.timeoutMs}`]),
+    ...(input.streamIdleTimeoutMs === undefined ? [] : [`            streamIdleTimeoutMs: ${input.streamIdleTimeoutMs}`]),
+    ...renderSpikeRetryPolicyLines(timeoutProbe, '            '),
+    '            compat:',
+    '              supportsDeveloperRole: false',
+    '              maxTokensField: max_tokens',
+    '            models:',
+    `              - id: ${input.modelId}`,
     '',
   ].join('\n');
 }
