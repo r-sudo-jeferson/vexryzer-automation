@@ -24,6 +24,36 @@ export interface ChatStreamAccumulator {
   finish(): Readonly<AssembledChatStream>;
 }
 
+export type ChatStreamChunkErrorCode =
+  | 'chunk_shape'
+  | 'choice_shape'
+  | 'content'
+  | 'content_limit'
+  | 'tool_calls'
+  | 'tool_index'
+  | 'tool_id'
+  | 'tool_type'
+  | 'tool_function'
+  | 'tool_name'
+  | 'tool_arguments'
+  | 'tool_arguments_limit'
+  | 'finish_reason'
+  | 'finish_reason_conflict';
+
+export class ChatStreamChunkError extends TypeError {
+  readonly code: ChatStreamChunkErrorCode;
+
+  constructor(code: ChatStreamChunkErrorCode) {
+    super(`invalid chat stream chunk: ${code}`);
+    this.name = 'ChatStreamChunkError';
+    this.code = code;
+  }
+}
+
+function rejectChunk(code: ChatStreamChunkErrorCode): never {
+  throw new ChatStreamChunkError(code);
+}
+
 const DEFAULT_MAX_BUFFERED_BYTES = 2_000_000;
 const MAX_CONTENT_BYTES = 512_000;
 const MAX_TOOL_ARGUMENT_BYTES = 1_000_000;
@@ -127,51 +157,51 @@ export function createChatStreamAccumulator(): ChatStreamAccumulator {
 
   return Object.freeze({
     accept(chunk: unknown): void {
-      if (!isRecord(chunk) || !Array.isArray(chunk['choices'])) throw new TypeError('invalid chat stream chunk');
+      if (!isRecord(chunk) || !Array.isArray(chunk['choices'])) rejectChunk('chunk_shape');
       const choices = chunk['choices'];
       if (choices.length === 0) return;
       if (choices.length !== 1 || !isRecord(choices[0])) {
-        throw new TypeError('unsupported chat stream choice');
+        rejectChunk('choice_shape');
       }
       const choice = choices[0];
       if (choice['index'] !== 0 || !isRecord(choice['delta'])) {
-        throw new TypeError('unsupported chat stream choice');
+        rejectChunk('choice_shape');
       }
       const delta = choice['delta'];
       const rawContent = delta['content'];
       if (rawContent !== undefined && rawContent !== null) {
-        if (typeof rawContent !== 'string') throw new TypeError('invalid chat content fragment');
+        if (typeof rawContent !== 'string') rejectChunk('content');
         content += rawContent;
-        if (utf8Bytes(content) > MAX_CONTENT_BYTES) throw new RangeError('chat content limit exceeded');
+        if (utf8Bytes(content) > MAX_CONTENT_BYTES) rejectChunk('content_limit');
       }
 
       const rawToolCalls = delta['tool_calls'];
       if (rawToolCalls !== undefined) {
-        if (!Array.isArray(rawToolCalls) || rawToolCalls.length > MAX_TOOL_CALLS) throw new TypeError('invalid tool call fragments');
+        if (!Array.isArray(rawToolCalls) || rawToolCalls.length > MAX_TOOL_CALLS) rejectChunk('tool_calls');
         for (const raw of rawToolCalls) {
           if (!isRecord(raw) || !Number.isInteger(raw['index']) || (raw['index'] as number) < 0 || (raw['index'] as number) >= MAX_TOOL_CALLS) {
-            throw new TypeError('invalid tool call index');
+            rejectChunk('tool_index');
           }
           const index = raw['index'] as number;
           const current = tools.get(index) ?? { id: '', type: 'function' as const, name: '', arguments: '' };
           if (raw['id'] !== undefined) {
             if (typeof raw['id'] !== 'string' || raw['id'].length === 0 || (current.id && current.id !== raw['id'])) {
-              throw new TypeError('invalid tool call id fragment');
+              rejectChunk('tool_id');
             }
             current.id = raw['id'];
           }
-          if (raw['type'] !== undefined && raw['type'] !== 'function') throw new TypeError('only local function tool calls are supported');
+          if (raw['type'] !== undefined && raw['type'] !== 'function') rejectChunk('tool_type');
           const fn = raw['function'];
           if (fn !== undefined) {
-            if (!isRecord(fn)) throw new TypeError('invalid tool call function fragment');
+            if (!isRecord(fn)) rejectChunk('tool_function');
             if (fn['name'] !== undefined) {
-              if (typeof fn['name'] !== 'string') throw new TypeError('invalid tool call name fragment');
+              if (typeof fn['name'] !== 'string') rejectChunk('tool_name');
               current.name += fn['name'];
             }
             if (fn['arguments'] !== undefined) {
-              if (typeof fn['arguments'] !== 'string') throw new TypeError('invalid tool call arguments fragment');
+              if (typeof fn['arguments'] !== 'string') rejectChunk('tool_arguments');
               current.arguments += fn['arguments'];
-              if (utf8Bytes(current.arguments) > MAX_TOOL_ARGUMENT_BYTES) throw new RangeError('tool arguments limit exceeded');
+              if (utf8Bytes(current.arguments) > MAX_TOOL_ARGUMENT_BYTES) rejectChunk('tool_arguments_limit');
             }
           }
           tools.set(index, current);
@@ -180,8 +210,8 @@ export function createChatStreamAccumulator(): ChatStreamAccumulator {
 
       const rawFinish = choice['finish_reason'];
       if (rawFinish !== undefined && rawFinish !== null) {
-        if (typeof rawFinish !== 'string' || rawFinish.length > 64) throw new TypeError('invalid finish reason');
-        if (finishReason !== null && finishReason !== rawFinish) throw new TypeError('conflicting finish reason');
+        if (typeof rawFinish !== 'string' || rawFinish.length > 64) rejectChunk('finish_reason');
+        if (finishReason !== null && finishReason !== rawFinish) rejectChunk('finish_reason_conflict');
         finishReason = rawFinish;
       }
     },
