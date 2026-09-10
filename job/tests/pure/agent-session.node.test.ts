@@ -126,6 +126,44 @@ test('completed request becomes idempotent only while it remains the latest comm
   }
 });
 
+test('historical request id cannot be replayed after a newer request becomes canonical', () => {
+  const created = createAgentSession(entropy);
+  const first = claimAgentSession(created.record, {
+    requestId: 'request-old',
+    expectedRevision: 0,
+    nowEpochMs: 1_000,
+  }, entropy);
+  if (!first.ok || first.idempotent || first.record.lease === null) throw new Error('expected first claim');
+
+  const canonicalWithOldTurn = Object.freeze({
+    ...first.record.canonical,
+    revision: 1,
+    turnIds: Object.freeze(['request-old']),
+    latestUserIntent: Object.freeze({ turnId: 'request-old', text: 'Primeiro turno.' }),
+  });
+  const completed = completeAgentSession(first.record, {
+    leaseId: first.record.lease.leaseId,
+    canonical: canonicalWithOldTurn,
+    reactiveState: first.record.reactiveState,
+    recentTurns: [{ id: 'request-old', role: 'user', text: 'Primeiro turno.' }],
+    completed: {
+      requestId: 'request-newer',
+      inputRevision: 0,
+      resultRevision: 1,
+      mode: 'guided_recovery',
+      narration: 'Contexto preservado.',
+      nextQuestion: null,
+    },
+  });
+
+  const replay = claimAgentSession(completed, {
+    requestId: 'request-old',
+    expectedRevision: 1,
+    nowEpochMs: 2_000,
+  }, { leaseId: () => 'lease-replay' });
+  assert.deepEqual(replay, { ok: false, code: 'REQUEST_REPLAY' });
+});
+
 test('record completion rejects request mismatch and keeps bounded immutable recent turns', () => {
   const created = createAgentSession(entropy);
   const claimed = claimAgentSession(created.record, {
