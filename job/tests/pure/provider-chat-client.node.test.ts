@@ -83,3 +83,20 @@ test('mid-stream transport failure is classified as network rather than malforme
   }));
   assert.deepEqual(result, { ok: false, class: 'network', status: 200, retryAfterMs: null });
 });
+
+
+test('stream chunk structural failure carries only a bounded diagnostic code', async () => {
+  const result = await consumeProviderChatSseResponse(new Response(
+    'data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"capture_signal","arguments":{"value":"private-value"}}}]},"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n\n',
+    { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+  ));
+  assert.deepEqual(result, {
+    ok: false,
+    class: 'malformed',
+    status: 200,
+    retryAfterMs: null,
+    malformedDetail: 'stream_chunk',
+    streamChunkDetail: 'tool_arguments',
+  });
+  assert.equal(JSON.stringify(result).includes('private-value'), false);
+});
