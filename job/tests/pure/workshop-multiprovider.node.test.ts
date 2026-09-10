@@ -159,15 +159,16 @@ test('extracts assistant text only from the first choice message', () => {
 });
 
 test('builds a tiny streaming probe with an exact fixed marker', () => {
-  const request = buildStreamRequest('openai/gpt-oss-120b', 'STREAM-NONCE');
+  const request = buildStreamRequest('openai/gpt-oss-120b', 'STREAM-NONCE', 'groq');
   assert.equal(request.model, 'openai/gpt-oss-120b');
   assert.equal(request.stream, true);
+  assert.equal(request.include_reasoning, false);
   assert.match(JSON.stringify(request.messages), /STREAM-NONCE/);
   assert.equal('tools' in request, false);
 });
 
 test('builds one required structured tool with a closed object schema', () => {
-  const request = buildToolRequest('openai/gpt-oss-120b', 'TOOL-NONCE');
+  const request = buildToolRequest('openai/gpt-oss-120b', 'TOOL-NONCE', 'groq');
   assert.equal(request.tool_choice, 'required');
   assert.equal(request.tools.length, 1);
   assert.equal(request.tools[0]?.function.name, 'capture_signal');
@@ -178,7 +179,7 @@ test('builds one required structured tool with a closed object schema', () => {
 test('replays the exact tool call/result and disables another tool invocation', () => {
   const request = buildReplayRequest('openai/gpt-oss-120b', {
     id: 'call-1', name: 'capture_signal', argumentsJson: '{"value":"TOOL-NONCE"}', arguments: { value: 'TOOL-NONCE' },
-  }, 'TOOL-NONCE');
+  }, 'TOOL-NONCE', 'groq');
   assert.equal(request.tool_choice, 'none');
   assert.equal(request.messages[1]?.role, 'assistant');
   assert.equal(request.messages[2]?.role, 'tool');
