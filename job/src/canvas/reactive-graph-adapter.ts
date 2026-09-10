@@ -145,7 +145,7 @@ function quantification(
   canonical: Readonly<CanvasEvidenceContext>,
   calculationId: string,
   path: string,
-): Readonly<CanvasQuantification> | ReactiveCanvasProjectionResult {
+): Readonly<CanvasQuantification> | Extract<ReactiveCanvasProjectionResult, { ok: false }> {
   const calculation = canonical.verifiedCalculations.find((item) => item.id === calculationId);
   if (calculation === undefined) {
     return { ok: false, code: 'UNKNOWN_CALCULATION', path, graph: createProcessGraph([], []) };
@@ -279,7 +279,9 @@ export function projectReactiveCanvas(
       }
       case 'quantify': {
         const metric = quantification(canonical, action.calculationId, `reactive.actions[${i}].calculationId`);
-        if ('ok' in metric) return { ...metric, graph };
+        if ('ok' in metric) {
+          return { ok: false, code: metric.code, path: metric.path, graph };
+        }
         if (action.targetId === null) globalQuantifications.push(metric);
         else {
           const missing = ensureTarget(graph, action.targetId, `reactive.actions[${i}].targetId`);

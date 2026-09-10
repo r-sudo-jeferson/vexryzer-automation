@@ -691,7 +691,7 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
       return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'NON_SUBMISSION_TOOL_FORBIDDEN_DURING_CRITIC_REVISION' };
     }
     if (first.kind === 'seller_submission') {
-      if (input.revisionRequest !== undefined && first.submission.proposalId === input.revisionRequest.previousProposalId) {
+      if (input.revisionRequest !== undefined && first.submission['proposalId'] === input.revisionRequest.previousProposalId) {
         return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'REVISED_PROPOSAL_ID_REUSED' };
       }
       const validation = dependencies.validateSellerSubmission(first.submission, { canonical });

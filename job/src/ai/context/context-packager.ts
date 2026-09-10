@@ -431,7 +431,9 @@ export function packageContext(input: ContextPackagerInput): ContextPackagingRes
       sceneId: baseParts.visualState.sceneId,
       focusedEntityIds: Object.freeze([]),
       activeArtifactIds: baseParts.visualState.activeArtifactIds,
-      processNodes: baseParts.visualState.processNodes,
+      ...(baseParts.visualState.processNodes === undefined
+        ? {}
+        : { processNodes: baseParts.visualState.processNodes }),
     }),
     activeArtifacts: Object.freeze([]),
     digestContinuity: null,

@@ -72,81 +72,81 @@ function validSessionStart(value: unknown): value is {
   revision: number;
 } {
   if (!record(value)) return false;
-  return value.ok === true
-    && typeof value.sessionId === 'string'
-    && SAFE_ID.test(value.sessionId)
-    && value.sessionId.length <= 96
-    && typeof value.sessionToken === 'string'
-    && TOKEN.test(value.sessionToken)
-    && Number.isInteger(value.revision)
-    && Number(value.revision) >= 0;
+  return value['ok'] === true
+    && typeof value['sessionId'] === 'string'
+    && SAFE_ID.test(value['sessionId'])
+    && value['sessionId'].length <= 96
+    && typeof value['sessionToken'] === 'string'
+    && TOKEN.test(value['sessionToken'])
+    && Number.isInteger(value['revision'])
+    && Number(value['revision']) >= 0;
 }
 
 function validReactiveShape(value: unknown): value is ReactiveExperienceState {
   if (!record(value)) return false;
-  return value.schemaVersion === 1
-    && Number.isInteger(value.basedOnRevision)
-    && Number(value.basedOnRevision) >= 0
-    && Number.isInteger(value.projectionRevision)
-    && Number(value.projectionRevision) >= 0
-    && Array.isArray(value.actions)
-    && Array.isArray(value.processMutations)
-    && Array.isArray(value.correctionSuggestions)
-    && Array.isArray(value.artifacts)
-    && record(value.scene)
-    && record(value.choreography)
-    && Array.isArray(value.recentSemanticKeys);
+  return value['schemaVersion'] === 1
+    && Number.isInteger(value['basedOnRevision'])
+    && Number(value['basedOnRevision']) >= 0
+    && Number.isInteger(value['projectionRevision'])
+    && Number(value['projectionRevision']) >= 0
+    && Array.isArray(value['actions'])
+    && Array.isArray(value['processMutations'])
+    && Array.isArray(value['correctionSuggestions'])
+    && Array.isArray(value['artifacts'])
+    && record(value['scene'])
+    && record(value['choreography'])
+    && Array.isArray(value['recentSemanticKeys']);
 }
 
 function validCalculations(value: unknown): value is AskAiVerifiedCalculation[] {
   return Array.isArray(value) && value.every((item) => record(item)
-    && typeof item.id === 'string'
-    && SAFE_ID.test(item.id)
-    && typeof item.resultValue === 'number'
-    && Number.isFinite(item.resultValue)
-    && typeof item.resultUnit === 'string'
-    && item.resultUnit.length >= 1
-    && item.resultUnit.length <= 64
-    && (item.status === 'valid' || item.status === 'invalidated'));
+    && typeof item['id'] === 'string'
+    && SAFE_ID.test(item['id'])
+    && typeof item['resultValue'] === 'number'
+    && Number.isFinite(item['resultValue'])
+    && typeof item['resultUnit'] === 'string'
+    && item['resultUnit'].length >= 1
+    && item['resultUnit'].length <= 64
+    && (item['status'] === 'valid' || item['status'] === 'invalidated'));
 }
 
 function validPublicState(value: unknown): value is AskAiPublicState {
   if (!record(value)) return false;
-  return typeof value.sessionId === 'string'
-    && SAFE_ID.test(value.sessionId)
-    && Number.isInteger(value.canonicalRevision)
-    && Number(value.canonicalRevision) >= 0
-    && validCalculations(value.verifiedCalculations)
-    && validReactiveShape(value.reactiveState);
+  return typeof value['sessionId'] === 'string'
+    && SAFE_ID.test(value['sessionId'])
+    && Number.isInteger(value['canonicalRevision'])
+    && Number(value['canonicalRevision']) >= 0
+    && validCalculations(value['verifiedCalculations'])
+    && validReactiveShape(value['reactiveState']);
 }
 
 function validAccepted(value: unknown): value is AskAiAcceptedResponse {
   return record(value)
-    && value.ok === true
-    && typeof value.idempotent === 'boolean'
-    && (value.mode === 'agent' || value.mode === 'guided_recovery')
-    && typeof value.narration === 'string'
-    && (value.nextQuestion === null || typeof value.nextQuestion === 'string')
-    && validPublicState(value.state);
+    && value['ok'] === true
+    && typeof value['idempotent'] === 'boolean'
+    && (value['mode'] === 'agent' || value['mode'] === 'guided_recovery')
+    && typeof value['narration'] === 'string'
+    && (value['nextQuestion'] === null || typeof value['nextQuestion'] === 'string')
+    && validPublicState(value['state']);
 }
 
 function validCorrectionAccepted(value: unknown): value is AskAiCorrectionAcceptedResponse {
   return record(value)
-    && value.ok === true
-    && typeof value.idempotent === 'boolean'
-    && typeof value.correctionId === 'string'
-    && SAFE_ID.test(value.correctionId)
-    && validPublicState(value.state);
+    && value['ok'] === true
+    && typeof value['idempotent'] === 'boolean'
+    && typeof value['correctionId'] === 'string'
+    && SAFE_ID.test(value['correctionId'])
+    && validPublicState(value['state']);
 }
 
 function parseFailure(value: unknown, status: number): AskAiClientFailure {
-  const code = record(value) && typeof value.code === 'string'
-    ? value.code
+  const code = record(value) && typeof value['code'] === 'string'
+    ? value['code']
     : 'INVALID_SERVER_RESPONSE';
   const currentRevision = record(value)
-    && Number.isInteger(value.currentRevision)
-    && Number(value.currentRevision) >= 0
-    ? Number(value.currentRevision)
+    && Number.isInteger(value['currentRevision'])
+    && Number(value['currentRevision']) >= 0
+    ? Number(value['currentRevision'])
     : null;
   const retryable = status >= 500
     || code === 'SESSION_BUSY'

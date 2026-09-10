@@ -98,26 +98,29 @@ function CanvasSurface({
 
   const nodes = useMemo<CanvasNode[]>(() => {
     const positions = layoutProcessGraph(graph, { columns: directedMobile ? 2 : 4 });
-    const processNodes: ProcessFlowNode[] = graph.nodes.map((model) => ({
-      id: model.id,
-      type: 'process',
-      position: positions.get(model.id) ?? { x: 0, y: 0 },
-      data: {
-        model,
-        zoomBand,
-        muted: mode === 'origin'
-          || (mode === 'focus' && focusedNodeId !== model.id)
-          || overlayByNodeId.get(model.id)?.deEmphasized === true,
-        overlay: overlayByNodeId.get(model.id),
-      },
-      selected: mode === 'focus' && focusedNodeId === model.id,
-      draggable: false,
-      connectable: false,
-      selectable: mode !== 'origin',
-      focusable: mode !== 'origin',
-      ariaLabel: processNodeAccessibleLabel(model, overlayByNodeId.get(model.id)),
-      deletable: false,
-    }));
+    const processNodes: ProcessFlowNode[] = graph.nodes.map((model) => {
+      const overlay = overlayByNodeId.get(model.id);
+      return {
+        id: model.id,
+        type: 'process',
+        position: positions.get(model.id) ?? { x: 0, y: 0 },
+        data: {
+          model,
+          zoomBand,
+          muted: mode === 'origin'
+            || (mode === 'focus' && focusedNodeId !== model.id)
+            || overlay?.deEmphasized === true,
+          ...(overlay === undefined ? {} : { overlay }),
+        },
+        selected: mode === 'focus' && focusedNodeId === model.id,
+        draggable: false,
+        connectable: false,
+        selectable: mode !== 'origin',
+        focusable: mode !== 'origin',
+        ariaLabel: processNodeAccessibleLabel(model, overlay),
+        deletable: false,
+      };
+    });
 
     if (mode !== 'origin') return processNodes;
 
