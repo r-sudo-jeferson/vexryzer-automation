@@ -18,8 +18,21 @@ export interface CanvasNodeSemanticOverlay {
   nodeId: string;
   state: 'active' | 'hypothesis' | 'invalidated' | null;
   deEmphasized: boolean;
+  revealed: boolean;
   annotations: readonly string[];
   quantifications: readonly Readonly<CanvasQuantification>[];
+}
+
+export interface CanvasSemanticGroup {
+  groupId: string;
+  label: string;
+  memberIds: readonly string[];
+}
+
+export interface CanvasRelationshipExplanation {
+  sourceId: string;
+  targetId: string;
+  text: string;
 }
 
 export interface ReactiveCanvasModel {
@@ -27,6 +40,8 @@ export interface ReactiveCanvasModel {
   focusIds: readonly string[];
   comparisonIds: readonly string[];
   overlays: readonly Readonly<CanvasNodeSemanticOverlay>[];
+  groups: readonly Readonly<CanvasSemanticGroup>[];
+  relationshipExplanations: readonly Readonly<CanvasRelationshipExplanation>[];
   globalQuantifications: readonly Readonly<CanvasQuantification>[];
 }
 
@@ -167,6 +182,7 @@ export function projectReactiveCanvas(
   const overlays = new Map<string, {
     state: CanvasNodeSemanticOverlay['state'];
     deEmphasized: boolean;
+    revealed: boolean;
     annotations: string[];
     quantifications: Readonly<CanvasQuantification>[];
   }>();
@@ -174,7 +190,7 @@ export function projectReactiveCanvas(
   const overlayFor = (nodeId: string) => {
     let value = overlays.get(nodeId);
     if (value === undefined) {
-      value = { state: null, deEmphasized: false, annotations: [], quantifications: [] };
+      value = { state: null, deEmphasized: false, revealed: false, annotations: [], quantifications: [] };
       overlays.set(nodeId, value);
     }
     return value;
@@ -193,6 +209,8 @@ export function projectReactiveCanvas(
   for (const id of state.scene.focusIds) focusIds.add(id);
   for (const id of state.scene.comparisonIds) comparisonIds.add(id);
 
+  const groups: Readonly<CanvasSemanticGroup>[] = [];
+  const relationshipExplanations: Readonly<CanvasRelationshipExplanation>[] = [];
   const globalQuantifications: Readonly<CanvasQuantification>[] = [];
   for (let i = 0; i < state.actions.length; i += 1) {
     const projected = state.actions[i]!;
@@ -225,6 +243,36 @@ export function projectReactiveCanvas(
           overlayFor(id).deEmphasized = true;
         }
         break;
+      case 'reveal': {
+        const missing = ensureTarget(graph, action.targetId, `reactive.actions[${i}].targetId`);
+        if (missing !== null) return missing;
+        overlayFor(action.targetId).revealed = true;
+        break;
+      }
+      case 'group': {
+        for (const id of action.memberIds) {
+          const missing = ensureTarget(graph, id, `reactive.actions[${i}].memberIds`);
+          if (missing !== null) return missing;
+        }
+        groups.push(Object.freeze({
+          groupId: action.groupId,
+          label: action.label,
+          memberIds: Object.freeze([...action.memberIds]),
+        }));
+        break;
+      }
+      case 'explain_relationship': {
+        const sourceMissing = ensureTarget(graph, action.sourceId, `reactive.actions[${i}].sourceId`);
+        if (sourceMissing !== null) return sourceMissing;
+        const targetMissing = ensureTarget(graph, action.targetId, `reactive.actions[${i}].targetId`);
+        if (targetMissing !== null) return targetMissing;
+        relationshipExplanations.push(Object.freeze({
+          sourceId: action.sourceId,
+          targetId: action.targetId,
+          text: action.text,
+        }));
+        break;
+      }
       case 'quantify': {
         const metric = quantification(canonical, action.calculationId, `reactive.actions[${i}].calculationId`);
         if ('ok' in metric) return { ...metric, graph };
@@ -236,10 +284,7 @@ export function projectReactiveCanvas(
         }
         break;
       }
-      case 'reveal':
-      case 'group':
       case 'demonstrate':
-      case 'explain_relationship':
       case 'stage_artifact':
       case 'request_workshop':
         break;
@@ -265,9 +310,12 @@ export function projectReactiveCanvas(
         nodeId,
         state: value.state,
         deEmphasized: value.deEmphasized,
+        revealed: value.revealed,
         annotations: Object.freeze([...value.annotations]),
         quantifications: Object.freeze([...value.quantifications]),
       }))),
+      groups: Object.freeze([...groups]),
+      relationshipExplanations: Object.freeze([...relationshipExplanations]),
       globalQuantifications: Object.freeze([...globalQuantifications]),
     }),
   };
