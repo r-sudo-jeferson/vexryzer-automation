@@ -46,6 +46,17 @@ test('node labels reject empty and control-character content', () => {
   assert.equal(codes.filter((code) => code === 'INVALID_NODE_LABEL').length, 2);
 });
 
+test('edge ids and optional semantic labels are bounded before reaching React Flow', () => {
+  const graph = createProcessGraph(nodes, [
+    { id: '../edge', source: 'source-1', target: 'manual-1', label: 'válida' },
+    { id: 'edge-empty-label', source: 'manual-1', target: 'output-1', label: '   ' },
+    { id: 'edge-control-label', source: 'source-1', target: 'output-1', label: 'gera\u0000retrabalho' },
+  ]);
+  const codes = validateProcessGraph(graph).map((issue) => issue.code);
+  assert.equal(codes.includes('INVALID_EDGE_ID'), true);
+  assert.equal(codes.filter((code) => code === 'INVALID_EDGE_LABEL').length, 2);
+});
+
 test('domain vocabulary matches the canonical architecture contract', () => {
   assert.deepEqual(PROCESS_NODE_KINDS, ['source', 'manual_action', 'transformation', 'system', 'output', 'evidence', 'effort', 'uncertainty', 'estimate', 'request_receipt']);
   assert.deepEqual(PROVENANCE_VALUES, ['user_stated', 'ai_inferred', 'user_confirmed']);
