@@ -86,7 +86,7 @@ test('hard-blocks unsupported numeric claims before Critic', () => {
   }), options);
   assert.equal(result.ok, false);
   if (result.ok) return;
-  assert.equal(result.code, 'HARD_BLOCK');
+  if (result.code !== 'HARD_BLOCK') assert.fail(`expected HARD_BLOCK, got ${result.code}`);
   assert.equal(result.finding.code, 'UNSUPPORTED_NUMERIC_CLAIM');
 });
 
@@ -96,6 +96,7 @@ test('hard-blocks model provenance laundering even when it cites a real user tur
   }), options);
   assert.equal(result.ok, false);
   if (result.ok) return;
+  if (result.code !== 'HARD_BLOCK') assert.fail(`expected HARD_BLOCK, got ${result.code}`);
   assert.equal(result.finding.code, 'FORGED_CONFIRMATION');
 });
 
@@ -127,6 +128,7 @@ test('defense-in-depth blocks an attachment-read assertion hidden only in narrat
   }), options);
   assert.equal(result.ok, false);
   if (result.ok) return;
+  if (result.code !== 'HARD_BLOCK') assert.fail(`expected HARD_BLOCK, got ${result.code}`);
   assert.equal(result.finding.code, 'ATTACHMENT_ACCESS_CLAIM');
 });
 
@@ -139,6 +141,7 @@ test('defense-in-depth scans semantic text nested inside actions, not only top-l
   }), options);
   assert.equal(result.ok, false);
   if (result.ok) return;
+  if (result.code !== 'HARD_BLOCK') assert.fail(`expected HARD_BLOCK, got ${result.code}`);
   assert.equal(result.finding.code, 'ATTACHMENT_ACCESS_CLAIM');
 });
 
