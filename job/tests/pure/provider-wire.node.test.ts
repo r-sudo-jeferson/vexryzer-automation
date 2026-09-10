@@ -58,12 +58,23 @@ test('chat body uses common streaming local-tool subset and contains no provider
   assert.equal(body.model, 'openai/gpt-oss-120b');
   assert.equal(body.stream, true);
   assert.equal(body.tool_choice, 'auto');
+  assert.equal(body.include_reasoning, false);
   assert.deepEqual(body.tools, tools);
   const serialized = JSON.stringify(body).toLowerCase();
   for (const forbidden of [
     'conversation_id', 'conversationid', 'thread_id', 'threadid', 'previous_response_id',
     'response_format', 'disable_tool_validation', 'browser_search', 'code_interpreter',
   ]) assert.equal(serialized.includes(forbidden), false, forbidden);
+});
+
+test('Cloudflare wire does not receive Groq-specific reasoning output controls', () => {
+  const route = createVerifiedRouteFixture({ family: 'cloudflare_workers_ai', modelId: '@cf/zai-org/glm-4.7-flash' });
+  const body = buildProviderChatBody({
+    route,
+    messages: [{ role: 'user', content: 'latest intent' }],
+    tools,
+  });
+  assert.equal('include_reasoning' in body, false);
 });
 
 test('wire rejects built-in/remote tools and executable provider-defined tool names', () => {
