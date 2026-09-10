@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   assertSpikeRuntimeVersions,
+  buildHarnessSdkOptions,
   buildPackageInstallEnv,
   buildScrubbedHarnessEnv,
+  DEFAULT_MISTRAL_MODEL_ID,
   renderMistralSettingsYaml,
-  resolveDshBinFromPackageManifest,
   resolveHarnessCandidateVersion,
+  sanitizeSpikeDiagnostic,
   validateSpikeInputs,
 } from '../../tools/workshop-spike/spike-config.ts';
 
@@ -35,7 +37,7 @@ test('scrubs unrelated secrets from the Harness child environment', () => {
 test('renders a Mistral custom provider using credential references only', () => {
   const yaml = renderMistralSettingsYaml({
     providerRoute: 'mistral',
-    modelId: 'mistral-medium-latest',
+    modelId: 'mistral-medium-3-5',
     baseUrl: 'https://api.mistral.ai/v1',
   });
   assert.match(yaml, /apiKeyEnv: MISTRAL_API_KEY/);
@@ -46,10 +48,15 @@ test('renders a Mistral custom provider using credential references only', () =>
   assert.doesNotMatch(yaml, /mistral-secret/);
 });
 
+test('pins the default Mistral model instead of using a silently moving latest alias', () => {
+  assert.equal(DEFAULT_MISTRAL_MODEL_ID, 'mistral-medium-3-5');
+  assert.doesNotMatch(DEFAULT_MISTRAL_MODEL_ID, /-latest$/);
+});
+
 test('rejects unsafe or incomplete spike inputs before any subprocess starts', () => {
   assert.throws(() => validateSpikeInputs({
     providerRoute: 'Mistral With Space',
-    modelId: 'mistral-medium-latest',
+    modelId: 'mistral-medium-3-5',
     baseUrl: 'https://api.mistral.ai/v1',
     mistralApiKey: 'x',
   }), /providerRoute/);
@@ -61,13 +68,13 @@ test('rejects unsafe or incomplete spike inputs before any subprocess starts', (
   }), /modelId/);
   assert.throws(() => validateSpikeInputs({
     providerRoute: 'mistral',
-    modelId: 'mistral-medium-latest',
+    modelId: 'mistral-medium-3-5',
     baseUrl: 'http://api.mistral.ai/v1',
     mistralApiKey: 'x',
   }), /HTTPS/);
   assert.throws(() => validateSpikeInputs({
     providerRoute: 'mistral',
-    modelId: 'mistral-medium-latest',
+    modelId: 'mistral-medium-3-5',
     baseUrl: 'https://api.mistral.ai/v1',
     mistralApiKey: '',
   }), /MISTRAL_API_KEY/);
@@ -91,7 +98,7 @@ test('does not expose model credentials to temporary package installation', () =
 test('can render a deliberately bounded provider timeout probe', () => {
   const yaml = renderMistralSettingsYaml({
     providerRoute: 'mistral-timeout',
-    modelId: 'mistral-medium-latest',
+    modelId: 'mistral-medium-3-5',
     baseUrl: 'https://api.mistral.ai/v1',
     timeoutMs: 5,
     streamIdleTimeoutMs: 5,
@@ -100,26 +107,75 @@ test('can render a deliberately bounded provider timeout probe', () => {
   assert.match(yaml, /streamIdleTimeoutMs: 5/);
 });
 
-test('resolves the dsh executable from the installed package manifest instead of assuming layout', () => {
-  assert.equal(
-    resolveDshBinFromPackageManifest({ bin: { dsh: './lib/bin.js' } }, '/tmp/runtime/node_modules/@deepseek-ai/dsh'),
-    '/tmp/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js',
-  );
-  assert.equal(
-    resolveDshBinFromPackageManifest({ bin: './lib/bin.js' }, '/tmp/runtime/node_modules/@deepseek-ai/dsh'),
-    '/tmp/runtime/node_modules/@deepseek-ai/dsh/lib/bin.js',
-  );
+test('builds only the public DeepSeek Harness 0.1.2-rc.1 SDK option shape', () => {
+  const options = buildHarnessSdkOptions({
+    PATH: '/usr/bin',
+    HOME: '/home/test',
+    OPENAI_API_KEY: 'must-not-pass',
+  }, {
+    workspace: '/tmp/workspace',
+    dshHome: '/tmp/dsh-home',
+    maxTokens: 2048,
+    input: {
+      providerRoute: 'mistral',
+      modelId: 'mistral-medium-3-5',
+      baseUrl: 'https://api.mistral.ai/v1',
+      mistralApiKey: 'mistral-secret',
+    },
+  });
+
+  assert.equal(options.profile, 'sdk');
+  assert.equal(options.dshHome, '/tmp/dsh-home');
+  assert.equal(options.processCwd, '/tmp/workspace');
+  assert.equal(options.cwd, '/tmp/workspace');
+  assert.equal(options.provider, 'mistral');
+  assert.equal(options.model, 'mistral-medium-3-5');
+  assert.equal(options.maxTokens, 2048);
+  assert.equal(options.initializeTimeoutMs, 10_000);
+  assert.equal(options.shutdownTimeoutMs, 1_000);
+  assert.equal(options.disposeEofGraceMs, 6_000);
+  assert.equal(options.disposeGraceMs, 3_000);
+  assert.equal(options.env.MISTRAL_API_KEY, 'mistral-secret');
+  assert.equal(options.env.OPENAI_API_KEY, undefined);
+  assert.equal('launch' in options, false);
+  assert.equal('command' in options, false);
+  assert.equal('args' in options, false);
+  assert.equal('dshBin' in options, false);
 });
 
-test('rejects an invalid or escaping dsh bin declaration', () => {
-  assert.throws(
-    () => resolveDshBinFromPackageManifest({ bin: { other: './lib/bin.js' } }, '/tmp/dsh'),
-    /bin\.dsh/,
+test('rejects invalid SDK option construction before Harness startup', () => {
+  assert.throws(() => buildHarnessSdkOptions({}, {
+    workspace: '',
+    dshHome: '/tmp/dsh-home',
+    maxTokens: 2048,
+    input: {
+      providerRoute: 'mistral',
+      modelId: 'mistral-medium-3-5',
+      baseUrl: 'https://api.mistral.ai/v1',
+      mistralApiKey: 'secret',
+    },
+  }), /workspace/);
+  assert.throws(() => buildHarnessSdkOptions({}, {
+    workspace: '/tmp/workspace',
+    dshHome: '/tmp/dsh-home',
+    maxTokens: 0,
+    input: {
+      providerRoute: 'mistral',
+      modelId: 'mistral-medium-3-5',
+      baseUrl: 'https://api.mistral.ai/v1',
+      mistralApiKey: 'secret',
+    },
+  }), /maxTokens/);
+});
+
+test('sanitizes the actual Mistral credential from bounded diagnostics', () => {
+  const diagnostic = sanitizeSpikeDiagnostic(
+    'provider failed with token super-secret-value while contacting endpoint',
+    'super-secret-value',
   );
-  assert.throws(
-    () => resolveDshBinFromPackageManifest({ bin: { dsh: '../escape.js' } }, '/tmp/dsh'),
-    /inside the package/,
-  );
+  assert.equal(diagnostic.includes('super-secret-value'), false);
+  assert.match(diagnostic, /\[REDACTED\]/);
+  assert.ok(diagnostic.length <= 800);
 });
 
 test('requires the repository Node and pnpm runtime versions for the live spike', () => {
