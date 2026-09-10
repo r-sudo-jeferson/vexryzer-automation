@@ -53,6 +53,9 @@ function boundedFailure(config, phase, status, errorClass, error = undefined, st
     ...(error instanceof Error
       ? { diagnostic: sanitizeProviderDiagnostic(`${error.name}: ${error.message}`, config.secretsToRedact) }
       : {}),
+    ...(state.protocolEvidence && typeof state.protocolEvidence === 'object'
+      ? { protocolEvidence: state.protocolEvidence }
+      : {}),
   };
 }
 
@@ -77,7 +80,7 @@ async function screenCandidate(candidate) {
   const streamMarker = `VXA-S002-STREAM-${randomUUID()}`;
   let streamResponse;
   try {
-    streamResponse = await post(config, buildStreamRequest(config.modelId, streamMarker));
+    streamResponse = await post(config, buildStreamRequest(config.modelId, streamMarker, config.provider));
   } catch (error) {
     const timeout = error instanceof Error && /abort|timeout|exceeded/i.test(`${error.name} ${error.message}`);
     return boundedFailure(config, 'stream', undefined, timeout ? 'TIMEOUT' : 'UNKNOWN', error);
@@ -89,13 +92,23 @@ async function screenCandidate(candidate) {
   const parsedStream = parseOpenAiSse(streamBody);
   const streaming = parsedStream.eventCount > 0 && parsedStream.done && parsedStream.text.includes(streamMarker);
   if (!streaming) {
-    return boundedFailure(config, 'stream-semantic', streamResponse.status, 'PROTOCOL', undefined, { authenticated: true });
+    return boundedFailure(config, 'stream-semantic', streamResponse.status, 'PROTOCOL', undefined, {
+      authenticated: true,
+      protocolEvidence: {
+        eventCount: parsedStream.eventCount,
+        contentChunkCount: parsedStream.contentChunkCount,
+        reasoningChunkCount: parsedStream.reasoningChunkCount,
+        done: parsedStream.done,
+        markerPresent: parsedStream.text.includes(streamMarker),
+        contentBytes: Buffer.byteLength(parsedStream.text, 'utf8'),
+      },
+    });
   }
 
   const toolMarker = `VXA-S002-TOOL-${randomUUID()}`;
   let toolResponse;
   try {
-    toolResponse = await post(config, buildToolRequest(config.modelId, toolMarker));
+    toolResponse = await post(config, buildToolRequest(config.modelId, toolMarker, config.provider));
   } catch (error) {
     const timeout = error instanceof Error && /abort|timeout|exceeded/i.test(`${error.name} ${error.message}`);
     return boundedFailure(config, 'tool', undefined, timeout ? 'TIMEOUT' : 'UNKNOWN', error, { authenticated: true, streaming });
@@ -117,7 +130,7 @@ async function screenCandidate(candidate) {
 
   let replayResponse;
   try {
-    replayResponse = await post(config, buildReplayRequest(config.modelId, call, toolMarker));
+    replayResponse = await post(config, buildReplayRequest(config.modelId, call, toolMarker, config.provider));
   } catch (error) {
     const timeout = error instanceof Error && /abort|timeout|exceeded/i.test(`${error.name} ${error.message}`);
     return boundedFailure(config, 'replay', undefined, timeout ? 'TIMEOUT' : 'UNKNOWN', error, { authenticated: true, streaming, toolCall });
