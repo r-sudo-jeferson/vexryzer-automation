@@ -5,6 +5,19 @@ export const DEFAULT_MISTRAL_PROVIDER_ROUTE = 'mistral' as const;
 export const DEFAULT_MISTRAL_MODEL_ID = 'mistral-medium-latest' as const;
 export const DEFAULT_MISTRAL_BASE_URL = 'https://api.mistral.ai/v1' as const;
 
+export interface SpikeRuntimeVersions {
+  nodeVersion: string;
+  pnpmVersion: string;
+}
+
+export function assertSpikeRuntimeVersions(versions: SpikeRuntimeVersions): void {
+  const nodeMajor = Number.parseInt(versions.nodeVersion.replace(/^v/, '').split('.')[0] ?? '', 10);
+  if (nodeMajor !== 24) throw new Error(`Workshop compatibility spike requires Node 24; got ${versions.nodeVersion}`);
+  if (versions.pnpmVersion.trim() !== '11.25.0') {
+    throw new Error(`Workshop compatibility spike requires pnpm 11.25.0; got ${versions.pnpmVersion}`);
+  }
+}
+
 export interface SpikeInputs {
   providerRoute: string;
   modelId: string;
