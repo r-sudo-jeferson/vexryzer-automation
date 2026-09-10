@@ -65,7 +65,7 @@ function stableSerialize(value: unknown): string {
       .map(([key, nested]) => JSON.stringify(key) + ':' + stableSerialize(nested));
     return '{' + entries.join(',') + '}';
   }
-  return JSON.stringify(value);
+  return JSON.stringify(value) ?? 'undefined';
 }
 
 function sameRecord(a: Readonly<AgentSessionRecord>, b: Readonly<AgentSessionRecord>): boolean {
