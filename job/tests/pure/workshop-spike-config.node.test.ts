@@ -121,13 +121,14 @@ test('uses an exact reviewed build-script policy instead of weakening pnpm secur
   assert.doesNotMatch(yaml, /strictDepBuilds:\s*false/);
 });
 
-test('anchors the published Harness consumer and pi-ai adapter to the reviewed release', () => {
+test('anchors the published Harness consumer and pi-ai stack to reviewed exact versions', () => {
   const manifest = JSON.parse(renderHarnessInstallPackageJson('0.1.2-rc.1')) as {
     dependencies: Record<string, string>;
   };
   assert.equal(manifest.dependencies['@deepseek-ai/dsh'], '0.1.2-rc.1');
   assert.equal(manifest.dependencies['@deepseek-ai/dsh-sdk-client'], '0.1.2-rc.1');
   assert.equal(manifest.dependencies['@deepseek-ai/dsh-llm-pi-ai'], '0.1.2-rc.1');
+  assert.equal(manifest.dependencies['@earendil-works/pi-ai'], '0.84.2');
   assert.equal(manifest.dependencies.react, '18.3.1');
   assert.equal(manifest.dependencies['react-dom'], '18.3.1');
 });
