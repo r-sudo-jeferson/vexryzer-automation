@@ -15,12 +15,21 @@ const canonical = {
   verifiedCalculations: [],
   openUncertainties: [],
   opportunities: [],
-  artifacts: [],
+  artifacts: [{
+    id: 'artifact-fallback',
+    kind: 'prototype',
+    title: 'Portal demonstrativo',
+    summary: 'Protótipo não produtivo para reduzir incerteza.',
+    maturity: 'prototype',
+    evidenceIds: ['fact-clients'],
+    status: 'revealed',
+    invalidatedAtRevision: null,
+  }],
   currentSceneId: 'scene-portfolio',
   latestUserIntent: { turnId: 'turn-9', text: 'Mostre o impacto sem depender da memória do provedor.' },
 } as const;
 
-const visualState = { sceneId: 'scene-portfolio', focusedEntityIds: ['fact-clients'], activeArtifactIds: [] } as const;
+const visualState = { sceneId: 'scene-portfolio', focusedEntityIds: ['fact-clients'], activeArtifactIds: ['artifact-fallback'] } as const;
 
 test('emergency capsule module exposes the fallback boundary', async () => {
   let moduleValue: Record<string, unknown> | null = null;
@@ -43,6 +52,9 @@ test('Groq-style emergency switch rebuilds from canonical truth and stays inside
   assert.equal(result.capsule.canonicalRevision, canonical.revision);
   assert.equal(result.capsule.confirmedFacts[0]?.id, 'fact-clients');
   assert.equal(result.capsule.latestUserIntent?.text, canonical.latestUserIntent.text);
+  assert.equal(result.capsule.activeArtifacts[0]?.id, 'artifact-fallback');
+  assert.equal(result.capsule.activeArtifacts[0]?.maturity, 'prototype');
+  assert.equal(result.capsule.activeArtifacts[0]?.status, 'revealed');
   assert.equal(result.capsule.estimatedInputTokens <= budget.emergencyInputTokens, true);
   const serialized = JSON.stringify(result.capsule);
   assert.equal(serialized.includes('providerConversationId'), false);
