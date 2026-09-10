@@ -4,6 +4,17 @@ import {
   freezeCanonicalSalesContext,
   type CanonicalSalesContext,
 } from '../../src/ai/context/canonical-sales-context.ts';
+import { createAgentSession, type AgentSessionRecord } from '../../src/server/session/agent-session.ts';
+import type {
+  AgentSessionRepository,
+  SessionCompareAndSetResult,
+  SessionCreateResult,
+  VersionedAgentSession,
+} from '../../src/server/session/session-repository.ts';
+import {
+  runStoredAgentTurn,
+  type AgentRuntimeStaticConfig,
+} from '../../src/server/session/stored-agent-turn-service.ts';
 import type { ProviderRouteDefinition, ProviderRouteTier } from '../../src/ai/providers/provider-registry.ts';
 import type { ProviderRuntimeState } from '../../src/ai/providers/route-eligibility.ts';
 import type { SellerSubmission } from '../../src/ai/seller/seller-contract.ts';
@@ -26,7 +37,12 @@ import {
   type CriticTurnRuntimeInput,
 } from '../../src/server/ai/critic/critic-turn-runtime.ts';
 import type { CriticReview } from '../../src/ai/critic/critic-contract.ts';
-import { ACCOUNTING_PROVIDER_QUALITY_SCENARIOS } from './accounting-scenarios.ts';
+import {
+  ACCOUNTING_PROVIDER_QUALITY_SCENARIOS,
+  PROVIDER_CONTINUITY_QUALITY_SCENARIOS,
+  S002_REQUIRED_PROVIDER_QUALITY_MATRIX,
+  type AccountingProviderScenario,
+} from './accounting-scenarios.ts';
 
 const REQUEST_START_SPACING_MS = 2_600;
 const REQUEST_TIMEOUT_MS = 45_000;
@@ -147,7 +163,7 @@ function estimateTokens(value: unknown): number {
   return Math.ceil(new TextEncoder().encode(json).byteLength / 3);
 }
 
-function canonicalForScenario(routeId: string, scenarioId: string, userText: string): CanonicalSalesContext {
+function canonicalForText(routeId: string, scenarioId: string, userText: string): CanonicalSalesContext {
   const sessionId = `quality-${routeId.replace(/^eval-/, '')}-${scenarioId}`.slice(0, 96);
   const turnId = 'turn-1';
   return freezeCanonicalSalesContext({
@@ -155,6 +171,81 @@ function canonicalForScenario(routeId: string, scenarioId: string, userText: str
     turnIds: Object.freeze([turnId]),
     primaryPain: userText,
     latestUserIntent: Object.freeze({ turnId, text: userText }),
+  });
+}
+
+function canonicalForScenario(
+  routeId: string,
+  scenario: Readonly<AccountingProviderScenario>,
+): CanonicalSalesContext {
+  const fresh = canonicalForText(routeId, scenario.id, scenario.userText);
+  if (scenario.setup === 'fresh') return fresh;
+
+  if (scenario.setup === 'corrected_fact') {
+    return freezeCanonicalSalesContext({
+      ...fresh,
+      revision: 4,
+      turnIds: Object.freeze(['turn-1', 'turn-2']),
+      facts: Object.freeze([
+        Object.freeze({
+          id: 'fact-reconciliation-cadence-old',
+          subject: 'conciliação',
+          predicate: 'cadência',
+          value: 'diária',
+          status: 'superseded' as const,
+          source: 'user' as const,
+          confidence: null,
+          supportingTurnIds: Object.freeze(['turn-1']),
+          confirmedByTurnId: 'turn-1',
+        }),
+        Object.freeze({
+          id: 'fact-reconciliation-cadence-current',
+          subject: 'conciliação',
+          predicate: 'cadência',
+          value: 'semanal',
+          status: 'confirmed' as const,
+          source: 'user' as const,
+          confidence: null,
+          supportingTurnIds: Object.freeze(['turn-2']),
+          confirmedByTurnId: 'turn-2',
+        }),
+      ]),
+      primaryPain: 'cadência da conciliação no fechamento',
+      latestUserIntent: Object.freeze({ turnId: 'turn-2', text: scenario.userText }),
+    });
+  }
+
+  return freezeCanonicalSalesContext({
+    ...fresh,
+    revision: 3,
+    turnIds: Object.freeze(['turn-1', 'turn-2', 'turn-3']),
+    facts: Object.freeze([
+      Object.freeze({
+        id: 'fact-active-clients-80',
+        subject: 'carteira',
+        predicate: 'clientes ativos',
+        value: 80,
+        status: 'conflicted' as const,
+        source: 'user' as const,
+        confidence: null,
+        supportingTurnIds: Object.freeze(['turn-1']),
+        confirmedByTurnId: null,
+      }),
+      Object.freeze({
+        id: 'fact-active-clients-120',
+        subject: 'carteira',
+        predicate: 'clientes ativos',
+        value: 120,
+        status: 'conflicted' as const,
+        source: 'user' as const,
+        confidence: null,
+        supportingTurnIds: Object.freeze(['turn-2']),
+        confirmedByTurnId: null,
+      }),
+    ]),
+    primaryPain: 'dimensionamento da carteira no fechamento',
+    openUncertainties: Object.freeze(['Quantidade correta de clientes ativos: 80 ou 120.']),
+    latestUserIntent: Object.freeze({ turnId: 'turn-3', text: scenario.userText }),
   });
 }
 
@@ -211,11 +302,12 @@ function credentialResolver(name: string): string | null {
   return value || null;
 }
 
-function sellerInput(
-  route: Readonly<ProviderRouteDefinition>,
+function sellerInputForRoutes(
+  routes: readonly Readonly<ProviderRouteDefinition>[],
   canonical: CanonicalSalesContext,
   userText: string,
   revisionRequest?: Readonly<SellerRevisionRequest>,
+  providerInvoker: typeof executeProviderChatStream = pacedProviderInvoker,
 ): SellerTurnRuntimeInput {
   const turnId = canonical.latestUserIntent?.turnId ?? 'turn-1';
   return {
@@ -228,17 +320,26 @@ function sellerInput(
       activeArtifactIds: Object.freeze([]),
       processNodes: Object.freeze([]),
     }),
-    routes: Object.freeze([route]),
-    routeBudgets: Object.freeze([routeBudget(route)]),
-    runtimeStates: Object.freeze([runtimeState(route)]),
+    routes: Object.freeze([...routes]),
+    routeBudgets: Object.freeze(routes.map(routeBudget)),
+    runtimeStates: Object.freeze(routes.map(runtimeState)),
     estimateTokens,
     resolveCredential: credentialResolver,
     serverConfig: serverConfig(),
     timeoutMs: REQUEST_TIMEOUT_MS,
     maxProviderRounds: 6,
     ...(revisionRequest === undefined ? {} : { revisionRequest }),
-    dependencies: Object.freeze({ executeProviderChatStream: pacedProviderInvoker }),
+    dependencies: Object.freeze({ executeProviderChatStream: providerInvoker }),
   };
+}
+
+function sellerInput(
+  route: Readonly<ProviderRouteDefinition>,
+  canonical: CanonicalSalesContext,
+  userText: string,
+  revisionRequest?: Readonly<SellerRevisionRequest>,
+): SellerTurnRuntimeInput {
+  return sellerInputForRoutes([route], canonical, userText, revisionRequest);
 }
 
 function criticInput(
@@ -310,7 +411,7 @@ async function evaluateScenario(
   const criticCallsBefore = networkCallCount(criticRoute.routeId);
   const sellerCalls = () => networkCallCount(sellerRoute.routeId) - sellerCallsBefore;
   const criticCalls = () => networkCallCount(criticRoute.routeId) - criticCallsBefore;
-  let canonical = canonicalForScenario(sellerRoute.routeId, scenario.id, scenario.userText);
+  let canonical = canonicalForScenario(sellerRoute.routeId, scenario);
   let seller = await runSellerTurn(sellerInput(sellerRoute, canonical, scenario.userText));
   if (!seller.ok) {
     return Object.freeze({
@@ -495,7 +596,7 @@ async function runCriticAdversarialChecks(criticRoute: Readonly<ProviderRouteDef
 
   const evidence = [];
   for (const item of cases) {
-    const base = canonicalForScenario(criticRoute.routeId, item.id, item.userText);
+    const base = canonicalForText(criticRoute.routeId, item.id, item.userText);
     const canonical = freezeCanonicalSalesContext({
       ...base,
       revision: 3,
@@ -527,6 +628,306 @@ async function runCriticAdversarialChecks(criticRoute: Readonly<ProviderRouteDef
     }));
   }
   return Object.freeze(evidence);
+}
+
+
+class QualityMemoryRepository implements AgentSessionRepository {
+  private readonly records = new Map<string, { record: Readonly<AgentSessionRecord>; version: number }>();
+
+  async get(sessionId: string): Promise<Readonly<VersionedAgentSession> | null> {
+    const entry = this.records.get(sessionId);
+    if (entry === undefined) return null;
+    return Object.freeze({ record: entry.record, etag: `v${entry.version}` });
+  }
+
+  async create(record: Readonly<AgentSessionRecord>): Promise<SessionCreateResult> {
+    if (this.records.has(record.sessionId)) return { ok: false, code: 'ALREADY_EXISTS' };
+    this.records.set(record.sessionId, { record, version: 1 });
+    return { ok: true, etag: 'v1' };
+  }
+
+  async compareAndSet(
+    sessionId: string,
+    expectedEtag: string,
+    record: Readonly<AgentSessionRecord>,
+  ): Promise<SessionCompareAndSetResult> {
+    const entry = this.records.get(sessionId);
+    if (entry === undefined) return { ok: false, code: 'NOT_FOUND' };
+    if (expectedEtag !== `v${entry.version}`) return { ok: false, code: 'CONFLICT' };
+    const version = entry.version + 1;
+    this.records.set(sessionId, { record, version });
+    return { ok: true, etag: `v${version}` };
+  }
+
+  snapshot(sessionId: string): Readonly<AgentSessionRecord> | null {
+    return this.records.get(sessionId)?.record ?? null;
+  }
+}
+
+function evaluationRuntime(
+  sellerRoutes: readonly Readonly<ProviderRouteDefinition>[],
+  criticRoute: Readonly<ProviderRouteDefinition>,
+): AgentRuntimeStaticConfig {
+  return Object.freeze({
+    seller: Object.freeze({
+      routes: Object.freeze([...sellerRoutes]),
+      routeBudgets: Object.freeze(sellerRoutes.map(routeBudget)),
+      runtimeStates: Object.freeze(sellerRoutes.map(runtimeState)),
+      estimateTokens,
+      resolveCredential: credentialResolver,
+      serverConfig: serverConfig(),
+      timeoutMs: REQUEST_TIMEOUT_MS,
+      maxProviderRounds: 6,
+      dependencies: Object.freeze({ executeProviderChatStream: pacedProviderInvoker }),
+    }),
+    critic: Object.freeze({
+      routes: Object.freeze([criticRoute]),
+      routeBudgets: Object.freeze([routeBudget(criticRoute)]),
+      runtimeStates: Object.freeze([runtimeState(criticRoute)]),
+      estimateTokens,
+      resolveCredential: credentialResolver,
+      serverConfig: serverConfig(),
+      timeoutMs: REQUEST_TIMEOUT_MS,
+      dependencies: Object.freeze({ executeProviderChatStream: pacedProviderInvoker }),
+    }),
+  });
+}
+
+function fallbackCanonical(userText: string): CanonicalSalesContext {
+  const base = canonicalForText('multi-provider', 'fallback-mid-conversation', userText);
+  return freezeCanonicalSalesContext({
+    ...base,
+    revision: 2,
+    turnIds: Object.freeze(['turn-1', 'turn-2']),
+    facts: Object.freeze([
+      Object.freeze({
+        id: 'fact-confirmed-closing-pain',
+        subject: 'fechamento mensal',
+        predicate: 'gargalo principal',
+        value: 'retrabalho em conferências',
+        status: 'confirmed' as const,
+        source: 'user' as const,
+        confidence: null,
+        supportingTurnIds: Object.freeze(['turn-1']),
+        confirmedByTurnId: 'turn-1',
+      }),
+    ]),
+    primaryPain: 'retrabalho em conferências no fechamento mensal',
+    latestUserIntent: Object.freeze({ turnId: 'turn-2', text: userText }),
+  });
+}
+
+async function runFallbackContinuityCheck(
+  sellerRoutes: readonly Readonly<ProviderRouteDefinition>[],
+  criticRoute: Readonly<ProviderRouteDefinition>,
+) {
+  const scenario = PROVIDER_CONTINUITY_QUALITY_SCENARIOS.find(
+    (item) => item.id === 'provider-fallback-mid-conversation',
+  )!;
+  const primary = sellerRoutes.find((route) => route.family === 'cloudflare_workers_ai');
+  const fallback = sellerRoutes.find((route) => route.family === 'groq');
+  if (primary === undefined || fallback === undefined) {
+    return Object.freeze({
+      contractOrdinal: scenario.contractOrdinal,
+      scenarioId: scenario.id,
+      pass: false,
+      evidenceMode: 'real_fallback' as const,
+      failure: Object.freeze({ code: 'REQUIRED_ROUTE_MISSING' }),
+    });
+  }
+
+  const canonical = fallbackCanonical(scenario.userText);
+  const fallbackRubric = Object.freeze({
+    id: scenario.id,
+    accountingSignalGroups: Object.freeze([
+      Object.freeze(['fechamento']),
+      Object.freeze(['retrabalho', 'conferência', 'conferencia', 'contexto']),
+    ]),
+    expectedCapabilitiesAnyOf: Object.freeze(['process_data_improvement', 'automation_integration', 'bi_decision_intelligence']),
+    forbiddenCapabilities: Object.freeze([]),
+    quantitativeExpectation: 'opportunity_or_calculation' as const,
+    requireSemanticUi: true,
+  });
+  let forcedPrimaryFailures = 0;
+  const invoker = async (
+    input: Parameters<typeof executeProviderChatStream>[0],
+  ): Promise<ProviderChatClientResult> => {
+    if (input.route.routeId === primary.routeId) {
+      forcedPrimaryFailures += 1;
+      return { ok: false, class: 'capacity', status: 503, retryAfterMs: null };
+    }
+    return pacedProviderInvoker(input);
+  };
+
+  const started = performance.now();
+  const seller = await runSellerTurn(sellerInputForRoutes(
+    [primary, fallback],
+    canonical,
+    scenario.userText,
+    undefined,
+    invoker,
+  ));
+  if (!seller.ok) {
+    return Object.freeze({
+      contractOrdinal: scenario.contractOrdinal,
+      scenarioId: scenario.id,
+      pass: false,
+      evidenceMode: 'real_fallback' as const,
+      forcedPrimaryFailures,
+      latencyMs: Math.round(performance.now() - started),
+      failure: safeFailure(seller),
+    });
+  }
+
+  const preservedFact = seller.canonical.facts.some(
+    (fact) => fact.id === 'fact-confirmed-closing-pain'
+      && fact.status === 'confirmed'
+      && fact.value === 'retrabalho em conferências',
+  );
+  const deterministic = evaluateAccountingSellerQuality({
+    scenario: fallbackRubric,
+    submission: seller.submission,
+    canonical: seller.canonical,
+  });
+  const critic = await runCriticTurn(criticInput(
+    criticRoute,
+    seller.canonical,
+    seller.submission,
+    scenario.userText,
+  ));
+  const criticPass = critic.ok && critic.review.verdict === 'PASS';
+  const pass = seller.routeId === fallback.routeId
+    && seller.providerCalls >= 2
+    && forcedPrimaryFailures === 1
+    && preservedFact
+    && deterministic.pass
+    && criticPass;
+
+  return Object.freeze({
+    contractOrdinal: scenario.contractOrdinal,
+    scenarioId: scenario.id,
+    pass,
+    evidenceMode: 'real_fallback' as const,
+    selectedRouteId: seller.routeId,
+    forcedPrimaryFailures,
+    sellerProviderCalls: seller.providerCalls,
+    preservedConfirmedFact: preservedFact,
+    deterministic,
+    criticVerdict: critic.ok ? critic.review.verdict : 'NOT_RUN',
+    latencyMs: Math.round(performance.now() - started),
+    ...(!critic.ok ? { failure: safeFailure(critic) } : {}),
+  });
+}
+
+async function runAllProviderRecoveryCheck(
+  sellerRoutes: readonly Readonly<ProviderRouteDefinition>[],
+  criticRoute: Readonly<ProviderRouteDefinition>,
+) {
+  const scenario = PROVIDER_CONTINUITY_QUALITY_SCENARIOS.find(
+    (item) => item.id === 'all-provider-failure-and-later-recovery',
+  )!;
+  const repository = new QualityMemoryRepository();
+  const token = 'abcdefghijklmnopqrstuvwxyzABCDEFGH0123456789_-';
+  let entropyLease = 0;
+  const created = createAgentSession({
+    sessionId: () => 'quality-all-provider-recovery',
+    token: () => token,
+    leaseId: () => `entropy-lease-${++entropyLease}`,
+  });
+  const createdResult = await repository.create(created.record);
+  if (!createdResult.ok) {
+    return Object.freeze({
+      contractOrdinal: scenario.contractOrdinal,
+      scenarioId: scenario.id,
+      pass: false,
+      evidenceMode: 'stored_session_recovery' as const,
+      failure: Object.freeze({ code: createdResult.code }),
+    });
+  }
+
+  const runtime = evaluationRuntime(sellerRoutes, criticRoute);
+  const firstText = 'O fechamento mensal ainda concentra o principal retrabalho do escritório.';
+  const outage = await runStoredAgentTurn({
+    repository,
+    request: Object.freeze({
+      sessionId: created.record.sessionId,
+      sessionToken: created.sessionToken,
+      requestId: 'provider-outage-turn',
+      expectedRevision: 0,
+      text: firstText,
+    }),
+    runtime,
+    dependencies: {
+      nowEpochMs: () => 1_000,
+      leaseId: () => 'lease-provider-outage',
+      runAgentLedTurn: (async (input: {
+        seller: { canonical: CanonicalSalesContext };
+        reactiveState: AgentSessionRecord['reactiveState'];
+      }) => ({
+        ok: false,
+        code: 'SELLER_FAILED',
+        canonical: input.seller.canonical,
+        reactiveState: input.reactiveState,
+        detail: 'PROVIDER_FAILED',
+        reviews: Object.freeze([]),
+      })) as never,
+    },
+  });
+  if (!outage.ok || outage.mode !== 'guided_recovery') {
+    return Object.freeze({
+      contractOrdinal: scenario.contractOrdinal,
+      scenarioId: scenario.id,
+      pass: false,
+      evidenceMode: 'stored_session_recovery' as const,
+      guidedRecoveryPass: false,
+      failure: Object.freeze({ code: outage.ok ? 'GUIDED_RECOVERY_NOT_USED' : outage.code }),
+    });
+  }
+
+  const afterOutage = repository.snapshot(created.record.sessionId);
+  const outageStatePreserved = afterOutage?.canonical.latestUserIntent?.text === firstText
+    && afterOutage.status === 'idle'
+    && afterOutage.lastCompletedRequest?.mode === 'guided_recovery';
+
+  const started = performance.now();
+  const recovered = await runStoredAgentTurn({
+    repository,
+    request: Object.freeze({
+      sessionId: created.record.sessionId,
+      sessionToken: created.sessionToken,
+      requestId: 'provider-recovery-turn',
+      expectedRevision: outage.state.canonicalRevision,
+      text: scenario.userText,
+    }),
+    runtime,
+    dependencies: {
+      nowEpochMs: () => 2_000,
+      leaseId: () => 'lease-provider-recovery',
+    },
+  });
+  const afterRecovery = repository.snapshot(created.record.sessionId);
+  const firstTurnStillPresent = afterRecovery?.recentTurns.some(
+    (turn) => turn.id === 'provider-outage-turn' && turn.text === firstText,
+  ) ?? false;
+  const pass = recovered.ok
+    && recovered.mode === 'agent'
+    && outageStatePreserved
+    && firstTurnStillPresent
+    && recovered.state.canonicalRevision > outage.state.canonicalRevision;
+
+  return Object.freeze({
+    contractOrdinal: scenario.contractOrdinal,
+    scenarioId: scenario.id,
+    pass,
+    evidenceMode: 'stored_session_recovery' as const,
+    guidedRecoveryPass: true,
+    outageStatePreserved,
+    firstTurnStillPresent,
+    recoveredMode: recovered.ok ? recovered.mode : 'NOT_RUN',
+    recoveredRevision: recovered.ok ? recovered.state.canonicalRevision : null,
+    latencyMs: Math.round(performance.now() - started),
+    ...(!recovered.ok ? { failure: Object.freeze({ code: recovered.code }) } : {}),
+  });
 }
 
 async function main() {
@@ -565,7 +966,39 @@ async function main() {
 
   const criticAdversarial = await runCriticAdversarialChecks(criticRoute);
   const criticPass = criticAdversarial.every((item) => item.pass);
-  const pass = routeSummaries.every((item) => item.pass) && criticPass;
+  const fallbackContinuity = await runFallbackContinuityCheck(sellerRoutes, criticRoute);
+  const allProviderRecovery = await runAllProviderRecoveryCheck(sellerRoutes, criticRoute);
+  const continuityEvidence = Object.freeze([fallbackContinuity, allProviderRecovery]);
+
+  const contractMatrix = Object.freeze(S002_REQUIRED_PROVIDER_QUALITY_MATRIX.map((matrixRow) => {
+    if (matrixRow.evidenceMode === 'seller_quality') {
+      const results = scenarioEvidence.filter((item) => item.scenarioId === matrixRow.id);
+      return Object.freeze({
+        contractOrdinal: matrixRow.contractOrdinal,
+        scenarioId: matrixRow.id,
+        contractRequirement: matrixRow.contractRequirement,
+        evidenceMode: matrixRow.evidenceMode,
+        pass: results.length === sellerRoutes.length && results.every((item) => item.pass),
+        routePasses: Object.freeze(results.map((item) => Object.freeze({
+          routeId: item.sellerRouteId,
+          pass: item.pass,
+        }))),
+      });
+    }
+    const continuity = continuityEvidence.find((item) => item.scenarioId === matrixRow.id);
+    return Object.freeze({
+      contractOrdinal: matrixRow.contractOrdinal,
+      scenarioId: matrixRow.id,
+      contractRequirement: matrixRow.contractRequirement,
+      evidenceMode: matrixRow.evidenceMode,
+      pass: continuity?.pass === true,
+    });
+  }));
+  const pass = routeSummaries.every((item) => item.pass)
+    && criticPass
+    && continuityEvidence.every((item) => item.pass)
+    && contractMatrix.length === 13
+    && contractMatrix.every((item) => item.pass);
 
   const output = Object.freeze({
     schemaVersion: 1,
@@ -580,6 +1013,9 @@ async function main() {
       groqFreeTpmSafetyBudget: GROQ_FREE_TPM_SAFETY_BUDGET,
       groqOutputReserveTokens: GROQ_OUTPUT_RESERVE_TOKENS,
       oneBoundedSellerRevision: true,
+      authorizedScenarioCount: 13,
+      sellerQualityScenarioCountPerRoute: ACCOUNTING_PROVIDER_QUALITY_SCENARIOS.length,
+      continuityScenarioCount: PROVIDER_CONTINUITY_QUALITY_SCENARIOS.length,
     }),
     criticRoute: Object.freeze({
       routeId: criticRoute.routeId,
@@ -590,6 +1026,8 @@ async function main() {
     routeSummaries: Object.freeze(routeSummaries),
     scenarios: Object.freeze(scenarioEvidence),
     criticAdversarial,
+    continuityEvidence,
+    contractMatrix,
   });
   process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
   if (!pass) process.exitCode = 1;
