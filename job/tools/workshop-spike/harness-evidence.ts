@@ -2,12 +2,23 @@ type JsonRecord = Record<string, unknown>;
 
 export interface HarnessEventEvidence {
   assistantChunkCount: number;
+  assistantMessageCount: number;
+  assistantAttemptCount: number;
+  stepStartCount: number;
+  stepEndCount: number;
+  requestHeaderCount: number;
   toolCallCount: number;
   toolResultCount: number;
   toolErrorCount: number;
   toolErrorCodes: string[];
   turnErrorCodes: string[];
   turnErrorStatuses: number[];
+  reportedInputTokens: number;
+  reportedOutputTokens: number;
+  reportedCacheReadTokens: number;
+  reportedCacheWriteTokens: number;
+  maxSystemPromptChars: number;
+  maxToolSchemaCount: number;
   structuredToolArguments: boolean;
   turnCompleted: boolean;
   turnEndReasons: string[];
@@ -76,6 +87,22 @@ function turnErrorStatus(value: unknown): number | null {
   return Number.isInteger(error?.status) ? error.status as number : null;
 }
 
+function assistantUsage(value: unknown): JsonRecord | null {
+  return eventType(value) === 'assistant/message' ? record(eventData(value)?.usage) : null;
+}
+
+function safeNonNegativeInteger(value: unknown): number {
+  return Number.isSafeInteger(value) && (value as number) >= 0 ? value as number : 0;
+}
+
+function maxOrZero(values: readonly number[]): number {
+  return values.length === 0 ? 0 : Math.max(...values);
+}
+
+function requestHeader(value: unknown): JsonRecord | null {
+  return eventType(value) === 'request/header' ? record(eventData(value)?.header) : null;
+}
+
 export function hasStreamingChunks(events: readonly unknown[]): boolean {
   return events.some((event) => eventType(event) === 'assistant/chunk');
 }
@@ -97,6 +124,8 @@ export function hasToolRoundTrip(events: readonly unknown[]): boolean {
 export function inspectHarnessEvents(events: readonly unknown[]): HarnessEventEvidence {
   const toolCalls = events.filter((event) => eventType(event) === 'tool/call');
   const toolResults = events.filter((event) => eventType(event) === 'tool/result');
+  const assistantMessages = events.filter((event) => eventType(event) === 'assistant/message');
+  const requestHeaders = events.filter((event) => eventType(event) === 'request/header');
   const toolNames = [...new Set(toolCalls.flatMap((event) => {
     const name = eventData(event)?.name;
     return typeof name === 'string' ? [name] : [];
@@ -108,12 +137,41 @@ export function inspectHarnessEvents(events: readonly unknown[]): HarnessEventEv
 
   return {
     assistantChunkCount: events.filter((event) => eventType(event) === 'assistant/chunk').length,
+    assistantMessageCount: assistantMessages.length,
+    assistantAttemptCount: events.filter((event) => eventType(event) === 'assistant/attempt').length,
+    stepStartCount: events.filter((event) => eventType(event) === 'step/start').length,
+    stepEndCount: events.filter((event) => eventType(event) === 'step/end').length,
+    requestHeaderCount: requestHeaders.length,
     toolCallCount: toolCalls.length,
     toolResultCount: toolResults.length,
     toolErrorCount: toolResults.filter((event) => record(eventData(event)?.error) !== null).length,
     toolErrorCodes,
     turnErrorCodes,
     turnErrorStatuses,
+    reportedInputTokens: assistantMessages.reduce(
+      (total, event) => total + safeNonNegativeInteger(assistantUsage(event)?.inputTokens),
+      0,
+    ),
+    reportedOutputTokens: assistantMessages.reduce(
+      (total, event) => total + safeNonNegativeInteger(assistantUsage(event)?.outputTokens),
+      0,
+    ),
+    reportedCacheReadTokens: assistantMessages.reduce(
+      (total, event) => total + safeNonNegativeInteger(assistantUsage(event)?.cacheReadTokens),
+      0,
+    ),
+    reportedCacheWriteTokens: assistantMessages.reduce(
+      (total, event) => total + safeNonNegativeInteger(assistantUsage(event)?.cacheWriteTokens),
+      0,
+    ),
+    maxSystemPromptChars: maxOrZero(requestHeaders.map((event) => {
+      const header = requestHeader(event);
+      return typeof header?.system === 'string' ? header.system.length : 0;
+    })),
+    maxToolSchemaCount: maxOrZero(requestHeaders.map((event) => {
+      const header = requestHeader(event);
+      return Array.isArray(header?.tools) ? header.tools.length : 0;
+    })),
     structuredToolArguments: toolCalls.length > 0 && toolCalls.every(validStructuredArguments),
     turnCompleted: turnEndReasons.includes('completed'),
     turnEndReasons,
