@@ -6,6 +6,7 @@ import {
   buildScrubbedHarnessEnv,
   renderMistralSettingsYaml,
   resolveDshBinFromPackageManifest,
+  resolveHarnessCandidateVersion,
   validateSpikeInputs,
 } from '../../tools/workshop-spike/spike-config.ts';
 
@@ -131,4 +132,11 @@ test('requires the repository Node and pnpm runtime versions for the live spike'
     () => assertSpikeRuntimeVersions({ nodeVersion: 'v24.21.0', pnpmVersion: '11.24.0' }),
     /pnpm 11\.25\.0/,
   );
+});
+
+test('uses only exact Harness versions and allows controlled candidate comparison', () => {
+  assert.equal(resolveHarnessCandidateVersion(undefined), '0.1.2-rc.1');
+  assert.equal(resolveHarnessCandidateVersion('0.1.1-rc.2'), '0.1.1-rc.2');
+  assert.throws(() => resolveHarnessCandidateVersion('latest'), /exact semver/);
+  assert.throws(() => resolveHarnessCandidateVersion('^0.1.2-rc.1'), /exact semver/);
 });
