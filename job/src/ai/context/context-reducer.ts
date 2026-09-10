@@ -17,6 +17,7 @@ import {
 export type MutationActor = 'user' | 'model' | 'system';
 
 export type ContextMutation =
+  | { type: 'COMMIT_MODEL_PROPOSAL'; facts: readonly SalesFact[]; opportunities: readonly OpportunityRecord[]; artifacts: readonly import('./canonical-sales-context.ts').ArtifactRecord[] }
   | { type: 'ADD_FACT'; fact: SalesFact }
   | { type: 'CONFIRM_FACT'; factId: string; turnId: string }
   | { type: 'CORRECT_FACT'; factId: string; turnId: string; replacement: SalesFact }
@@ -118,6 +119,71 @@ export function applyContextMutation(
   try {
     const mutation = envelope.mutation;
     switch (mutation.type) {
+      case 'COMMIT_MODEL_PROPOSAL': {
+        if (envelope.actor !== 'model') return reject(context, 'AUTHORITY_VIOLATION');
+        if (
+          mutation.facts.length > 16
+          || mutation.opportunities.length > 8
+          || mutation.artifacts.length > 8
+          || mutation.facts.length + mutation.opportunities.length + mutation.artifacts.length < 1
+        ) return reject(context, 'INVALID_MUTATION');
+
+        const batchIds = new Set<string>();
+        const facts: SalesFact[] = [];
+        for (const raw of mutation.facts) {
+          const fact = freezeFact(raw);
+          if (!validateFactAuthority('model', fact) || fact.confidence !== null) {
+            return reject(context, 'AUTHORITY_VIOLATION');
+          }
+          if (idExists(context, fact.id) || batchIds.has(fact.id)) return reject(context, 'DUPLICATE_ID');
+          batchIds.add(fact.id);
+          facts.push(fact);
+        }
+
+        const knownEvidence = new Set<string>();
+        for (const item of context.facts) knownEvidence.add(item.id);
+        for (const item of context.quantitativeObservations) knownEvidence.add(item.id);
+        for (const item of context.verifiedCalculations) knownEvidence.add(item.id);
+        for (const item of context.opportunities) knownEvidence.add(item.id);
+        for (const item of context.artifacts) knownEvidence.add(item.id);
+        for (const fact of facts) knownEvidence.add(fact.id);
+
+        const opportunities: OpportunityRecord[] = [];
+        for (const raw of mutation.opportunities) {
+          assertSafeDomainId('opportunity.id', raw.id);
+          if (idExists(context, raw.id) || batchIds.has(raw.id)) return reject(context, 'DUPLICATE_ID');
+          if (raw.status !== 'surfaced' || raw.invalidatedAtRevision !== null) return reject(context, 'INVALID_MUTATION');
+          if (raw.evidenceIds.some((id) => !knownEvidence.has(id))) return reject(context, 'INVALID_MUTATION');
+          batchIds.add(raw.id);
+          opportunities.push(Object.freeze({
+            ...raw,
+            capabilities: Object.freeze([...raw.capabilities]),
+            evidenceIds: Object.freeze([...raw.evidenceIds]),
+          }));
+        }
+
+        const artifacts = [];
+        for (const raw of mutation.artifacts) {
+          assertSafeDomainId('artifact.id', raw.id);
+          if (idExists(context, raw.id) || batchIds.has(raw.id)) return reject(context, 'DUPLICATE_ID');
+          if (raw.status !== 'proposed' || raw.invalidatedAtRevision !== null) return reject(context, 'INVALID_MUTATION');
+          if (raw.evidenceIds.some((id) => !knownEvidence.has(id))) return reject(context, 'INVALID_MUTATION');
+          batchIds.add(raw.id);
+          artifacts.push(Object.freeze({ ...raw, evidenceIds: Object.freeze([...raw.evidenceIds]) }));
+        }
+
+        return {
+          ok: true,
+          context: freezeCanonicalSalesContext({
+            ...context,
+            revision: context.revision + 1,
+            facts: [...context.facts, ...facts],
+            opportunities: [...context.opportunities, ...opportunities],
+            artifacts: [...context.artifacts, ...artifacts],
+          }),
+        };
+      }
+
       case 'ADD_FACT': {
         const fact = freezeFact(mutation.fact);
         if (!validateFactAuthority(envelope.actor, fact)) return reject(context, 'AUTHORITY_VIOLATION');
