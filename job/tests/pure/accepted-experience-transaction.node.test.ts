@@ -151,6 +151,64 @@ test('PASS publishes canonical evidence and reactive projection as one outer tra
   assert.equal(result.reactiveState.artifacts[0]?.id, 'artifact-new');
 });
 
+test('correction-only PASS updates reactive suggestion state without granting the model a canonical mutation', () => {
+  const existingFact = Object.freeze({
+    id: 'fact-existing',
+    subject: 'fechamento',
+    predicate: 'leva',
+    value: '5 dias',
+    status: 'confirmed' as const,
+    source: 'user' as const,
+    confidence: 1,
+    supportingTurnIds: Object.freeze(['turn-1']),
+    confirmedByTurnId: 'turn-1',
+  });
+  const initialCanonical = Object.freeze({
+    ...canonical(),
+    facts: Object.freeze([existingFact]),
+  });
+  const initialReactive = createReactiveExperienceState({ basedOnRevision: 4 });
+  const base = submission();
+  const correctionOnly = Object.freeze({
+    ...base,
+    proposal: Object.freeze({
+      ...base.proposal,
+      factProposals: Object.freeze([]),
+      intent: Object.freeze({
+        ...base.proposal.intent,
+        quantitativeOpportunities: Object.freeze([]),
+      }),
+      processMutations: Object.freeze([]),
+      sceneProposal: null,
+      artifactProposals: Object.freeze([]),
+      correctionProposals: Object.freeze([Object.freeze({
+        id: 'correction-existing',
+        targetEvidenceId: 'fact-existing',
+        reason: 'Há indicação de que o prazo informado pode ter mudado.',
+        replacementValue: '3 dias',
+        supportingTurnIds: Object.freeze(['turn-1']),
+      })]),
+    }),
+  });
+
+  const result = commitCriticApprovedExperience({
+    canonical: initialCanonical,
+    reactiveState: initialReactive,
+    submission: correctionOnly,
+    review: review(),
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.canonicalChanged, false);
+  assert.equal(result.canonical, initialCanonical);
+  assert.equal(result.canonical.revision, 4);
+  assert.equal(result.canonical.facts[0]?.value, '5 dias');
+  assert.equal(result.reactiveState.projectionRevision, 1);
+  assert.equal(result.reactiveState.correctionSuggestions[0]?.status, 'pending');
+  assert.equal(result.reactiveState.correctionSuggestions[0]?.correction.replacementValue, '3 dias');
+});
+
 test('REVISE, BLOCK, or stale Critic verdict cannot publish anything', async (t) => {
   for (const candidate of [
     review('REVISE'),
