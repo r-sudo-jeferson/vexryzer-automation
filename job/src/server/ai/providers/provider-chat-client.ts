@@ -4,7 +4,7 @@ import {
   type ProviderChatMessage,
   type ProviderServerConfig,
 } from './openai-chat-wire.ts';
-import { createChatSseDecoder, createChatStreamAccumulator, type AssembledChatStream } from './chat-sse.ts';
+import { ChatStreamChunkError, createChatSseDecoder, createChatStreamAccumulator, type AssembledChatStream, type ChatStreamChunkErrorCode } from './chat-sse.ts';
 import { classifyHttpFailure, classifyTransportFailure } from './provider-http-errors.ts';
 import type { ProviderRouteDefinition } from '../../../ai/providers/provider-registry.ts';
 
@@ -34,6 +34,7 @@ export type ProviderChatClientResult =
       status: number | null;
       retryAfterMs: number | null;
       malformedDetail?: ProviderMalformedDetail;
+      streamChunkDetail?: ChatStreamChunkErrorCode;
     };
 
 const MAX_TIMEOUT_MS = 120_000;
@@ -57,13 +58,23 @@ export async function consumeProviderChatSseResponse(
   const reader = response.body.getReader();
   let sawDone = false;
 
-  const rejectMalformed = async (malformedDetail: ProviderMalformedDetail): Promise<ProviderChatClientResult> => {
+  const rejectMalformed = async (
+    malformedDetail: ProviderMalformedDetail,
+    streamChunkDetail?: ChatStreamChunkErrorCode,
+  ): Promise<ProviderChatClientResult> => {
     try {
       await reader.cancel();
     } catch {
       // Cancellation cleanup is best-effort and never changes the classified provider failure.
     }
-    return { ok: false, class: 'malformed', status: response.status, retryAfterMs: null, malformedDetail };
+    return {
+      ok: false,
+      class: 'malformed',
+      status: response.status,
+      retryAfterMs: null,
+      malformedDetail,
+      ...(streamChunkDetail === undefined ? {} : { streamChunkDetail }),
+    };
   };
 
   try {
@@ -88,8 +99,11 @@ export async function consumeProviderChatSseResponse(
         }
         try {
           accumulator.accept(event.data);
-        } catch {
-          return await rejectMalformed('stream_chunk');
+        } catch (error) {
+          return await rejectMalformed(
+            'stream_chunk',
+            error instanceof ChatStreamChunkError ? error.code : undefined,
+          );
         }
       }
     }
@@ -107,8 +121,11 @@ export async function consumeProviderChatSseResponse(
       }
       try {
         accumulator.accept(event.data);
-      } catch {
-        return await rejectMalformed('stream_chunk');
+      } catch (error) {
+        return await rejectMalformed(
+          'stream_chunk',
+          error instanceof ChatStreamChunkError ? error.code : undefined,
+        );
       }
     }
     if (!sawDone) {
