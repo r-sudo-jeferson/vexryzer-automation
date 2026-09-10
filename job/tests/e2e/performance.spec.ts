@@ -1,5 +1,75 @@
 import { expect, test } from '@playwright/test';
 
+function percentile75(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.max(0, Math.ceil(sorted.length * 0.75) - 1);
+  return sorted[index] ?? Number.POSITIVE_INFINITY;
+}
+
+test('production-like lab samples keep LCP, interaction latency and CLS inside S001 budgets', async ({ page }, testInfo) => {
+  const session = await page.context().newCDPSession(page);
+  await session.send('Network.enable');
+  await session.send('Network.emulateNetworkConditions', {
+    offline: false,
+    latency: 40,
+    downloadThroughput: 1_250_000,
+    uploadThroughput: 625_000,
+    connectionType: 'wifi',
+  });
+
+  const samples: Array<{ lcpMs: number; inpMs: number; cls: number }> = [];
+  let budgets: { lcpMs: number; inpMs: number; cls: number } | null = null;
+
+  for (let sample = 0; sample < 5; sample += 1) {
+    await page.goto('/?perf=1', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(80);
+
+    await page.getByRole('button', { name: /Explorar um processo/i }).click();
+    await page.getByRole('button', { name: /01\./i }).click();
+    await page.waitForTimeout(80);
+
+    const metrics = await page.evaluate(() => window.__VXA_PERF__);
+    expect(metrics).toBeTruthy();
+    expect(metrics!.supportedEntryTypes).toEqual(expect.arrayContaining([
+      'largest-contentful-paint',
+      'layout-shift',
+      'event',
+    ]));
+    expect(metrics!.lcpMs).not.toBeNull();
+
+    budgets = metrics!.budgets;
+    samples.push({
+      lcpMs: metrics!.lcpMs!,
+      // Event Timing only surfaces interactions at/above the configured 16 ms threshold.
+      // No observed event therefore has a conservative <=16 ms upper bound for this lab guard.
+      inpMs: metrics!.inpMs ?? 16,
+      cls: metrics!.cls,
+    });
+  }
+
+  expect(budgets).toBeTruthy();
+  const p75 = {
+    lcpMs: percentile75(samples.map((sample) => sample.lcpMs)),
+    inpMs: percentile75(samples.map((sample) => sample.inpMs)),
+    cls: percentile75(samples.map((sample) => sample.cls)),
+  };
+
+  expect(p75.lcpMs).toBeLessThan(budgets!.lcpMs);
+  expect(p75.inpMs).toBeLessThan(budgets!.inpMs);
+  expect(p75.cls).toBeLessThan(budgets!.cls);
+
+  await testInfo.attach('web-vitals-lab-p75.json', {
+    body: JSON.stringify({
+      profile: { latencyMs: 40, downloadBytesPerSecond: 1_250_000, uploadBytesPerSecond: 625_000 },
+      project: testInfo.project.name,
+      samples,
+      p75,
+      budgets,
+    }, null, 2),
+    contentType: 'application/json',
+  });
+});
+
 test('stress interactions expose render/viewport/camera evidence through the opt-in probe', async ({ page }, testInfo) => {
   if (!testInfo.project.name.includes('desktop')) test.skip();
 
@@ -31,7 +101,7 @@ test('stress interactions expose render/viewport/camera evidence through the opt
   });
 });
 
-test('repeated focus/unfocus exposes post-GC heap evidence without breaking the directed path', async ({ page }, testInfo) => {
+test('repeated focus/unfocus reaches a post-warmup heap plateau and preserves the directed path', async ({ page }, testInfo) => {
   if (!testInfo.project.name.includes('desktop')) test.skip();
 
   const session = await page.context().newCDPSession(page);
@@ -62,8 +132,14 @@ test('repeated focus/unfocus exposes post-GC heap evidence without breaking the 
     expect(Number.isFinite(snapshot.totalSize)).toBe(true);
   }
 
+  const postWarmup = snapshots[1]!;
+  const final = snapshots.at(-1)!;
+  const allowedGrowthBytes = Math.max(2 * 1024 * 1024, Math.round(postWarmup.usedSize * 0.15));
+  const observedGrowthBytes = Math.max(0, final.usedSize - postWarmup.usedSize);
+  expect(observedGrowthBytes).toBeLessThanOrEqual(allowedGrowthBytes);
+
   await testInfo.attach('heap-probe.json', {
-    body: JSON.stringify(snapshots, null, 2),
+    body: JSON.stringify({ snapshots, postWarmupPhase: postWarmup.phase, observedGrowthBytes, allowedGrowthBytes }, null, 2),
     contentType: 'application/json',
   });
 });

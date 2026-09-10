@@ -137,3 +137,106 @@ test('resize during camera travel reissues the same intent, while repeated ident
   const afterRepeated = await page.evaluate(() => window.__VXA_PERF__?.cameraCommands ?? 0);
   expect(afterRepeated).toBe(beforeRepeated);
 });
+
+test('trackpad-pinch equivalent ctrl-wheel zooms the canvas without becoming a core navigation requirement', async ({ page }, testInfo) => {
+  if (!testInfo.project.name.includes('desktop')) test.skip();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await page.getByRole('button', { name: /Explorar um processo/i }).click();
+
+  const before = await readViewportMatrix(page);
+  await page.locator('.react-flow__pane').evaluate((pane) => {
+    const rect = pane.getBoundingClientRect();
+    pane.dispatchEvent(new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      deltaY: -120,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2,
+    }));
+  });
+  await expect.poll(async () => (await readViewportMatrix(page)).zoom).toBeGreaterThan(before.zoom);
+});
+
+test('keyboard focus auto-pans an offscreen process node back into view', async ({ page }, testInfo) => {
+  if (!testInfo.project.name.includes('desktop')) test.skip();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/?fixture=stress');
+  await page.getByRole('button', { name: /Explorar um processo/i }).click();
+
+  const canvas = page.locator('.vxa-canvas');
+  const box = await canvas.boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.move(box!.x + box!.width * 0.5, box!.y + box!.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width * 0.92, box!.y + box!.height * 0.88, { steps: 6 });
+  await page.mouse.up();
+
+  const firstNode = page.locator('.react-flow__node-process').first();
+  const beforeFocus = await readViewportMatrix(page);
+  await firstNode.focus();
+  await expect(firstNode).toBeFocused();
+  await expectViewportChanged(page, beforeFocus);
+  const nodeBox = await firstNode.boundingBox();
+  const canvasBox = await canvas.boundingBox();
+  expect(nodeBox).toBeTruthy();
+  expect(canvasBox).toBeTruthy();
+  expect(nodeBox!.x + nodeBox!.width).toBeGreaterThan(canvasBox!.x);
+  expect(nodeBox!.x).toBeLessThan(canvasBox!.x + canvasBox!.width);
+  expect(nodeBox!.y + nodeBox!.height).toBeGreaterThan(canvasBox!.y);
+  expect(nodeBox!.y).toBeLessThan(canvasBox!.y + canvasBox!.height);
+});
+
+test('stress layout has no visually overlapping process-node rectangles after camera settle', async ({ page }, testInfo) => {
+  if (!testInfo.project.name.includes('desktop')) test.skip();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/?fixture=stress');
+  await page.getByRole('button', { name: /Explorar um processo/i }).click();
+
+  const boxes = await page.locator('.react-flow__node-process').evaluateAll((nodes) => nodes.map((node) => {
+    const rect = node.getBoundingClientRect();
+    return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+  }));
+  expect(boxes.length).toBe(20);
+
+  const overlaps: Array<[number, number]> = [];
+  for (let a = 0; a < boxes.length; a += 1) {
+    for (let b = a + 1; b < boxes.length; b += 1) {
+      const first = boxes[a]!;
+      const second = boxes[b]!;
+      const overlapX = Math.min(first.right, second.right) - Math.max(first.left, second.left);
+      const overlapY = Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top);
+      if (overlapX > 1 && overlapY > 1) overlaps.push([a, b]);
+    }
+  }
+  expect(overlaps).toEqual([]);
+});
+
+test('vertical touch scrolling in directed mobile navigation does not drag the canvas viewport', async ({ page }, testInfo) => {
+  if (!testInfo.project.name.includes('mobile')) test.skip();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/?fixture=stress');
+  await page.getByRole('button', { name: /Explorar um processo/i }).click();
+
+  const director = page.locator('.vxa-director__steps');
+  const box = await director.boundingBox();
+  expect(box).toBeTruthy();
+  const beforeViewport = await readViewportMatrix(page);
+  const beforeScroll = await director.evaluate((element) => element.scrollTop);
+  const session = await page.context().newCDPSession(page);
+  const x = Math.round(box!.x + box!.width * 0.5);
+  const startY = Math.round(box!.y + box!.height * 0.75);
+  const endY = Math.round(box!.y + box!.height * 0.25);
+
+  await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: startY, id: 1 }] });
+  await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: endY, id: 1 }] });
+  await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
+  await expect.poll(() => director.evaluate((element) => element.scrollTop)).toBeGreaterThan(beforeScroll);
+  const afterViewport = await readViewportMatrix(page);
+  expect(Math.abs(afterViewport.x - beforeViewport.x)).toBeLessThan(0.5);
+  expect(Math.abs(afterViewport.y - beforeViewport.y)).toBeLessThan(0.5);
+  expect(Math.abs(afterViewport.zoom - beforeViewport.zoom)).toBeLessThan(0.005);
+});

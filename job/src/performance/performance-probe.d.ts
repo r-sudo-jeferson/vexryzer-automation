@@ -3,6 +3,9 @@ import type { PERFORMANCE_BUDGETS } from './budgets.ts';
 declare global {
   interface Window {
     __VXA_PERF__?: {
+      lcpMs: number | null;
+      inpMs: number | null;
+      cls: number;
       longTasks: number;
       lastLongTaskMs: number;
       canvasCommits: number;
@@ -11,6 +14,7 @@ declare global {
       cameraCommands: number;
       cameraInterruptions: number;
       cameraResizeRefits: number;
+      supportedEntryTypes: readonly string[];
       budgets: typeof PERFORMANCE_BUDGETS;
     };
   }
