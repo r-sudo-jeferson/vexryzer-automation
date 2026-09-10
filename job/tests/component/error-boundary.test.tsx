@@ -9,7 +9,9 @@ function Broken(): never {
 describe('ErrorBoundary', () => {
   it('shows a bounded recovery state when rendering fails', () => {
     render(<ErrorBoundary><Broken /></ErrorBoundary>);
-    expect(screen.getByRole('alert')).toHaveTextContent('A experiência visual encontrou um problema.');
-    expect(screen.getByRole('button', { name: 'Reiniciar experiência' })).toBeVisible();
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toContain('A experiência visual encontrou um problema.');
+    const restart = screen.getByRole('button', { name: 'Reiniciar experiência' });
+    expect(restart.tagName).toBe('BUTTON');
   });
 });

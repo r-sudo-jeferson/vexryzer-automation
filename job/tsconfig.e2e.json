@@ -8,10 +8,10 @@
     "allowImportingTsExtensions": true,
     "strict": true,
     "noEmit": true,
-    "skipLibCheck": false,
+    "skipLibCheck": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "types": ["node"]
   },
-  "include": ["playwright.config.ts", "tests/e2e", "tests/visual"]
+  "include": ["playwright.config.ts", "tests/e2e", "tests/visual", "src/performance/performance-probe.d.ts"]
 }

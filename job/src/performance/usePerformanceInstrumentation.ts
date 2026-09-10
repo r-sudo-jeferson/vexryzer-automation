@@ -1,22 +1,6 @@
 import { useEffect } from 'react';
 import { PERFORMANCE_BUDGETS } from './budgets.ts';
 
-declare global {
-  interface Window {
-    __VXA_PERF__?: {
-      longTasks: number;
-      lastLongTaskMs: number;
-      canvasCommits: number;
-      viewportEvents: number;
-      semanticBandChanges: number;
-      cameraCommands: number;
-      cameraInterruptions: number;
-      cameraResizeRefits: number;
-      budgets: typeof PERFORMANCE_BUDGETS;
-    };
-  }
-}
-
 export function usePerformanceInstrumentation(): void {
   useEffect(() => {
     const enabled = new URLSearchParams(window.location.search).get('perf') === '1';

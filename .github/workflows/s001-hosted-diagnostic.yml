@@ -1,4 +1,4 @@
-# Diagnostic iteration 2: TypeScript ecosystem compatibility without weakening strictness.
+# Diagnostic iteration 3: source-strict typechecking with vendor declaration boundary aligned to upstream projects.
 name: S001 Hosted Diagnostic
 
 on:
