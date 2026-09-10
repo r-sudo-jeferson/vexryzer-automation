@@ -8,27 +8,44 @@ import {
 
 const events = [
   { type: 'turn/start', seq: 1, time: 1, data: { turn: 1 } },
-  { type: 'assistant/chunk', seq: 2, time: 2, data: { turn: 1, step: 1, chunk: { type: 'text-delta', text: 'a' } } },
-  { type: 'assistant/chunk', seq: 3, time: 3, data: { turn: 1, step: 1, chunk: { type: 'text-delta', text: 'b' } } },
-  { type: 'tool/call', seq: 4, time: 4, data: { turn: 1, step: 1, callId: 'call-1', name: 'bash', arguments: '{"command":"printf probe"}' } },
-  { type: 'tool/result', seq: 5, time: 5, data: { turn: 1, step: 1, message: { toolCallId: 'call-1', content: [{ type: 'text', text: 'probe' }] } } },
-  { type: 'turn/end', seq: 6, time: 6, data: { turn: 1, reason: { kind: 'completed' } } },
+  { type: 'step/start', seq: 2, time: 2, data: { turn: 1, step: 1 } },
+  { type: 'request/header', seq: 3, time: 3, data: { header: { system: 'bounded-system', tools: [{ name: 'bash' }] }, reason: 'initial' } },
+  { type: 'assistant/chunk', seq: 4, time: 4, data: { turn: 1, step: 1, chunk: { type: 'text-delta', text: 'a' } } },
+  { type: 'assistant/chunk', seq: 5, time: 5, data: { turn: 1, step: 1, chunk: { type: 'text-delta', text: 'b' } } },
+  { type: 'tool/call', seq: 6, time: 6, data: { turn: 1, step: 1, callId: 'call-1', name: 'bash', arguments: '{"command":"printf probe"}' } },
+  { type: 'tool/result', seq: 7, time: 7, data: { turn: 1, step: 1, message: { toolCallId: 'call-1', content: [{ type: 'text', text: 'probe' }] } } },
+  { type: 'assistant/message', seq: 8, time: 8, data: { turn: 1, step: 1, message: { content: [] }, usage: { inputTokens: 1200, outputTokens: 50, cacheReadTokens: 100, cacheWriteTokens: 25 } } },
+  { type: 'assistant/attempt', seq: 9, time: 9, data: { turn: 1, step: 1, stream: [] } },
+  { type: 'step/end', seq: 10, time: 10, data: { turn: 1, step: 1 } },
+  { type: 'turn/end', seq: 11, time: 11, data: { turn: 1, reason: { kind: 'completed' } } },
 ] as const;
 
 test('extracts only bounded evidence from Harness session events', () => {
   assert.deepEqual(inspectHarnessEvents(events), {
     assistantChunkCount: 2,
+    assistantMessageCount: 1,
+    assistantAttemptCount: 1,
+    stepStartCount: 1,
+    stepEndCount: 1,
+    requestHeaderCount: 1,
     toolCallCount: 1,
     toolResultCount: 1,
     toolErrorCount: 0,
     toolErrorCodes: [],
     turnErrorCodes: [],
     turnErrorStatuses: [],
+    reportedInputTokens: 1200,
+    reportedOutputTokens: 50,
+    reportedCacheReadTokens: 100,
+    reportedCacheWriteTokens: 25,
+    maxSystemPromptChars: 'bounded-system'.length,
+    maxToolSchemaCount: 1,
     structuredToolArguments: true,
     turnCompleted: true,
     turnEndReasons: ['completed'],
     toolNames: ['bash'],
   });
+  assert.equal(JSON.stringify(inspectHarnessEvents(events)).includes('bounded-system'), false);
 });
 
 test('detects streaming and a complete tool round trip', () => {
@@ -93,4 +110,25 @@ test('reports bounded turn failure facts without exposing provider error text', 
   assert.deepEqual(evidence.turnErrorStatuses, [400]);
   assert.equal(JSON.stringify(evidence).includes('sensitive provider detail'), false);
   assert.equal(JSON.stringify(evidence).includes('req-private'), false);
+});
+
+test('reports bounded request pressure and provider token usage without exposing prompt text', () => {
+  const pressure = [
+    { type: 'step/start', data: { turn: 1, step: 1 } },
+    { type: 'request/header', data: { header: { system: 'private-system-prompt', tools: [{ name: 'a' }, { name: 'b' }] }, reason: 'initial' } },
+    { type: 'assistant/message', data: { turn: 1, step: 1, message: { content: [] }, usage: { inputTokens: 1234, outputTokens: 56, cacheReadTokens: 78, cacheWriteTokens: 9 } } },
+    { type: 'step/end', data: { turn: 1, step: 1 } },
+  ];
+  const evidence = inspectHarnessEvents(pressure);
+  assert.equal(evidence.stepStartCount, 1);
+  assert.equal(evidence.stepEndCount, 1);
+  assert.equal(evidence.requestHeaderCount, 1);
+  assert.equal(evidence.assistantMessageCount, 1);
+  assert.equal(evidence.reportedInputTokens, 1234);
+  assert.equal(evidence.reportedOutputTokens, 56);
+  assert.equal(evidence.reportedCacheReadTokens, 78);
+  assert.equal(evidence.reportedCacheWriteTokens, 9);
+  assert.equal(evidence.maxSystemPromptChars, 'private-system-prompt'.length);
+  assert.equal(evidence.maxToolSchemaCount, 2);
+  assert.equal(JSON.stringify(evidence).includes('private-system-prompt'), false);
 });
