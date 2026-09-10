@@ -376,6 +376,22 @@ function networkCallCount(routeId: string): number {
   return networkCallsByRoute.get(routeId) ?? 0;
 }
 
+function safeValidationFailure(result: object): Readonly<Record<string, string>> {
+  if (!('validation' in result) || typeof result.validation !== 'object' || result.validation === null) {
+    return Object.freeze({});
+  }
+  const validation = result.validation as Record<string, unknown>;
+  const bounded: Record<string, string> = {};
+  if (typeof validation['code'] === 'string') bounded['validationCode'] = validation['code'];
+  if (typeof validation['path'] === 'string') bounded['validationPath'] = validation['path'];
+  const finding = validation['finding'];
+  if (typeof finding === 'object' && finding !== null) {
+    const findingRecord = finding as Record<string, unknown>;
+    if (typeof findingRecord['code'] === 'string') bounded['hardBlockCode'] = findingRecord['code'];
+  }
+  return Object.freeze(bounded);
+}
+
 function safeFailure(result: object & { ok: false; code: string }) {
   return Object.freeze({
     code: result.code,
@@ -385,6 +401,7 @@ function safeFailure(result: object & { ok: false; code: string }) {
     ...('providerMalformedDetail' in result && typeof result.providerMalformedDetail === 'string' ? { providerMalformedDetail: result.providerMalformedDetail } : {}),
     ...('providerSseDecodeDetail' in result && typeof result.providerSseDecodeDetail === 'string' ? { providerSseDecodeDetail: result.providerSseDecodeDetail } : {}),
     ...('providerStreamChunkDetail' in result && typeof result.providerStreamChunkDetail === 'string' ? { providerStreamChunkDetail: result.providerStreamChunkDetail } : {}),
+    ...safeValidationFailure(result),
   });
 }
 
