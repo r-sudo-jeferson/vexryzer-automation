@@ -1,6 +1,9 @@
 import { useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { AgentExperienceStatus } from './app-machine.ts';
-import type { ProjectedArtifact } from '../experience/reactive-experience-state.ts';
+import type {
+  ProjectedArtifact,
+  ProjectedCorrectionSuggestion,
+} from '../experience/reactive-experience-state.ts';
 
 interface AskAiPanelProps {
   status: AgentExperienceStatus;
@@ -8,8 +11,18 @@ interface AskAiPanelProps {
   nextQuestion: string | null;
   errorCode: string | null;
   artifacts: readonly Readonly<ProjectedArtifact>[];
+  corrections: readonly Readonly<ProjectedCorrectionSuggestion>[];
   onSubmit: (text: string) => Promise<boolean>;
+  onApplyCorrection: (correctionId: string) => Promise<boolean>;
   onResetSession: () => void;
+}
+
+function correctionValue(value: string | number | boolean): string {
+  if (typeof value === 'boolean') return value ? 'Sim' : 'Não';
+  if (typeof value === 'number') {
+    return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(value);
+  }
+  return value;
 }
 
 function errorMessage(code: string | null): string {
@@ -28,6 +41,13 @@ function errorMessage(code: string | null): string {
     case 'UNAUTHORIZED':
     case 'NOT_FOUND':
       return 'A sessão perdeu continuidade segura. Inicie uma nova análise para não misturar estados.';
+    case 'CORRECTION_NOT_PENDING':
+      return 'Essa correção não está mais pendente. O estado atual foi preservado.';
+    case 'CORRECTION_VALUE_INVALID':
+    case 'CORRECTION_TARGET_INVALID':
+    case 'CORRECTION_COMMIT_REJECTED':
+      return 'A correção não pôde ser aplicada sem violar a verdade canônica.';
+    case 'SURFACE_REJECTED':
     case 'CLIENT_SURFACE_REJECTED':
     case 'INVALID_SERVER_RESPONSE':
     case 'SESSION_ID_MISMATCH':
@@ -43,12 +63,14 @@ export function AskAiPanel({
   nextQuestion,
   errorCode,
   artifacts,
+  corrections,
   onSubmit,
+  onApplyCorrection,
   onResetSession,
 }: AskAiPanelProps) {
   const [text, setText] = useState('');
   const [composing, setComposing] = useState(false);
-  const busy = status === 'requesting';
+  const busy = status === 'requesting' || status === 'correcting';
   const canSubmit = !busy && text.trim().length > 0 && text.trim().length <= 4_000;
 
   const submit = async (event?: FormEvent) => {
@@ -73,7 +95,7 @@ export function AskAiPanel({
           <h2 id="vxa-agent-title">Descreva a rotina como ela acontece.</h2>
         </div>
         <span className="vxa-agent__state" aria-hidden="true">
-          {busy ? 'ANALISANDO' : status === 'recovery' ? 'MODO SEGURO' : status === 'error' ? 'NÃO PUBLICADO' : 'PRONTO'}
+          {status === 'requesting' ? 'ANALISANDO' : status === 'correcting' ? 'CORRIGINDO' : status === 'recovery' ? 'MODO SEGURO' : status === 'error' ? 'NÃO PUBLICADO' : 'PRONTO'}
         </span>
       </div>
 
@@ -82,7 +104,9 @@ export function AskAiPanel({
           {busy ? (
             <>
               <span className="vxa-agent__pulse" aria-hidden="true" />
-              <p>Estou organizando o contexto e validando o próximo movimento antes de alterar o Canvas.</p>
+              <p>{status === 'correcting'
+                ? 'Estou aplicando sua correção à verdade canônica e revalidando os efeitos dependentes.'
+                : 'Estou organizando o contexto e validando o próximo movimento antes de alterar o Canvas.'}</p>
             </>
           ) : status === 'error' ? (
             <div>
@@ -101,6 +125,28 @@ export function AskAiPanel({
           Pode ser confuso, manual ou cheio de exceções. Comece pelo ponto que mais consome atenção, prazo ou retrabalho.
         </p>
       )}
+
+      {corrections.some((item) => item.status === 'pending') ? (
+        <div className="vxa-agent__corrections" aria-label="Correções sugeridas">
+          <span className="vxa-agent__section-label">CONFIRMAÇÃO NECESSÁRIA</span>
+          {corrections.filter((item) => item.status === 'pending').map((item) => (
+            <article key={item.sourceCorrectionId}>
+              <div>
+                <strong>Atualização sugerida</strong>
+                <p>{item.correction.reason}</p>
+                <span>Valor proposto: {correctionValue(item.correction.replacementValue)}</span>
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void onApplyCorrection(item.sourceCorrectionId)}
+              >
+                Aplicar correção
+              </button>
+            </article>
+          ))}
+        </div>
+      ) : null}
 
       {artifacts.length > 0 ? (
         <div className="vxa-agent__artifacts" aria-label="Conceitos gerados e validados">
