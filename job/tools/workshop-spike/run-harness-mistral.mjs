@@ -53,8 +53,13 @@ function runCommand(command, args, options) {
         resolve({ stdout, stderr });
         return;
       }
-      const bounded = stderr.replace(/[\r\n\t]+/g, ' ').trim().slice(-800);
-      const suffix = bounded ? `: ${bounded}` : '';
+      const diagnostic = [stdout, stderr]
+        .filter(Boolean)
+        .join('\n')
+        .replace(/[\r\n\t]+/g, ' ')
+        .trim()
+        .slice(-1_200);
+      const suffix = diagnostic ? `: ${diagnostic}` : '';
       const error = new Error(`${command} exited with code ${code ?? 'unknown'}${suffix}`);
       error.name = 'SpikeSubprocessError';
       reject(error);
