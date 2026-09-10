@@ -41,7 +41,7 @@ type ParseResult<T> = { ok: true; value: T } | ValidationFailure;
 
 const SAFE_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
-const EXECUTABLE_TEXT_PATTERN = /(?:<\/?script\b|javascript\s*:|data\s*:\s*text\/html|import\s*\(|require\s*\(|<\s*[A-Z][A-Za-z0-9]*(?:\s|\/?>))/i;
+const EXECUTABLE_TEXT_PATTERN = /(?:<\/?[A-Za-z][^>]*>|javascript\s*:|data\s*:\s*text\/html|import\s*\(|require\s*\(|(?:window|document|globalThis)\s*\.|=>|(?:^|\s)(?:body|html|:root|[.#][A-Za-z][\w-]*)\s*\{[^{}]{0,500}:[^{}]{0,500}\})/i;
 const FORBIDDEN_EXECUTABLE_KEYS = new Set([
   'html', 'rawHtml', 'dangerouslySetInnerHTML', 'jsx', 'tsx', 'script', 'javascript', 'css', 'style', 'styles',
   'component', 'componentPath', 'module', 'modulePath', 'import', 'require', 'handler', 'callback', 'code',
