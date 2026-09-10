@@ -17,7 +17,6 @@ import {
   assertSpikePnpmVersion,
   buildHarnessSdkOptions,
   buildPackageInstallEnv,
-  DEFAULT_MISTRAL_BASE_URL,
   DEFAULT_MISTRAL_MODEL_ID,
   DEFAULT_MISTRAL_PROVIDER_ROUTE,
   HARNESS_SPIKE_PROFILE,
@@ -167,7 +166,6 @@ async function writeProviderPatch(dshHome, input, timeouts = undefined) {
   await writeFile(patchPath, renderMistralMinimalProfilePatchYaml({
     providerRoute: input.providerRoute,
     modelId: input.modelId,
-    baseUrl: input.baseUrl,
     ...(timeouts ?? {}),
   }), { mode: 0o600 });
   return patchPath;
@@ -298,7 +296,6 @@ async function main() {
   const input = {
     providerRoute: process.env.VXA_MISTRAL_PROVIDER_ROUTE?.trim() || DEFAULT_MISTRAL_PROVIDER_ROUTE,
     modelId: process.env.VXA_MISTRAL_MODEL_ID?.trim() || DEFAULT_MISTRAL_MODEL_ID,
-    baseUrl: process.env.VXA_MISTRAL_BASE_URL?.trim() || DEFAULT_MISTRAL_BASE_URL,
     mistralApiKey: process.env.MISTRAL_API_KEY?.trim() || '',
   };
   validateSpikeInputs(input);
@@ -338,7 +335,8 @@ async function main() {
       evidence: normal.diagnosticCounts,
       notes: [
         'Raw provider payloads and model credentials are intentionally not emitted.',
-        'The official sdk-minimal profile is patched at launch to replace only the DeepSeek adapter with the configured llm-pi-ai Mistral route.',
+        'The official sdk-minimal profile replaces only the DeepSeek adapter with llm-pi-ai and reuses pi-ai\'s native Mistral provider implementation.',
+        'The fixed Medium 3.5 id is added to the Mistral route without protocol, endpoint, or compatibility overrides.',
         'Every normal-turn request must expose exactly the two tool schemas shipped by sdk-minimal.',
         'A PASS is valid only for this exact Harness version/profile/provider/model tuple.',
         'This proof does not authorize a public live Workshop deployment.',
