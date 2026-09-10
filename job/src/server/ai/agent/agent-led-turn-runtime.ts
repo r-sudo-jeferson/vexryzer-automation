@@ -11,6 +11,9 @@ import {
   commitCriticApprovedExperience,
   type AcceptedExperienceTransactionResult,
 } from '../../../experience/accepted-experience-transaction.ts';
+import type {
+  AcceptedExperienceSurfaceGuard,
+} from '../../../experience/accepted-experience-transaction.ts';
 import type { ReactiveExperienceState } from '../../../experience/reactive-experience-state.ts';
 import {
   runCriticTurn,
@@ -41,6 +44,7 @@ export interface AgentLedTurnRuntimeInput {
   seller: SellerTurnRuntimeInput;
   critic: AgentLedCriticRuntimeConfig;
   reactiveState: Readonly<ReactiveExperienceState>;
+  surfaceGuard: AcceptedExperienceSurfaceGuard;
   dependencies?: Partial<AgentLedTurnRuntimeDependencies>;
 }
 
@@ -138,6 +142,7 @@ function publish(
     reactiveState: input.reactiveState,
     submission,
     review,
+    surfaceGuard: input.surfaceGuard,
   });
   if (!publication.ok) {
     return {
