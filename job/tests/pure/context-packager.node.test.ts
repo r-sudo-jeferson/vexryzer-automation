@@ -25,7 +25,7 @@ const canonical = {
   ],
   openUncertainties: ['volume mensal exato'],
   opportunities: [],
-  artifacts: [{ id: 'artifact-1', kind: 'bi_dashboard', title: 'Painel de fechamento', evidenceIds: ['fact-confirmed'], status: 'revealed', invalidatedAtRevision: null }],
+  artifacts: [{ id: 'artifact-1', kind: 'bi_dashboard', title: 'Painel de fechamento', summary: 'Visão operacional conceitual do fechamento.', maturity: 'conceptual', evidenceIds: ['fact-confirmed'], status: 'revealed', invalidatedAtRevision: null }],
   currentSceneId: 'scene-closing',
   latestUserIntent: { turnId: 'turn-3', text: 'Quero reduzir o fechamento sem contratar mais gente.' },
 } as const;
@@ -97,6 +97,8 @@ test('prioritizes latest intent, confirmed truth, objections and quantitative ev
   assert.equal(result.pack.openObjections.some((item: { id: string }) => item.id === 'objection-price'), true);
   assert.equal(result.pack.quantitativeEvidence.observations.some((item: { id: string }) => item.id === 'obs-minutes'), true);
   assert.equal(result.pack.quantitativeEvidence.calculations.some((item: { id: string }) => item.id === 'calc-hours'), true);
+  assert.equal(result.pack.activeArtifacts[0]?.maturity, 'conceptual');
+  assert.equal(result.pack.activeArtifacts[0]?.summary, 'Visão operacional conceitual do fechamento.');
   assert.equal(result.pack.recentTurns.some((item: { id: string }) => item.id === 'turn-old'), false);
   assert.equal(calls.length, 2);
 });
