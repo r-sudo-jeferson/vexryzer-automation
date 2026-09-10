@@ -92,6 +92,9 @@ function decodeFrame(frame: string): ChatSseEvent | null {
       dataLines.push(line.slice(5).replace(/^ /, ''));
       continue;
     }
+    if (line.startsWith('event:') || line.startsWith('id:') || line.startsWith('retry:')) {
+      continue;
+    }
     rejectSseDecode('unsupported_field');
   }
   if (dataLines.length === 0) return null;
