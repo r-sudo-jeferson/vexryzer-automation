@@ -187,24 +187,55 @@ test('historical request id cannot be replayed after a newer request becomes can
     turnIds: Object.freeze(['request-old']),
     latestUserIntent: Object.freeze({ turnId: 'request-old', text: 'Primeiro turno.' }),
   });
-  const completed = completeAgentSession(first.record, {
+  const completedOld = completeAgentSession(first.record, {
     leaseId: first.record.lease.leaseId,
     canonical: canonicalWithOldTurn,
     reactiveState: first.record.reactiveState,
     recentTurns: [{ id: 'request-old', role: 'user', text: 'Primeiro turno.' }],
     completed: {
-      requestId: 'request-newer',
+      requestId: 'request-old',
       inputRevision: 0,
       resultRevision: 1,
       mode: 'guided_recovery',
-      narration: 'Contexto preservado.',
+      narration: 'Primeiro contexto preservado.',
       nextQuestion: null,
     },
   });
 
-  const replay = claimAgentSession(completed, {
-    requestId: 'request-old',
+  const second = claimAgentSession(completedOld, {
+    requestId: 'request-newer',
     expectedRevision: 1,
+    nowEpochMs: 1_500,
+  }, { leaseId: () => 'lease-two' });
+  if (!second.ok || second.idempotent || second.record.lease === null) throw new Error('expected second claim');
+
+  const canonicalWithNewerTurn = Object.freeze({
+    ...second.record.canonical,
+    revision: 2,
+    turnIds: Object.freeze([...second.record.canonical.turnIds, 'request-newer']),
+    latestUserIntent: Object.freeze({ turnId: 'request-newer', text: 'Segundo turno.' }),
+  });
+  const completedNewer = completeAgentSession(second.record, {
+    leaseId: second.record.lease.leaseId,
+    canonical: canonicalWithNewerTurn,
+    reactiveState: second.record.reactiveState,
+    recentTurns: [
+      { id: 'request-old', role: 'user', text: 'Primeiro turno.' },
+      { id: 'request-newer', role: 'user', text: 'Segundo turno.' },
+    ],
+    completed: {
+      requestId: 'request-newer',
+      inputRevision: 1,
+      resultRevision: 2,
+      mode: 'guided_recovery',
+      narration: 'Segundo contexto preservado.',
+      nextQuestion: null,
+    },
+  });
+
+  const replay = claimAgentSession(completedNewer, {
+    requestId: 'request-old',
+    expectedRevision: 2,
     nowEpochMs: 2_000,
   }, { leaseId: () => 'lease-replay' });
   assert.deepEqual(replay, { ok: false, code: 'REQUEST_REPLAY' });
