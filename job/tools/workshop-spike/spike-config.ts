@@ -52,18 +52,23 @@ export function validateSpikeInputs(inputs: SpikeInputs): void {
   if (/\s/.test(inputs.mistralApiKey)) throw new TypeError('MISTRAL_API_KEY must not contain whitespace');
 }
 
-export function buildScrubbedHarnessEnv(
-  parentEnv: NodeJS.ProcessEnv,
-  options: HarnessEnvironmentOptions,
-): NodeJS.ProcessEnv {
+export function buildPackageInstallEnv(parentEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const key of SAFE_PARENT_ENV_KEYS) {
     const value = parentEnv[key];
     if (value) env[key] = value;
   }
+  env.CI = 'true';
+  return env;
+}
+
+export function buildScrubbedHarnessEnv(
+  parentEnv: NodeJS.ProcessEnv,
+  options: HarnessEnvironmentOptions,
+): NodeJS.ProcessEnv {
+  const env = buildPackageInstallEnv(parentEnv);
   env.DSH_HOME = options.dshHome;
   env.MISTRAL_API_KEY = options.mistralApiKey;
-  env.CI = 'true';
   return env;
 }
 
