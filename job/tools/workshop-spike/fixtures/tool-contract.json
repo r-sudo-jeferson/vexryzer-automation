@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "candidateHarnessVersion": "0.1.2-rc.1",
+  "providerRoute": "mistral",
+  "defaultModelId": "mistral-medium-latest",
+  "probeFile": "vxa-harness-tool-probe.txt",
+  "requiredCapabilities": [
+    "streaming",
+    "toolCalls",
+    "multiTurnToolReplay",
+    "structuredArguments",
+    "timeoutMapped",
+    "restartSafe"
+  ],
+  "firstTurn": {
+    "purpose": "Prove model-to-tool invocation and a real workspace side effect.",
+    "instruction": "Use one available development tool to create the requested probe file with the exact nonce supplied in the prompt, then report completion concisely."
+  },
+  "secondTurn": {
+    "purpose": "Prove same-session continuation and another real tool round trip.",
+    "instruction": "Use one available development tool to read the existing probe file and return the exact nonce it contains."
+  },
+  "restartTurn": {
+    "purpose": "Prove durable session replay after the Harness runtime is closed and restarted.",
+    "instruction": "Without using a tool, return the nonce that was provided in the first turn. The restart prompt itself must not contain that nonce."
+  },
+  "security": {
+    "persistRawProviderPayloads": false,
+    "persistModelCredential": false,
+    "passUnrelatedParentSecretsToHarness": false,
+    "passModelCredentialToPackageInstall": false,
+    "workspaceMustBeDisposable": true
+  }
+}
