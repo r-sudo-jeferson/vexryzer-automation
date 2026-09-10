@@ -101,9 +101,12 @@ export function App() {
   }, [send]);
 
   const handleAskSubmit = useCallback(async (text: string): Promise<boolean> => {
+    const startedAt = performance.now();
+    if (window.__VXA_PERF__) window.__VXA_PERF__.askSubmissions += 1;
     send({ type: 'ASK_REQUESTED' });
     const result = await askAiClient.submit(text);
     if (!result.ok) {
+      if (window.__VXA_PERF__) window.__VXA_PERF__.askFailures += 1;
       send({ type: 'ASK_FAILED', code: result.code });
       return false;
     }
@@ -114,6 +117,7 @@ export function App() {
       { verifiedCalculations: result.state.verifiedCalculations },
     );
     if (!surface.ok) {
+      if (window.__VXA_PERF__) window.__VXA_PERF__.askFailures += 1;
       send({ type: 'ASK_FAILED', code: 'CLIENT_SURFACE_REJECTED' });
       return false;
     }
@@ -122,6 +126,15 @@ export function App() {
     const focusId = result.state.reactiveState.scene.focusIds.find((id) =>
       surface.model.graph.nodes.some((node) => node.id === id)) ?? null;
     applyAcceptedNavigation(focusId);
+    requestAnimationFrame(() => {
+      const probe = window.__VXA_PERF__;
+      if (!probe) return;
+      const latency = Math.max(0, performance.now() - startedAt);
+      probe.askAccepted += 1;
+      if (result.mode === 'guided_recovery') probe.askRecoveries += 1;
+      probe.askLastVisualAckMs = latency;
+      probe.askMaxVisualAckMs = Math.max(probe.askMaxVisualAckMs, latency);
+    });
     return true;
   }, [applyAcceptedNavigation, askAiClient, send]);
 
