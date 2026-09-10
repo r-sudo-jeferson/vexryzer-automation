@@ -6,6 +6,9 @@ import {
   buildPackageInstallEnv,
   buildScrubbedHarnessEnv,
   DEFAULT_MISTRAL_MODEL_ID,
+  MISTRAL_RATE_LIMIT_WINDOW_MS,
+  MISTRAL_SPIKE_MAX_RETRIES,
+  renderConfiguredMistralSettingsYaml,
   renderHarnessInstallPackageJson,
   renderHarnessInstallWorkspaceYaml,
   renderMistralSettingsYaml,
@@ -36,8 +39,29 @@ test('scrubs unrelated secrets from the Harness child environment', () => {
   assert.equal(env.AWS_SECRET_ACCESS_KEY, undefined);
 });
 
-test('renders a Mistral custom provider using credential references only', () => {
+test('renders the Mistral catalog route without replacing native provider defaults', () => {
   const yaml = renderMistralSettingsYaml({
+    providerRoute: 'mistral',
+    modelId: 'mistral-medium-3-5',
+    baseUrl: 'https://api.mistral.ai/v1',
+  });
+  assert.match(yaml, /apiKeyEnv: MISTRAL_API_KEY/);
+  assert.doesNotMatch(yaml, /displayName:/);
+  assert.doesNotMatch(yaml, /api: openai-completions/);
+  assert.doesNotMatch(yaml, /baseURL:/);
+  assert.doesNotMatch(yaml, /supportsDeveloperRole:/);
+  assert.doesNotMatch(yaml, /maxTokensField:/);
+  assert.doesNotMatch(yaml, /models:/);
+  assert.match(yaml, new RegExp(`maxRetries: ${MISTRAL_SPIKE_MAX_RETRIES}`));
+  assert.match(yaml, /retryableCodes:\n\s+- RATE_LIMIT/);
+  assert.match(yaml, new RegExp(`initialDelayMs: ${MISTRAL_RATE_LIMIT_WINDOW_MS}`));
+  assert.match(yaml, new RegExp(`maxDelayMs: ${MISTRAL_RATE_LIMIT_WINDOW_MS}`));
+  assert.match(yaml, /jitterRatio: 0/);
+  assert.doesNotMatch(yaml, /mistral-secret/);
+});
+
+test('keeps the configured Mistral route available only as a same-model second path', () => {
+  const yaml = renderConfiguredMistralSettingsYaml({
     providerRoute: 'mistral',
     modelId: 'mistral-medium-3-5',
     baseUrl: 'https://api.mistral.ai/v1',
@@ -47,7 +71,8 @@ test('renders a Mistral custom provider using credential references only', () =>
   assert.match(yaml, /baseURL: https:\/\/api\.mistral\.ai\/v1/);
   assert.match(yaml, /supportsDeveloperRole: false/);
   assert.match(yaml, /maxTokensField: max_tokens/);
-  assert.doesNotMatch(yaml, /mistral-secret/);
+  assert.match(yaml, /- id: mistral-medium-3-5/);
+  assert.doesNotMatch(yaml, /-latest/);
 });
 
 test('pins the default Mistral model instead of using a silently moving latest alias', () => {
@@ -129,9 +154,9 @@ test('refuses an unreviewed Harness release before dependency policies can run',
   );
 });
 
-test('can render a deliberately bounded provider timeout probe', () => {
+test('keeps the timeout probe on the catalog route and disables retry amplification', () => {
   const yaml = renderMistralSettingsYaml({
-    providerRoute: 'mistral-timeout',
+    providerRoute: 'mistral',
     modelId: 'mistral-medium-3-5',
     baseUrl: 'https://api.mistral.ai/v1',
     timeoutMs: 5,
@@ -139,6 +164,9 @@ test('can render a deliberately bounded provider timeout probe', () => {
   });
   assert.match(yaml, /timeoutMs: 5/);
   assert.match(yaml, /streamIdleTimeoutMs: 5/);
+  assert.match(yaml, /maxRetries: 0/);
+  assert.doesNotMatch(yaml, /api: openai-completions/);
+  assert.doesNotMatch(yaml, /models:/);
 });
 
 test('builds only the public DeepSeek Harness 0.1.2-rc.1 SDK option shape', () => {
