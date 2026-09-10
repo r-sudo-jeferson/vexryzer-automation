@@ -1,9 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { AskAiPanel } from '../../src/app/AskAiPanel.tsx';
 
-function renderPanel(overrides: Partial<React.ComponentProps<typeof AskAiPanel>> = {}) {
-  const props: React.ComponentProps<typeof AskAiPanel> = {
+function renderPanel(overrides: Partial<ComponentProps<typeof AskAiPanel>> = {}) {
+  const props: ComponentProps<typeof AskAiPanel> = {
     status: 'idle',
     narration: null,
     nextQuestion: null,
@@ -85,7 +86,7 @@ describe('ASK AI panel', () => {
       />,
     );
     expect(screen.getByText(/organizando o contexto e validando/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Enviar para ASK AI' })).toBeDisabled();
+    expect((screen.getByRole('button', { name: 'Enviar para ASK AI' }) as HTMLButtonElement).disabled).toBe(true);
 
     rerender(
       <AskAiPanel
