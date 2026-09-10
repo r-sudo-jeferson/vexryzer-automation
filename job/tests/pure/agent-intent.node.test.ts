@@ -23,8 +23,7 @@ test('accepts an improvisational turn with no question and zero, one, or many ca
     ['data_import_transform', 'bi_decision_intelligence', 'training_enablement'],
   ]) {
     const result = validateAgentIntent(baseIntent({ capabilities }));
-    assert.equal(result.ok, true);
-    if (!result.ok) throw new Error(`${result.code}:${result.path}`);
+    if (!result.ok) assert.fail(`${result.code}:${result.path}`);
     assert.equal(result.value.nextQuestion, null);
     assert.deepEqual(result.value.capabilities, capabilities);
   }
@@ -37,8 +36,7 @@ test('accepts multiple coordinated semantic effects without imposing a fixed act
     { id: 'act-focus', kind: 'focus', targetId: 'node-reconciliation', reason: 'Manter o gargalo principal no centro.' },
   ];
   const result = validateAgentIntent(baseIntent({ actions }));
-  assert.equal(result.ok, true);
-  if (!result.ok) throw new Error(`${result.code}:${result.path}`);
+  if (!result.ok) assert.fail(`${result.code}:${result.path}`);
   assert.deepEqual(result.value.actions.map((action) => action.id), ['act-quantify', 'act-compare', 'act-focus']);
 });
 
