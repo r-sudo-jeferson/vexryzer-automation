@@ -6,6 +6,15 @@ export interface ParsedSse {
   done: boolean;
 }
 
+export function isUsableOpenAiSse(parsed: Readonly<ParsedSse>): boolean {
+  return Number.isInteger(parsed.eventCount)
+    && parsed.eventCount > 0
+    && Number.isInteger(parsed.contentChunkCount)
+    && parsed.contentChunkCount > 0
+    && parsed.done
+    && parsed.text.trim().length > 0;
+}
+
 export function parseOpenAiSse(body: string): ParsedSse {
   let eventCount = 0;
   let contentChunkCount = 0;
