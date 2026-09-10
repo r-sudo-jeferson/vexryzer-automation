@@ -25,6 +25,22 @@ async function expectViewportChanged(page: Page, before: ViewportMatrix): Promis
   }).toBeGreaterThan(0.5);
 }
 
+async function waitForViewportStable(page: Page, stableForMs = 160): Promise<ViewportMatrix> {
+  let previous = await readViewportMatrix(page);
+  let stableMs = 0;
+
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    await page.waitForTimeout(40);
+    const current = await readViewportMatrix(page);
+    const delta = Math.abs(current.x - previous.x) + Math.abs(current.y - previous.y) + Math.abs(current.zoom - previous.zoom);
+    stableMs = delta < 0.01 ? stableMs + 40 : 0;
+    previous = current;
+    if (stableMs >= stableForMs) return current;
+  }
+
+  throw new Error('React Flow viewport did not reach a stable baseline before interaction');
+}
+
 async function findPanePoint(page: Page, delta: Point = { x: 0, y: 0 }): Promise<Point> {
   const pane = page.locator('.react-flow__pane');
   await pane.scrollIntoViewIfNeeded();
@@ -204,8 +220,9 @@ test('trackpad-pinch equivalent ctrl-wheel zooms the canvas without becoming a c
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   await page.getByRole('button', { name: /Explorar um processo/i }).click();
+  await expect(page.locator('.vxa-canvas')).toHaveAttribute('data-mode', 'process');
 
-  const before = await readViewportMatrix(page);
+  const before = await waitForViewportStable(page);
   await page.locator('.react-flow__pane').evaluate((pane) => {
     const rect = pane.getBoundingClientRect();
     pane.dispatchEvent(new WheelEvent('wheel', {
