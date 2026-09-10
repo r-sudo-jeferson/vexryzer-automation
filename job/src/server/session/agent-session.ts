@@ -171,7 +171,7 @@ export function claimAgentSession(
 ):
   | { ok: true; record: Readonly<AgentSessionRecord>; idempotent: false }
   | { ok: true; record: Readonly<AgentSessionRecord>; idempotent: true; completed: Readonly<CompletedAgentRequest> }
-  | { ok: false; code: 'INVALID_REQUEST' | 'STALE_REVISION' | 'SESSION_BUSY' } {
+  | { ok: false; code: 'INVALID_REQUEST' | 'REQUEST_REPLAY' | 'STALE_REVISION' | 'SESSION_BUSY' } {
   if (!safeId(input.requestId) || !Number.isInteger(input.expectedRevision) || input.expectedRevision < 0
     || !Number.isSafeInteger(input.nowEpochMs) || input.nowEpochMs < 0) {
     return { ok: false, code: 'INVALID_REQUEST' };
@@ -185,6 +185,7 @@ export function claimAgentSession(
     return { ok: true, record, idempotent: true, completed };
   }
 
+  if (record.canonical.turnIds.includes(input.requestId)) return { ok: false, code: 'REQUEST_REPLAY' };
   if (input.expectedRevision !== record.canonical.revision) return { ok: false, code: 'STALE_REVISION' };
   if (record.status === 'processing' && record.lease !== null
     && record.lease.expiresAtEpochMs > input.nowEpochMs) {
