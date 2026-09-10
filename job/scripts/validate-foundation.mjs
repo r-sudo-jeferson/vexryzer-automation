@@ -1,6 +1,7 @@
 import { readdir, readFile, lstat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { CREDENTIAL_RULES } from './security-patterns.mjs';
 
 const BINDING = 'FORGE-VEXRYZER-AUTOMATION-v1.0.0';
 const CI_EXECUTION_POLICY_MARKER = 'CI_EXECUTION_POLICY: `OPTIMIZED_GATES_ONLY`';
@@ -72,13 +73,6 @@ function isDependencySurface(file) {
     || file.startsWith('.github/workflows/')
     || /(^|\/)(package\.json|pnpm-lock\.yaml|package-lock\.json|yarn\.lock)$/.test(file);
 }
-
-const credentialPatterns = [
-  /ghp_[A-Za-z0-9]{30,}/g,
-  /github_pat_[A-Za-z0-9_]{40,}/g,
-  /sk-[A-Za-z0-9_-]{20,}/g,
-  /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g,
-];
 
 export async function validateRepository(root) {
   const errors = [];
@@ -186,9 +180,9 @@ export async function validateRepository(root) {
       }
     }
 
-    for (const pattern of credentialPatterns) {
-      pattern.lastIndex = 0;
-      if (pattern.test(text)) {
+    for (const rule of CREDENTIAL_RULES) {
+      rule.pattern.lastIndex = 0;
+      if (rule.pattern.test(text)) {
         errors.push(error('CREDENTIAL_PATTERN_DETECTED', 'Possible committed credential/private key pattern detected.', file));
         break;
       }
