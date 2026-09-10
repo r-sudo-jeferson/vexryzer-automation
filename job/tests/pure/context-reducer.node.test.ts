@@ -180,6 +180,8 @@ test('model proposal canonical commit is atomic and increments revision exactly 
         id: 'artifact-proposed',
         kind: 'bi_dashboard',
         title: 'Mapa de retrabalho',
+        summary: 'Representação conceitual da hipótese de retrabalho.',
+        maturity: 'conceptual',
         evidenceIds: ['fact-proposed'],
         status: 'proposed',
         invalidatedAtRevision: null,
@@ -194,6 +196,8 @@ test('model proposal canonical commit is atomic and increments revision exactly 
   assert.equal(result.context.facts[0]?.source, 'inference');
   assert.equal(result.context.opportunities[0]?.status, 'surfaced');
   assert.equal(result.context.artifacts[0]?.status, 'proposed');
+  assert.equal(result.context.artifacts[0]?.maturity, 'conceptual');
+  assert.equal(result.context.artifacts[0]?.summary, 'Representação conceitual da hipótese de retrabalho.');
 });
 
 test('atomic model proposal rejects forged authority or unknown evidence without partial commit', async (t) => {
