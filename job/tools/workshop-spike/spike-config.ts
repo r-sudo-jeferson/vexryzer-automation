@@ -244,23 +244,6 @@ export function renderMistralSettingsYaml(input: MistralRouteConfig): string {
     'llm-pi-ai:',
     '  providers:',
     `    ${input.providerRoute}:`,
-    '      apiKeyEnv: MISTRAL_API_KEY',
-    ...(input.timeoutMs === undefined ? [] : [`      timeoutMs: ${input.timeoutMs}`]),
-    ...(input.streamIdleTimeoutMs === undefined ? [] : [`      streamIdleTimeoutMs: ${input.streamIdleTimeoutMs}`]),
-    ...renderSpikeRetryPolicyLines(timeoutProbe),
-    '',
-  ].join('\n');
-}
-
-export function renderConfiguredMistralSettingsYaml(input: MistralRouteConfig): string {
-  validateSpikeInputs({ ...input, mistralApiKey: 'redacted-validation-key' });
-  validateOptionalTimeout('timeoutMs', input.timeoutMs);
-  validateOptionalTimeout('streamIdleTimeoutMs', input.streamIdleTimeoutMs);
-  const timeoutProbe = input.timeoutMs !== undefined || input.streamIdleTimeoutMs !== undefined;
-  return [
-    'llm-pi-ai:',
-    '  providers:',
-    `    ${input.providerRoute}:`,
     '      displayName: Mistral',
     '      apiKeyEnv: MISTRAL_API_KEY',
     '      api: openai-completions',
