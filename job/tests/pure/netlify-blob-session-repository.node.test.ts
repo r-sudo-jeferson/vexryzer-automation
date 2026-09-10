@@ -19,7 +19,7 @@ function created(sessionId = 'session-blob') {
 class FakeBlobStore implements ConditionalJsonBlobStore {
   getCalls: Array<{ key: string; options: { type: 'json'; consistency: 'strong' } }> = [];
   setCalls: Array<{ key: string; value: unknown; options: { onlyIfNew?: boolean; onlyIfMatch?: string } }> = [];
-  readResult: { data: unknown; etag: string; metadata: object } | null = null;
+  readResult: { data: unknown; etag?: string; metadata: object } | null = null;
   writeResult: { modified: boolean; etag?: string } = { modified: true, etag: '"etag-1"' };
   throwOnGet = false;
   throwOnSet = false;
@@ -40,6 +40,13 @@ class FakeBlobStore implements ConditionalJsonBlobStore {
   ) {
     this.setCalls.push({ key, value, options });
     if (this.throwOnSet) throw new Error('set failed');
+    if (this.writeResult.modified && this.writeResult.etag) {
+      this.readResult = {
+        data: JSON.parse(JSON.stringify(value)),
+        etag: this.writeResult.etag,
+        metadata: {},
+      };
+    }
     return this.writeResult;
   }
 }
@@ -84,6 +91,54 @@ test('phantom conditional-write success with missing or empty ETag is STORE_UNAV
       assert.deepEqual(cas, { ok: false, code: 'STORE_UNAVAILABLE' });
     });
   }
+});
+
+test('conditional success is rejected when strong read-back does not prove the written ETag and record', async () => {
+  const store = new FakeBlobStore();
+  const repository = createNetlifyBlobSessionRepository(store);
+  const session = created();
+
+  store.writeResult = { modified: true, etag: '"new-etag"' };
+  store.setJSON = async (key, value, options) => {
+    store.setCalls.push({ key, value, options });
+    store.readResult = {
+      data: JSON.parse(JSON.stringify(session.record)),
+      etag: '"old-etag"',
+      metadata: {},
+    };
+    return store.writeResult;
+  };
+
+  const result = await repository.compareAndSet(
+    session.record.sessionId,
+    '"old-etag"',
+    session.record,
+  );
+  assert.deepEqual(result, { ok: false, code: 'STORE_UNAVAILABLE' });
+});
+
+test('a superseding writer after our conditional write is surfaced as CONFLICT, never success', async () => {
+  const store = new FakeBlobStore();
+  const repository = createNetlifyBlobSessionRepository(store);
+  const session = created();
+
+  store.writeResult = { modified: true, etag: '"our-etag"' };
+  store.setJSON = async (key, value, options) => {
+    store.setCalls.push({ key, value, options });
+    store.readResult = {
+      data: JSON.parse(JSON.stringify(session.record)),
+      etag: '"other-writer-etag"',
+      metadata: {},
+    };
+    return store.writeResult;
+  };
+
+  const result = await repository.compareAndSet(
+    session.record.sessionId,
+    '"old-etag"',
+    session.record,
+  );
+  assert.deepEqual(result, { ok: false, code: 'CONFLICT' });
 });
 
 test('compareAndSet forwards onlyIfMatch and maps precondition failure to CONFLICT', async () => {
