@@ -1,0 +1,6 @@
+export type CameraMode='origin'|'process'|'focus';
+export type CameraPlan={kind:'fit-all';padding:number;minZoom:number;maxZoom:number;durationMs:number}|{kind:'fit-nodes';nodeIds:readonly string[];padding:number;minZoom:number;maxZoom:number;durationMs:number};
+export interface CameraPlanInput { mode: CameraMode; focusNodeId?: string; reducedMotion: boolean }
+const TRANSITIONS:Readonly<Record<CameraMode,readonly CameraMode[]>>=Object.freeze({origin:['origin','process'],process:['origin','process','focus'],focus:['origin','process','focus']});
+export function cameraTransitionAllowed(from:CameraMode,to:CameraMode):boolean{return TRANSITIONS[from].includes(to)}
+export function createCameraPlan(input:CameraPlanInput):CameraPlan{const duration=input.reducedMotion?0:undefined;if(input.mode==='origin')return{kind:'fit-nodes',nodeIds:['origin'],padding:.28,minZoom:.78,maxZoom:1.06,durationMs:duration??520};if(input.mode==='process')return{kind:'fit-all',padding:.18,minZoom:.52,maxZoom:1,durationMs:duration??460};if(!input.focusNodeId?.trim())throw new TypeError('focusNodeId is required for focus camera mode');return{kind:'fit-nodes',nodeIds:[input.focusNodeId],padding:.34,minZoom:.92,maxZoom:1.22,durationMs:duration??360}}
