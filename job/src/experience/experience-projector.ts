@@ -1,6 +1,6 @@
 import type { CanonicalSalesContext } from '../ai/context/canonical-sales-context.ts';
 import type { ExperienceAction } from './agent-intent.ts';
-import type { ArtifactProposal, ExperienceProposal, ProcessMutationProposal } from './experience-proposal.ts';
+import type { ArtifactProposal, CorrectionProposal, ExperienceProposal, ProcessMutationProposal } from './experience-proposal.ts';
 import { resolveArtifactSurface } from './artifact-registry.ts';
 
 export { createReactiveExperienceState, interruptExperienceChoreography } from './reactive-experience-state.ts';
@@ -14,6 +14,7 @@ import {
   type ProjectedAction,
   type ProjectedActionStatus,
   type ProjectedArtifact,
+  type ProjectedCorrectionSuggestion,
   type ProjectedProcessMutation,
   type ReactiveExperienceState,
 } from './reactive-experience-state.ts';
@@ -24,6 +25,7 @@ export type ExperienceProjectionErrorCode =
   | 'REVISION_ROLLBACK'
   | 'INVALID_CALCULATION_REFERENCE'
   | 'INVALID_ARTIFACT_REFERENCE'
+  | 'INVALID_CORRECTION_REFERENCE'
   | 'UNKNOWN_EVIDENCE_REFERENCE'
   | 'PROJECTION_CAPACITY_EXCEEDED';
 
@@ -52,6 +54,13 @@ function collectInvalidEvidenceIds(canonical: CanonicalSalesContext): Set<string
   return ids;
 }
 
+function isCorrectableEvidence(canonical: CanonicalSalesContext, id: string): boolean {
+  const fact = canonical.facts.find((item) => item.id === id);
+  if (fact !== undefined) return fact.status !== 'superseded';
+  const observation = canonical.quantitativeObservations.find((item) => item.id === id);
+  return observation !== undefined && observation.status !== 'superseded';
+}
+
 function actionInvalidation(action: Readonly<ExperienceAction>, canonical: CanonicalSalesContext, invalidEvidenceIds: ReadonlySet<string>): ProjectedAction['invalidatedReason'] {
   if (action.kind === 'quantify') {
     const calculation = canonical.verifiedCalculations.find((item) => item.id === action.calculationId);
@@ -77,6 +86,16 @@ export function reconcileReactiveExperience(
     return Object.freeze({ ...item, status, invalidatedReason });
   });
 
+  const correctionSuggestions = state.correctionSuggestions.map((item) => {
+    const invalidatedReason = isCorrectableEvidence(canonical, item.correction.targetEvidenceId)
+      ? null
+      : 'canonical-evidence-invalidated' as const;
+    const status = invalidatedReason === null ? 'pending' as const : 'invalidated' as const;
+    if (status === item.status && invalidatedReason === item.invalidatedReason) return item;
+    changed = true;
+    return Object.freeze({ ...item, status, invalidatedReason });
+  });
+
   const artifacts = state.artifacts.map((item) => {
     const invalidatedReason = item.evidenceIds.some((id) => invalidEvidenceIds.has(id)) ? 'canonical-evidence-invalidated' as const : null;
     const truthStatus = invalidatedReason === null ? 'active' as const : 'invalidated' as const;
@@ -86,7 +105,7 @@ export function reconcileReactiveExperience(
   });
 
   if (!changed) return state;
-  return freezeReactiveExperienceState({ ...state, basedOnRevision: canonical.revision, actions, artifacts });
+  return freezeReactiveExperienceState({ ...state, basedOnRevision: canonical.revision, actions, correctionSuggestions, artifacts });
 }
 
 function validateProjectionReferences(
@@ -111,6 +130,14 @@ function validateProjectionReferences(
     }
   }
 
+  for (let i = 0; i < proposal.correctionProposals.length; i += 1) {
+    const correction = proposal.correctionProposals[i];
+    if (correction === undefined) continue;
+    if (!isCorrectableEvidence(canonical, correction.targetEvidenceId)) {
+      return { ok: false, code: 'INVALID_CORRECTION_REFERENCE', path: `proposal.correctionProposals[${i}].targetEvidenceId` };
+    }
+  }
+
   for (let i = 0; i < proposal.artifactProposals.length; i += 1) {
     const artifact = proposal.artifactProposals[i];
     if (artifact === undefined) continue;
@@ -121,7 +148,11 @@ function validateProjectionReferences(
 }
 
 function hasVisualSemantics(proposal: Readonly<ExperienceProposal>): boolean {
-  return proposal.intent.actions.length > 0 || proposal.processMutations.length > 0 || proposal.sceneProposal !== null || proposal.artifactProposals.length > 0;
+  return proposal.intent.actions.length > 0
+    || proposal.correctionProposals.length > 0
+    || proposal.processMutations.length > 0
+    || proposal.sceneProposal !== null
+    || proposal.artifactProposals.length > 0;
 }
 
 function actionSlotKey(item: Readonly<ProjectedAction>): string {
@@ -210,6 +241,32 @@ function mergeProcessMutations(
   return Object.freeze(merged);
 }
 
+function mergeCorrectionSuggestions(
+  previous: readonly Readonly<ProjectedCorrectionSuggestion>[],
+  incoming: readonly Readonly<ProjectedCorrectionSuggestion>[],
+): readonly Readonly<ProjectedCorrectionSuggestion>[] {
+  if (incoming.length === 0) return previous;
+  const merged = [...previous];
+  for (const item of incoming) {
+    const index = merged.findIndex((existing) =>
+      existing.correction.targetEvidenceId === item.correction.targetEvidenceId);
+    if (index < 0) merged.push(item);
+    else merged[index] = item;
+  }
+  return Object.freeze(merged);
+}
+
+function projectCorrectionSuggestions(
+  proposals: readonly Readonly<CorrectionProposal>[],
+): readonly Readonly<ProjectedCorrectionSuggestion>[] {
+  return Object.freeze(proposals.map((correction) => Object.freeze({
+    sourceCorrectionId: correction.id,
+    correction,
+    status: 'pending' as const,
+    invalidatedReason: null,
+  })));
+}
+
 function mergeArtifacts(
   previous: readonly Readonly<ProjectedArtifact>[],
   incoming: readonly Readonly<ProjectedArtifact>[],
@@ -276,6 +333,7 @@ export function projectExperienceProposal(
     });
   });
   const processMutations = proposal.processMutations.map((mutation) => Object.freeze({ sourceMutationId: mutation.id, mutation }));
+  const correctionSuggestions = projectCorrectionSuggestions(proposal.correctionProposals);
   const artifacts = projectArtifacts(proposal.artifactProposals, canonical);
   const scene = proposal.sceneProposal === null
     ? reconciled.scene
@@ -299,12 +357,16 @@ export function projectExperienceProposal(
 
   const nextActions = mergeActions(reconciled.actions, actions);
   const nextProcessMutations = mergeProcessMutations(reconciled.processMutations, processMutations);
+  const nextCorrectionSuggestions = mergeCorrectionSuggestions(reconciled.correctionSuggestions, correctionSuggestions);
   const nextArtifacts = mergeArtifacts(reconciled.artifacts, artifacts);
   if (nextActions.length > REACTIVE_EXPERIENCE_LIMITS.actions) {
     return { ok: false, code: 'PROJECTION_CAPACITY_EXCEEDED', path: 'reactiveExperience.actions', state: reconciled };
   }
   if (nextProcessMutations.length > REACTIVE_EXPERIENCE_LIMITS.processMutations) {
     return { ok: false, code: 'PROJECTION_CAPACITY_EXCEEDED', path: 'reactiveExperience.processMutations', state: reconciled };
+  }
+  if (nextCorrectionSuggestions.length > REACTIVE_EXPERIENCE_LIMITS.correctionSuggestions) {
+    return { ok: false, code: 'PROJECTION_CAPACITY_EXCEEDED', path: 'reactiveExperience.correctionSuggestions', state: reconciled };
   }
   if (nextArtifacts.length > REACTIVE_EXPERIENCE_LIMITS.artifacts) {
     return { ok: false, code: 'PROJECTION_CAPACITY_EXCEEDED', path: 'reactiveExperience.artifacts', state: reconciled };
@@ -320,6 +382,7 @@ export function projectExperienceProposal(
       projectionRevision: reconciled.projectionRevision + 1,
       actions: nextActions,
       processMutations: nextProcessMutations,
+      correctionSuggestions: nextCorrectionSuggestions,
       artifacts: nextArtifacts,
       scene,
       choreography,
