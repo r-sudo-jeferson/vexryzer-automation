@@ -166,6 +166,7 @@ const FORBIDDEN_PROVIDER_AUTHORITY_KEYS = new Set([
 const CRITIC_SYSTEM_INSTRUCTION = [
   'You are the independent Vexryzer Critic operating after deterministic Seller validation and before any customer-facing commit.',
   'Evaluate the exact Seller proposal against canonical evidence, quantitative truth, user intent, accessibility, manipulation, artifact truth, and execution safety.',
+  'Classify coercive fear, false urgency, loss pressure, or pressure that contradicts an explicit user request for calm as MANIPULATION_RISK; USER_INTENT_MISMATCH alone is not sufficient when coercive persuasion is present.',
   'Novel strategy, combined capabilities, skipped questions, or deviation from a conventional sales funnel are never findings by themselves.',
   'PASS only when the proposal is already valid. REVISE only for a bounded correctable issue. BLOCK unsafe or materially misleading output.',
   'Provider memory and provider conversation identifiers are non-authoritative.',

@@ -5,245 +5,155 @@ import {
   parseSellerToolCall,
 } from '../../src/server/ai/seller/seller-wire-tools.ts';
 
-test('Seller exposes exactly three application-owned local tools with closed root schemas', () => {
-  assert.deepEqual(SELLER_LOCAL_TOOLS.map((tool) => tool.function.name), [
+function tool(name: string, args: unknown) {
+  return {
+    id: 'call-1',
+    type: 'function' as const,
+    function: { name, arguments: JSON.stringify(args) },
+  };
+}
+
+test('Seller exposes three closed local tools without model-owned trust metadata in observation/calculation schemas', () => {
+  assert.deepEqual(SELLER_LOCAL_TOOLS.map((item) => item.function.name), [
     'capture_user_observations',
     'request_calculations',
     'submit_seller_submission',
   ]);
-  for (const tool of SELLER_LOCAL_TOOLS) {
-    assert.equal(tool.type, 'function');
-    assert.equal(tool.function.parameters.type, 'object');
-    assert.equal(tool.function.parameters.additionalProperties, false);
+  for (const item of SELLER_LOCAL_TOOLS) {
+    assert.equal(item.function.parameters.type, 'object');
+    assert.equal(item.function.parameters.additionalProperties, false);
   }
-  const serialized = JSON.stringify(SELLER_LOCAL_TOOLS).toLowerCase();
-  assert.equal(serialized.includes('browser_search'), false);
-  assert.equal(serialized.includes('code_interpreter'), false);
-  assert.equal(serialized.includes('mcp'), false);
+  const observation = SELLER_LOCAL_TOOLS.find((item) => item.function.name === 'capture_user_observations')!;
+  const calculation = SELLER_LOCAL_TOOLS.find((item) => item.function.name === 'request_calculations')!;
+  for (const serialized of [JSON.stringify(observation), JSON.stringify(calculation)]) {
+    assert.equal(serialized.includes('"baseRevision"'), false);
+    assert.equal(serialized.includes('"turnId"'), false);
+    assert.equal(serialized.includes('"source"'), false);
+    assert.equal(serialized.includes('"resultValue"'), false);
+  }
 });
 
-test('parses quoted user observation requests without accepting model-authored provenance, units or periods', () => {
-  const result = parseSellerToolCall({
-    id: 'call-observations',
-    type: 'function',
-    function: {
-      name: 'capture_user_observations',
-      arguments: JSON.stringify({
-        observations: [{
-          id: 'obs-people',
-          kind: 'people_count',
-          baseRevision: 12,
-          turnId: 'turn-12',
-          quote: 'somos 3 pessoas',
-          value: 3,
-        }, {
-          id: 'obs-minutes',
-          kind: 'minutes_per_person_per_day',
-          baseRevision: 12,
-          turnId: 'turn-12',
-          quote: '40 minutos por pessoa por dia',
-          value: 40,
-        }],
-      }),
-    },
-  }, 12);
+test('observation tool accepts only semantic kind, exact evidence quote and value', () => {
+  const result = parseSellerToolCall(tool('capture_user_observations', {
+    observations: [
+      { kind: 'people_count', quote: 'somos 3 pessoas', value: 3 },
+      { kind: 'minutes_per_person_per_day', quote: '40 minutos por pessoa por dia', value: 40 },
+    ],
+  }), 12);
   assert.equal(result.ok, true);
   if (!result.ok || result.kind !== 'user_observation_requests') return;
-  assert.equal(result.requests.length, 2);
-  assert.equal(result.requests[0]?.kind, 'people_count');
-  assert.equal(Object.hasOwn(result.requests[0]!, 'source'), false);
-  assert.equal(Object.hasOwn(result.requests[0]!, 'unit'), false);
-  assert.equal(Object.hasOwn(result.requests[0]!, 'period'), false);
+  assert.deepEqual(result.requests, [
+    { kind: 'people_count', quote: 'somos 3 pessoas', value: 3 },
+    { kind: 'minutes_per_person_per_day', quote: '40 minutos por pessoa por dia', value: 40 },
+  ]);
 });
 
-test('user observation wire rejects stale revision, unknown semantics, duplicate ids and authority fields', () => {
-  const cases = [
-    {
-      observations: [{
-        id: 'obs-people', kind: 'people_count', baseRevision: 11, turnId: 'turn-12',
-        quote: 'somos 3 pessoas', value: 3,
-      }],
-    },
-    {
-      observations: [{
-        id: 'obs-people', kind: 'invented_semantics', baseRevision: 12, turnId: 'turn-12',
-        quote: 'somos 3 pessoas', value: 3,
-      }],
-    },
-    {
-      observations: [
-        { id: 'obs-people', kind: 'people_count', baseRevision: 12, turnId: 'turn-12', quote: 'somos 3 pessoas', value: 3 },
-        { id: 'obs-people', kind: 'people_count', baseRevision: 12, turnId: 'turn-12', quote: 'somos 3 pessoas', value: 3 },
-      ],
-    },
-    {
-      observations: [{
-        id: 'obs-people', kind: 'people_count', baseRevision: 12, turnId: 'turn-12',
-        quote: 'somos 3 pessoas', value: 3, source: 'user', status: 'confirmed', unit: 'person',
-      }],
-    },
-  ];
-  for (const args of cases) {
-    const result = parseSellerToolCall({
-      id: 'call-observations',
-      type: 'function',
-      function: { name: 'capture_user_observations', arguments: JSON.stringify(args) },
-    }, 12);
-    assert.equal(result.ok, false);
+test('observation tool rejects model-authored revision, ids, turn binding, provenance, units and duplicated semantic requests', () => {
+  const authorityFields = ['id', 'baseRevision', 'turnId', 'source', 'unit', 'period'];
+  for (const field of authorityFields) {
+    const result = parseSellerToolCall(tool('capture_user_observations', {
+      observations: [{ kind: 'people_count', quote: 'somos 3 pessoas', value: 3, [field]: field === 'baseRevision' ? 12 : 'forged' }],
+    }), 12);
+    assert.equal(result.ok, false, field);
   }
+  const duplicate = parseSellerToolCall(tool('capture_user_observations', {
+    observations: [
+      { kind: 'people_count', quote: 'somos 3 pessoas', value: 3 },
+      { kind: 'people_count', quote: 'somos 3 pessoas', value: 3 },
+    ],
+  }), 12);
+  assert.deepEqual(duplicate, { ok: false, code: 'DUPLICATE_REQUEST' });
 });
 
-test('parses a bounded batch of calculation requests against the exact canonical revision', () => {
-  const result = parseSellerToolCall({
-    id: 'call-1',
-    type: 'function',
-    function: {
-      name: 'request_calculations',
-      arguments: JSON.stringify({
-        requests: [
-          {
-            id: 'calc-1',
-            kind: 'monthly_capacity',
-            baseRevision: 12,
-            peopleObservationId: 'obs-people',
-            minutesPerPersonPerDayObservationId: 'obs-minutes',
-            workingDaysPerMonthObservationId: 'obs-days',
-          },
-          {
-            id: 'calc-2',
-            kind: 'rework_volume',
-            baseRevision: 12,
-            volumeObservationId: 'obs-volume',
-            reworkRateObservationId: 'obs-rate',
-          },
-        ],
-      }),
-    },
-  }, 12);
+test('calculation tool accepts only semantic calculation kind and canonical observation references', () => {
+  const result = parseSellerToolCall(tool('request_calculations', {
+    requests: [{
+      kind: 'monthly_capacity',
+      peopleObservationId: 'obs-people',
+      minutesPerPersonPerDayObservationId: 'obs-minutes',
+      workingDaysPerMonthObservationId: 'obs-days',
+    }],
+  }), 12);
   assert.equal(result.ok, true);
   if (!result.ok || result.kind !== 'calculation_requests') return;
-  assert.equal(result.requests.length, 2);
-  assert.equal(result.requests[0]?.baseRevision, 12);
+  assert.deepEqual(result.requests, [{
+    kind: 'monthly_capacity',
+    peopleObservationId: 'obs-people',
+    minutesPerPersonPerDayObservationId: 'obs-minutes',
+    workingDaysPerMonthObservationId: 'obs-days',
+  }]);
 });
 
-test('rejects stale, duplicate or extra-field calculation requests before deterministic engine execution', () => {
-  const cases = [
-    {
+test('calculation tool rejects model-authored id, revision, result and duplicate semantic requests', () => {
+  for (const extra of [
+    { id: 'calc-forged' },
+    { baseRevision: 12 },
+    { resultValue: 999 },
+  ]) {
+    const result = parseSellerToolCall(tool('request_calculations', {
       requests: [{
-        id: 'calc-1', kind: 'monthly_workload', baseRevision: 11,
-        occurrencesPerMonthObservationId: 'obs-occ', minutesPerOccurrenceObservationId: 'obs-min',
+        kind: 'monthly_workload',
+        occurrencesPerMonthObservationId: 'obs-occ',
+        minutesPerOccurrenceObservationId: 'obs-min',
+        ...extra,
       }],
-    },
-    {
-      requests: [
-        {
-          id: 'calc-1', kind: 'monthly_workload', baseRevision: 12,
-          occurrencesPerMonthObservationId: 'obs-occ', minutesPerOccurrenceObservationId: 'obs-min',
-        },
-        {
-          id: 'calc-1', kind: 'monthly_workload', baseRevision: 12,
-          occurrencesPerMonthObservationId: 'obs-occ-2', minutesPerOccurrenceObservationId: 'obs-min-2',
-        },
-      ],
-    },
-    {
-      requests: [{
-        id: 'calc-1', kind: 'monthly_cost', baseRevision: 12,
-        monthlyHoursObservationId: 'obs-hours', hourlyCostObservationId: 'obs-cost',
-        resultValue: 999,
-      }],
-    },
-  ];
-
-  for (const args of cases) {
-    const result = parseSellerToolCall({
-      id: 'call-x', type: 'function',
-      function: { name: 'request_calculations', arguments: JSON.stringify(args) },
-    }, 12);
+    }), 12);
     assert.equal(result.ok, false);
+  }
+  const request = {
+    kind: 'monthly_workload',
+    occurrencesPerMonthObservationId: 'obs-occ',
+    minutesPerOccurrenceObservationId: 'obs-min',
+  };
+  assert.deepEqual(parseSellerToolCall(tool('request_calculations', { requests: [request, request] }), 12), {
+    ok: false,
+    code: 'DUPLICATE_REQUEST',
+  });
+});
+
+test('submission proposal revision is server-bound even when omitted or stale in model output', () => {
+  for (const proposal of [
+    { schemaVersion: 1, narration: 'x' },
+    { schemaVersion: 1, baseRevision: 3, narration: 'x' },
+  ]) {
+    const result = parseSellerToolCall(tool('submit_seller_submission', {
+      submission: {
+        schemaVersion: 1,
+        proposalId: 'proposal-1',
+        proposal,
+        materialClaims: [],
+        calculationRequests: [],
+      },
+    }), 12);
+    assert.equal(result.ok, true);
+    if (!result.ok || result.kind !== 'seller_submission') continue;
+    const normalized = result.submission['proposal'] as Record<string, unknown>;
+    assert.equal(normalized['baseRevision'], 12);
   }
 });
 
-test('submission tool preserves raw submission for canonical Seller validator but pre-binds revision and top-level shape', () => {
-  const rawSubmission = {
-    schemaVersion: 1,
-    proposalId: 'proposal-1',
-    proposal: { schemaVersion: 1, baseRevision: 12 },
-    materialClaims: [],
-    calculationRequests: [],
-  };
-  const result = parseSellerToolCall({
-    id: 'call-submit',
-    type: 'function',
-    function: {
-      name: 'submit_seller_submission',
-      arguments: JSON.stringify({ submission: rawSubmission }),
+test('submission still rejects pending calculations, unknown wrapper fields and unknown tools fail-closed', () => {
+  const pending = parseSellerToolCall(tool('submit_seller_submission', {
+    submission: {
+      schemaVersion: 1,
+      proposalId: 'proposal-1',
+      proposal: {},
+      materialClaims: [],
+      calculationRequests: [{ kind: 'monthly_workload' }],
     },
-  }, 12);
-  assert.equal(result.ok, true);
-  if (!result.ok || result.kind !== 'seller_submission') return;
-  assert.deepEqual(result.submission, rawSubmission);
-});
+  }), 12);
+  assert.equal(pending.ok, false);
 
-test('submission tool rejects pending calculations so deterministic arithmetic cannot bypass the calculation round-trip', () => {
-  const result = parseSellerToolCall({
-    id: 'call-submit',
-    type: 'function',
-    function: {
-      name: 'submit_seller_submission',
-      arguments: JSON.stringify({
-        submission: {
-          schemaVersion: 1,
-          proposalId: 'proposal-1',
-          proposal: { schemaVersion: 1, baseRevision: 12 },
-          materialClaims: [],
-          calculationRequests: [{
-            id: 'calc-pending',
-            kind: 'monthly_workload',
-            baseRevision: 12,
-            occurrencesPerMonthObservationId: 'obs-occ',
-            minutesPerOccurrenceObservationId: 'obs-min',
-          }],
-        },
-      }),
+  const extra = parseSellerToolCall(tool('submit_seller_submission', {
+    submission: {
+      schemaVersion: 1,
+      proposalId: 'proposal-1',
+      proposal: {},
+      materialClaims: [],
+      calculationRequests: [],
     },
-  }, 12);
-  assert.equal(result.ok, false);
-});
-
-test('submission tool rejects stale revision, unknown root keys and unknown tool names', () => {
-  const stale = parseSellerToolCall({
-    id: 'call-submit',
-    type: 'function',
-    function: {
-      name: 'submit_seller_submission',
-      arguments: JSON.stringify({
-        submission: {
-          schemaVersion: 1,
-          proposalId: 'proposal-1',
-          proposal: { schemaVersion: 1, baseRevision: 11 },
-          materialClaims: [],
-          calculationRequests: [],
-        },
-      }),
-    },
-  }, 12);
-  assert.equal(stale.ok, false);
-
-  const extra = parseSellerToolCall({
-    id: 'call-submit',
-    type: 'function',
-    function: {
-      name: 'submit_seller_submission',
-      arguments: JSON.stringify({ submission: {}, executable: 'nope' }),
-    },
-  }, 12);
+    executable: 'nope',
+  }), 12);
   assert.equal(extra.ok, false);
-
-  const unknown = parseSellerToolCall({
-    id: 'call-unknown',
-    type: 'function',
-    function: { name: 'browser_search', arguments: '{}' },
-  }, 12);
-  assert.equal(unknown.ok, false);
+  assert.equal(parseSellerToolCall(tool('browser_search', {}), 12).ok, false);
 });

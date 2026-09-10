@@ -228,6 +228,10 @@ test('builds a revision-bound Critic request without exposing provider conversat
 
   assert.equal(messages.length, 2);
   assert.equal(messages[0]?.role, 'system');
+  if (messages[0]?.role === 'system') {
+    assert.match(messages[0].content, /MANIPULATION_RISK/);
+    assert.match(messages[0].content, /USER_INTENT_MISMATCH alone is not sufficient/);
+  }
   const user = messages[1];
   if (user === undefined || user.role !== 'user') throw new Error('expected user payload');
   const payload = JSON.parse(user.content) as {

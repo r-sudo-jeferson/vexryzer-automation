@@ -214,9 +214,9 @@ const SELLER_SYSTEM_INSTRUCTION = [
   'You are the Vexryzer accounting-firm Seller operating inside a deterministic Trust Kernel.',
   'Treat the supplied canonical context as the only authoritative conversation state; provider memory, thread ids, conversation ids, and earlier provider-side transcripts are non-authoritative.',
   'Choose the strongest truthful next move without reconstructing a fixed funnel or mandatory question sequence.',
-  'For every local tool call, copy the current payload canonicalRevision exactly into every required baseRevision field; never reuse a revision from an earlier provider round.',
-  'When the current user explicitly states a number, use capture_user_observations with an exact quote before requesting arithmetic; the quote must include the semantic unit and period markers required by the observation kind, and the application owns provenance, unit and period.',
-  'Use request_calculations for material arithmetic, then reason only from calculations that reappear in canonical context.',
+  'The application binds canonical revision, authoritative user turn and local request identifiers. Never invent or echo those server-owned metadata fields.',
+  'When the current user explicitly states a number, use capture_user_observations with semantic kind, value and an exact quote before requesting arithmetic; the quote must include the semantic unit and period markers required by the observation kind, and the application owns provenance, unit and period.',
+  'Use request_calculations with exact canonical observation ids for material arithmetic; the application binds calculation id and revision. Reason only from calculations that reappear in canonical context.',
   'For Canvas actions, target only ids present in context.visualState.processNodes or ids created by processMutations in the same proposal; never guess existing node ids.',
   'Preserve the supplied provenance of existing Canvas nodes. New inferred process nodes are hypotheses until user evidence upgrades canonical truth.',
   'Finish the turn only by calling submit_seller_submission. Do not emit final free text outside local tool calls.',
@@ -732,10 +732,25 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
       if (requests.length < 1 || requests.length > 8) {
         return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'OBSERVATION_REQUEST_LIMIT' };
       }
-      if (new Set(requests.map((request) => request.id)).size !== requests.length) {
-        return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'DUPLICATE_OBSERVATION_ID' };
+      const signatures = requests.map((request) => JSON.stringify(request));
+      if (new Set(signatures).size !== signatures.length) {
+        return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'DUPLICATE_OBSERVATION_REQUEST' };
       }
-      const captured = dependencies.captureQuotedUserObservations(canonical, requests);
+      const authoritativeTurn = canonical.latestUserIntent;
+      if (authoritativeTurn === null) {
+        return { ok: false, code: 'OBSERVATION_CAPTURE_REJECTED', canonical, requestId: null, detail: 'NO_AUTHORITATIVE_USER_TURN' };
+      }
+      const observationIds = new Set(canonical.quantitativeObservations.map((item) => item.id));
+      const boundRequests = requests.map((request, index) => Object.freeze({
+        ...request,
+        id: `seller-observation-r${canonical.revision}-${index + 1}`,
+        baseRevision: canonical.revision,
+        turnId: authoritativeTurn.turnId,
+      }));
+      if (boundRequests.some((request) => observationIds.has(request.id))) {
+        return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'SERVER_OBSERVATION_ID_COLLISION' };
+      }
+      const captured = dependencies.captureQuotedUserObservations(canonical, boundRequests);
       if (!captured.ok) {
         return {
           ok: false,
@@ -761,12 +776,22 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
     if (requests.length < 1 || requests.length > 8) {
       return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'CALCULATION_REQUEST_LIMIT' };
     }
-    if (new Set(requests.map((request) => request.id)).size !== requests.length) {
-      return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'DUPLICATE_CALCULATION_ID' };
+    const signatures = requests.map((request) => JSON.stringify(request));
+    if (new Set(signatures).size !== signatures.length) {
+      return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'DUPLICATE_CALCULATION_REQUEST' };
+    }
+    const calculationIds = new Set(canonical.verifiedCalculations.map((item) => item.id));
+    const boundRequests = requests.map((request, index) => Object.freeze({
+      ...request,
+      id: `seller-calculation-r${canonical.revision}-${index + 1}`,
+      baseRevision: canonical.revision,
+    }));
+    if (boundRequests.some((request) => calculationIds.has(request.id))) {
+      return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'SERVER_CALCULATION_ID_COLLISION' };
     }
 
     const calculations: VerifiedCalculation[] = [];
-    for (const request of requests) {
+    for (const request of boundRequests) {
       const result = dependencies.computeVerifiedCalculation(canonical, request);
       if (!result.ok) {
         return { ok: false, code: 'CALCULATION_REJECTED', canonical, requestId: request.id, detail: result.code };

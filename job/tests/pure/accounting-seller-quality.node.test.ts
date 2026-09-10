@@ -158,3 +158,27 @@ test('strategy diversity counts only passing materially distinct strategy signat
   assert.deepEqual(evaluateStrategyDiversity([first, second], 2), { pass: true, distinctStrategies: 2 });
   assert.deepEqual(evaluateStrategyDiversity([first, failed], 2), { pass: false, distinctStrategies: 1 });
 });
+
+
+test('required capability composition fails partial solutions and passes only when the complete capability set is present', () => {
+  const compositeScenario: AccountingSellerQualityScenario = {
+    ...scenario,
+    expectedCapabilitiesAnyOf: [],
+    requiredCapabilities: ['process_data_improvement', 'bi_decision_intelligence'],
+    quantitativeExpectation: 'none',
+  };
+  const partial = evaluateAccountingSellerQuality({
+    scenario: compositeScenario,
+    submission: submission({ capabilities: ['process_data_improvement'] }),
+    canonical: canonical(),
+  });
+  const complete = evaluateAccountingSellerQuality({
+    scenario: compositeScenario,
+    submission: submission({ capabilities: ['process_data_improvement', 'bi_decision_intelligence'] }),
+    canonical: canonical(),
+  });
+  assert.equal(partial.checks.capabilityFit, false);
+  assert.equal(partial.pass, false);
+  assert.equal(complete.checks.capabilityFit, true);
+  assert.equal(complete.pass, true);
+});

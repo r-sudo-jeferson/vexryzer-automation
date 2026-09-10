@@ -94,7 +94,7 @@ function submissionTool(revision: number, id = 'tool-submit', proposalId = `prop
 }
 
 function observationTool(
-  revision: number,
+  _revision: number,
   observations: readonly {
     id: string;
     kind: string;
@@ -111,15 +111,22 @@ function observationTool(
       name: 'capture_user_observations',
       arguments: JSON.stringify({
         observations: observations.map((item) => ({
-          ...item,
-          baseRevision: revision,
+          kind: item.kind,
+          quote: item.quote,
+          value: item.value,
         })),
       }),
     }),
   });
 }
 
-function calculationTool(revision: number, requestId: string, toolId: string) {
+function calculationTool(
+  _revision: number,
+  _requestId: string,
+  toolId: string,
+  occurrencesPerMonthObservationId = 'obs-volume',
+  minutesPerOccurrenceObservationId = 'obs-minutes',
+) {
   return Object.freeze({
     id: toolId,
     type: 'function' as const,
@@ -127,11 +134,9 @@ function calculationTool(revision: number, requestId: string, toolId: string) {
       name: 'request_calculations',
       arguments: JSON.stringify({
         requests: [{
-          id: requestId,
           kind: 'monthly_workload',
-          baseRevision: revision,
-          occurrencesPerMonthObservationId: 'obs-volume',
-          minutesPerOccurrenceObservationId: 'obs-minutes',
+          occurrencesPerMonthObservationId,
+          minutesPerOccurrenceObservationId,
         }],
       }),
     }),
@@ -257,8 +262,8 @@ test('builds every Seller provider message from the revision-bound dispatch cont
   assert.equal(messages.length, 2);
   assert.equal(messages[0]?.role, 'system');
   if (messages[0] === undefined || messages[0].role !== 'system') throw new Error('expected Seller system instruction');
-  assert.match(messages[0].content, /canonicalRevision.*baseRevision/i);
-  assert.match(messages[0].content, /quote.*unit.*period/i);
+  assert.match(messages[0].content, /application binds canonical revision.*request identifiers/i);
+  assert.match(messages[0].content, /semantic kind.*exact quote.*unit.*period/i);
   assert.equal(messages[1]?.role, 'user');
   const userMessage = messages[1];
   if (userMessage === undefined || userMessage.role !== 'user') throw new Error('expected bounded user context message');
@@ -487,12 +492,10 @@ test('explicit user numbers flow through capture then deterministic calculation 
           name: 'request_calculations',
           arguments: JSON.stringify({
             requests: [{
-              id: 'calc-capacity',
               kind: 'monthly_capacity',
-              baseRevision: 8,
-              peopleObservationId: 'obs-people',
-              minutesPerPersonPerDayObservationId: 'obs-minutes',
-              workingDaysPerMonthObservationId: 'obs-days',
+              peopleObservationId: 'seller-observation-r7-1',
+              minutesPerPersonPerDayObservationId: 'seller-observation-r7-2',
+              workingDaysPerMonthObservationId: 'seller-observation-r7-3',
             }],
           }),
         }),
@@ -513,11 +516,11 @@ test('explicit user numbers flow through capture then deterministic calculation 
   assert.equal(result.providerRounds, 3);
   assert.equal(result.canonical.revision, 9);
   assert.deepEqual(result.canonical.quantitativeObservations.map((item) => item.id), [
-    'obs-people', 'obs-minutes', 'obs-days',
+    'seller-observation-r7-1', 'seller-observation-r7-2', 'seller-observation-r7-3',
   ]);
   assert.equal(result.canonical.quantitativeObservations.every((item) =>
     item.source === 'user' && item.status === 'confirmed'), true);
-  assert.equal(result.canonical.verifiedCalculations[0]?.id, 'calc-capacity');
+  assert.equal(result.canonical.verifiedCalculations[0]?.id, 'seller-calculation-r8-1');
   assert.equal(result.canonical.verifiedCalculations[0]?.resultValue, 44);
   assert.equal(result.canonical.verifiedCalculations[0]?.resultUnit, 'hour/month');
 });
@@ -552,7 +555,7 @@ test('hallucinated quoted observation is rejected before any canonical mutation'
   assert.equal(result.code, 'OBSERVATION_CAPTURE_REJECTED');
   if (result.code === 'OBSERVATION_CAPTURE_REJECTED') {
     assert.equal(result.detail, 'VALUE_NOT_IN_QUOTE');
-    assert.equal(result.requestId, 'obs-people');
+    assert.equal(result.requestId, 'seller-observation-r7-1');
   }
   assert.equal(mutationCalls, 0);
   assert.equal(result.canonical.revision, 7);
@@ -571,7 +574,7 @@ test('multiple calculation tool calls are computed against one revision and comm
     if (providerCall === 1) {
       return completion([
         calculationTool(7, 'calc-one', 'tool-calc-one'),
-        calculationTool(7, 'calc-two', 'tool-calc-two'),
+        calculationTool(7, 'calc-two', 'tool-calc-two', 'obs-volume-2', 'obs-minutes-2'),
       ] as never);
     }
     return completion([submissionTool(8)]);
@@ -586,8 +589,8 @@ test('multiple calculation tool calls are computed against one revision and comm
   if (!result.ok) return;
   assert.equal(result.canonical.revision, 8);
   assert.deepEqual(revisions, [7, 8]);
-  assert.deepEqual(commitBatches, [{ baseRevision: 7, ids: ['calc-one', 'calc-two'] }]);
-  assert.deepEqual(result.canonical.verifiedCalculations.map((item) => item.id), ['calc-one', 'calc-two']);
+  assert.deepEqual(commitBatches, [{ baseRevision: 7, ids: ['seller-calculation-r7-1', 'seller-calculation-r7-2'] }]);
+  assert.deepEqual(result.canonical.verifiedCalculations.map((item) => item.id), ['seller-calculation-r7-1', 'seller-calculation-r7-2']);
 });
 
 test('one invalid sibling calculation rejects the entire batch without committing or leaking an uncommitted numeric result', async () => {
@@ -598,33 +601,33 @@ test('one invalid sibling calculation rejects the entire batch without committin
     calculationTool(7, 'calc-invalid', 'tool-invalid'),
   ] as never), {
     computeVerifiedCalculation: ((context: CanonicalSalesContext, request: { id: string }) => {
-      if (request.id === 'calc-invalid') return { ok: false, code: 'UNIT_MISMATCH' as const };
+      if (request.id === 'seller-calculation-r7-2') return { ok: false, code: 'UNIT_MISMATCH' as const };
       return calculationOk(context, request);
     }) as never,
     applyContextMutation: ((...args: unknown[]) => { commitCalls += 1; return { ok: false, code: 'INVALID_MUTATION', revision: 7 }; }) as never,
   });
   const result = await runSellerTurn(input);
   if (result.ok || result.code !== 'CALCULATION_REJECTED') throw new Error(`unexpected result: ${JSON.stringify(result)}`);
-  assert.equal(result.requestId, 'calc-invalid');
+  assert.equal(result.requestId, 'seller-calculation-r7-2');
   assert.equal(result.canonical.revision, 7);
   assert.equal(commitCalls, 0);
   assert.equal(JSON.stringify(result).includes('resultValue'), false);
 });
 
-test('duplicate calculation ids across sibling tool calls are rejected before calculation or mutation', async () => {
+test('duplicate semantic calculation requests across sibling tool calls are rejected before calculation or mutation', async () => {
   const primary = route();
   let computeCalls = 0;
   let commitCalls = 0;
   const input = baseInput([primary], async () => completion([
-    calculationTool(7, 'calc-duplicate', 'tool-one'),
-    calculationTool(7, 'calc-duplicate', 'tool-two'),
+    calculationTool(7, 'ignored-one', 'tool-one'),
+    calculationTool(7, 'ignored-two', 'tool-two'),
   ] as never), {
     computeVerifiedCalculation: ((...args: unknown[]) => { computeCalls += 1; return { ok: false, code: 'INVALID_REQUEST' }; }) as never,
     applyContextMutation: ((...args: unknown[]) => { commitCalls += 1; return { ok: false, code: 'INVALID_MUTATION', revision: 7 }; }) as never,
   });
   const result = await runSellerTurn(input);
   if (result.ok || result.code !== 'INVALID_PROVIDER_OUTPUT') throw new Error(`unexpected result: ${JSON.stringify(result)}`);
-  assert.equal(result.detail, 'DUPLICATE_CALCULATION_ID');
+  assert.equal(result.detail, 'DUPLICATE_CALCULATION_REQUEST');
   assert.equal(computeCalls, 0);
   assert.equal(commitCalls, 0);
 });

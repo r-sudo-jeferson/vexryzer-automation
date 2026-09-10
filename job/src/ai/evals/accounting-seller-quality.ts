@@ -7,6 +7,7 @@ export interface AccountingSellerQualityScenario {
   id: string;
   accountingSignalGroups: readonly (readonly string[])[];
   expectedCapabilitiesAnyOf: readonly CapabilityKind[];
+  requiredCapabilities?: readonly CapabilityKind[];
   forbiddenCapabilities?: readonly CapabilityKind[];
   quantitativeExpectation: QuantitativeExpectation;
   requireSemanticUi: boolean;
@@ -108,8 +109,9 @@ export function evaluateAccountingSellerQuality(input: {
   const capabilities = new Set(input.submission.proposal.intent.capabilities);
   const checks: AccountingSellerQualityChecks = Object.freeze({
     accountingNative: hasAccountingSignals(text, input.scenario.accountingSignalGroups),
-    capabilityFit: input.scenario.expectedCapabilitiesAnyOf.length === 0
-      || input.scenario.expectedCapabilitiesAnyOf.some((capability) => capabilities.has(capability)),
+    capabilityFit: (input.scenario.requiredCapabilities ?? []).every((capability) => capabilities.has(capability))
+      && (input.scenario.expectedCapabilitiesAnyOf.length === 0
+        || input.scenario.expectedCapabilitiesAnyOf.some((capability) => capabilities.has(capability))),
     forbiddenCapabilityAbsent: (input.scenario.forbiddenCapabilities ?? []).every((capability) => !capabilities.has(capability)),
     quantitativeIntegrity: quantitativeIntegrity(input.scenario.quantitativeExpectation, input.submission, input.canonical),
     semanticUi: !input.scenario.requireSemanticUi || hasSemanticUi(input.submission),
