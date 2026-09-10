@@ -8,7 +8,7 @@ status: `PLANNED_NOT_AUTHORIZED`
 predecessors: none
 repository: `r-sudo-jeferson/vexryzer-automation`
 product_root: `job`
-base_sha: `UNESTABLISHED_REPOSITORY_WAS_EMPTY_AT_PLANNING`
+base_sha: `1ebb32587bded772bbb18b053865bdfee00407bc`
 gauntlet_id: `GNT-VXA-S001-001`
 
 ## Objective
