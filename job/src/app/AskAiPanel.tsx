@@ -8,7 +8,7 @@ interface AskAiPanelProps {
   nextQuestion: string | null;
   errorCode: string | null;
   artifacts: readonly Readonly<ProjectedArtifact>[];
-  onSubmit: (text: string) => Promise<void>;
+  onSubmit: (text: string) => Promise<boolean>;
   onResetSession: () => void;
 }
 
@@ -55,8 +55,8 @@ export function AskAiPanel({
     event?.preventDefault();
     const value = text.trim();
     if (!canSubmit || composing) return;
-    await onSubmit(value);
-    setText('');
+    const accepted = await onSubmit(value);
+    if (accepted) setText('');
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -106,7 +106,7 @@ export function AskAiPanel({
         <div className="vxa-agent__artifacts" aria-label="Conceitos gerados e validados">
           {artifacts.map((artifact) => (
             <article key={artifact.id} data-truth={artifact.truthStatus} data-maturity={artifact.status}>
-              <span>{artifact.status === 'prototype' ? 'PROTÓTIPO' : 'CONCEITO'}</span>
+              <span>{artifact.truthStatus === 'invalidated' ? 'INVALIDADO' : artifact.status === 'prototype' ? 'PROTÓTIPO' : 'CONCEITO'}</span>
               <strong>{artifact.title}</strong>
               <p>{artifact.summary}</p>
             </article>
