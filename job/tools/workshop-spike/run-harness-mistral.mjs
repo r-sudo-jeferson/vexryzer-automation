@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertWorkshopProviderCompatibility } from './provider-compatibility.ts';
 import {
+  assertMinimalHarnessContinuationSurface,
   assertMinimalHarnessRequestSurface,
   hasStreamingChunks,
   hasToolRoundTrip,
@@ -228,7 +229,7 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
   }
 
   const secondEvidence = inspectHarnessEvents(second.events);
-  assertMinimalHarnessRequestSurface(secondEvidence);
+  assertMinimalHarnessContinuationSurface(firstEvidence, secondEvidence);
   const streaming = hasStreamingChunks(first.events) || hasStreamingChunks(second.events);
   const toolCalls = hasToolRoundTrip(first.events) && hasToolRoundTrip(second.events);
   const structuredArguments = firstEvidence.structuredToolArguments && secondEvidence.structuredToolArguments;
