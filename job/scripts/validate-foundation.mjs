@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const BINDING = 'FORGE-VEXRYZER-AUTOMATION-v1.0.0';
+const CI_EXECUTION_POLICY_MARKER = 'CI_EXECUTION_POLICY: `OPTIMIZED_GATES_ONLY`';
 const PLANNING_STATUS = 'PLANNED_NOT_AUTHORIZED';
 const CONSTRUCTION_STATUSES = new Set(['AUTHORIZED', 'IN_PROGRESS', 'PASS']);
 const AUTHORIZATION_FILE = 'job/docs/authorizations/VXA-S001-AUTHORIZATION.md';
@@ -96,6 +97,14 @@ export async function validateRepository(root) {
     }
   }
 
+  const agentsFile = 'AGENTS.md';
+  if (await exists(path.join(root, agentsFile))) {
+    const agents = await read(root, agentsFile);
+    if (!agents.includes(CI_EXECUTION_POLICY_MARKER)) {
+      errors.push(error('CI_EXECUTION_POLICY_MISSING', 'AGENTS.md must retain the optimized remote CI execution policy marker.', agentsFile));
+    }
+  }
+
   const requiredReadable = [];
   for (const file of REQUIRED_FILES) {
     if (await exists(path.join(root, file))) requiredReadable.push(file);
@@ -113,7 +122,7 @@ export async function validateRepository(root) {
     const baseSha = extractBacktickedField(slice, 'base_sha');
     const status = extractPlainOrBacktickedStatus(slice);
     if (baseSha === 'UNESTABLISHED_REPOSITORY_WAS_EMPTY_AT_PLANNING' || !isSha(baseSha)) {
-      errors.push(error('BASE_SHA_UNESTABLISHED', 'S001 base_sha must be an exact 40-hex repository SHA.', sliceFile));
+      errors.push(error('BASE_SHA_UNESTABLISHED', 'S001 base_sha must be an exact 40-hex bootstrap SHA before hardening can pass.', sliceFile));
     }
     if (status !== PLANNING_STATUS && !CONSTRUCTION_STATUSES.has(status)) {
       errors.push(error('S001_STATUS_INVALID', `Unsupported S001 status: ${status ?? 'missing'}.`, sliceFile));

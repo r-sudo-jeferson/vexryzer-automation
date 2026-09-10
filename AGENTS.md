@@ -42,6 +42,33 @@ Before material Slice construction, verify the authorized base SHA and keep evid
 
 Provider metadata outside `job/` is permitted only when technically required and must remain glue over `job/` or repository integrity; it may not become a second product architecture.
 
+## CI execution policy
+
+CI_EXECUTION_POLICY: `OPTIMIZED_GATES_ONLY`
+
+Remote CI is an integration/convergence gate, not the default inner development loop. Optimize construction by doing the maximum safe verification locally or in the current execution environment before spending a remote CI run.
+
+Default behavior for every agent:
+- work on an isolated Slice branch and persist verified checkpoints to GitHub without opening or updating a PR merely to trigger CI;
+- run unit, domain, static, type, lint, build, browser and security checks locally whenever the environment supports them;
+- batch coherent changes and stabilize the candidate before remote CI instead of using CI as trial-and-error debugging;
+- preserve exact evidence and mark unavailable checks `NOT_VERIFIED`; environment blockers never authorize weakening a gate, test, requirement or security control;
+- if a local environment cannot run a check, continue every independent task that can still be verified and report the blocker with evidence.
+
+Remote CI should be triggered only when it materially increases confidence or is required by a gate, especially:
+1. after a candidate SHA is frozen and local/proportional verification is green, before GAUNTLET PASS, merge, promotion or release;
+2. when diagnosing a failure that is demonstrably specific to the hosted CI/runtime and cannot be reproduced locally;
+3. after a material CI/workflow/deployment change, once the configuration has been validated as far as the local environment allows;
+4. at the final integration/convergence gate for a Slice.
+
+Do not trigger remote CI for ordinary intermediate commits, documentation-only changes, formatting, checkpoints already covered by equivalent local evidence, or speculative debugging. Do not repeatedly rerun an unchanged failing candidate unless there is evidence the external blocker changed or the rerun itself is diagnostically necessary.
+
+Opening a PR is not an implementation milestone. Unless review itself is required earlier, prefer opening/updating the PR when the Slice is near candidate freeze so automatic pull-request workflows do not consume unnecessary runs.
+
+Any candidate change after CI invalidates candidate-specific PASS. Run the relevant final gates again on the new exact SHA. Never combine green evidence from different SHAs.
+
+The free-tier lock applies to CI: never enable paid runner overage, paid add-ons or spending merely to obtain a green check without explicit Founder authorization and a corresponding contract decision.
+
 ## Product mission
 
 Build an ultra-premium commercial intake experience, not a generic chatbot or CRUD app. ASK AI must help the visitor turn an operational pain into a qualified automation request. Infinite Canvas visualizes the process as it is understood. The cycle ends only when the request and any accepted files are durably recorded and the notification path is attempted.

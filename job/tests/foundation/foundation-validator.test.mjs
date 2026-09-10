@@ -25,7 +25,7 @@ function codes(result) {
   return new Set(result.errors.map((entry) => entry.code));
 }
 
-test('accepts the canonical repository fixture', async () => {
+test('accepts the canonical hardening fixture', async () => {
   const result = await validateRepository(fixtureSource);
   assert.equal(result.ok, true, JSON.stringify(result.errors, null, 2));
 });
@@ -66,10 +66,10 @@ test('accepts S001 authorization when an exact authorization record is present',
   const slice = await (await import('node:fs/promises')).readFile(slicePath, 'utf8');
   const handoff = await (await import('node:fs/promises')).readFile(handoffPath, 'utf8');
   await write(root, 'job/docs/slices/VXA-S001-contract.md', slice
-    .replace(/^status: `[^`]+`$/m, 'status: `IN_PROGRESS`')
+    .replace('status: `PLANNED_NOT_AUTHORIZED`', 'status: `IN_PROGRESS`')
     .replace(/base_sha: `[^`]+`/, `base_sha: \`${authorizedBase}\``));
   await write(root, 'job/docs/handoffs/ENGINEERING-START.md', handoff
-    .replace(/^status: `[^`]+`$/m, 'status: `IN_PROGRESS`')
+    .replace('status: `PLANNED_NOT_AUTHORIZED`', 'status: `IN_PROGRESS`')
     .replace(/base_sha: `[^`]+`/, `base_sha: \`${authorizedBase}\``));
   await write(root, 'job/docs/authorizations/VXA-S001-AUTHORIZATION.md', `# VXA-S001 Authorization\n\nbinding_id: \`FORGE-VEXRYZER-AUTOMATION-v1.0.0\`\nslice_id: \`VXA-S001\`\nslice_version: \`1.0.0\`\nauthorized_base_sha: \`${authorizedBase}\`\nstatus: \`AUTHORIZED\`\n`);
   const result = await validateRepository(root);
@@ -99,4 +99,14 @@ test('rejects obvious committed credential patterns', async () => {
   const result = await validateRepository(root);
   assert.equal(result.ok, false);
   assert.ok(codes(result).has('CREDENTIAL_PATTERN_DETECTED'));
+});
+
+test('rejects removal of the CI execution policy from AGENTS.md', async () => {
+  const root = await makeFixture();
+  const target = path.join(root, 'AGENTS.md');
+  const text = await (await import('node:fs/promises')).readFile(target, 'utf8');
+  await write(root, 'AGENTS.md', text.replace('CI_EXECUTION_POLICY: `OPTIMIZED_GATES_ONLY`', ''));
+  const result = await validateRepository(root);
+  assert.equal(result.ok, false);
+  assert.ok(codes(result).has('CI_EXECUTION_POLICY_MISSING'));
 });
