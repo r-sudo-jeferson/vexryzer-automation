@@ -46,7 +46,8 @@ jobs:
           git merge-base --is-ancestor "$BASE" HEAD
           test -f job/docs/slices/VXA-S002-contract.md
           grep -Fq 'FORGE-VEXRYZER-AUTOMATION-v1.0.0' job/docs/slices/VXA-S002-contract.md
-          grep -Fq 'VXA-S002@1.0.0' job/docs/slices/VXA-S002-contract.md
+          grep -Fq 'slice_id: `VXA-S002`' job/docs/slices/VXA-S002-contract.md
+          grep -Fq 'slice_version: `1.0.0`' job/docs/slices/VXA-S002-contract.md
           grep -Fq 'GNT-VXA-S002-001' job/docs/slices/VXA-S002-contract.md
 
       - name: Resolve exact frozen dependencies
