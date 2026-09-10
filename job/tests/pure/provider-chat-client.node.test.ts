@@ -59,7 +59,15 @@ test('malformed SSE framing is classified separately from invalid assembled comp
     'data: {not-json}\n\n',
     { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
   ));
-  assert.deepEqual(result, { ok: false, class: 'malformed', status: 200, retryAfterMs: null, malformedDetail: 'sse_decode' });
+  assert.deepEqual(result, {
+    ok: false,
+    class: 'malformed',
+    status: 200,
+    retryAfterMs: null,
+    malformedDetail: 'sse_decode',
+    sseDecodeDetail: 'malformed_json',
+  });
+  assert.equal(JSON.stringify(result).includes('{not-json}'), false);
 });
 
 test('mid-stream transport failure is classified as network rather than malformed provider output', async () => {
@@ -99,4 +107,21 @@ test('stream chunk structural failure carries only a bounded diagnostic code', a
     streamChunkDetail: 'tool_arguments',
   });
   assert.equal(JSON.stringify(result).includes('private-value'), false);
+});
+
+
+test('unsupported SSE fields fail closed with bounded shape-only diagnostics', async () => {
+  const result = await consumeProviderChatSseResponse(new Response(
+    'event: private-event-name\ndata: {"choices":[]}\n\ndata: [DONE]\n\n',
+    { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+  ));
+  assert.deepEqual(result, {
+    ok: false,
+    class: 'malformed',
+    status: 200,
+    retryAfterMs: null,
+    malformedDetail: 'sse_decode',
+    sseDecodeDetail: 'unsupported_field',
+  });
+  assert.equal(JSON.stringify(result).includes('private-event-name'), false);
 });

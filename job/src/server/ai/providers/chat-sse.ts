@@ -7,6 +7,26 @@ export interface ChatSseDecoder {
   finish(): readonly ChatSseEvent[];
 }
 
+export type ChatSseDecodeErrorCode =
+  | 'unsupported_field'
+  | 'malformed_json'
+  | 'data_after_done'
+  | 'buffer_limit';
+
+export class ChatSseDecodeError extends TypeError {
+  readonly code: ChatSseDecodeErrorCode;
+
+  constructor(code: ChatSseDecodeErrorCode) {
+    super(`invalid sse stream: ${code}`);
+    this.name = 'ChatSseDecodeError';
+    this.code = code;
+  }
+}
+
+function rejectSseDecode(code: ChatSseDecodeErrorCode): never {
+  throw new ChatSseDecodeError(code);
+}
+
 export interface AssembledToolCall {
   id: string;
   type: 'function';
@@ -72,7 +92,7 @@ function decodeFrame(frame: string): ChatSseEvent | null {
       dataLines.push(line.slice(5).replace(/^ /, ''));
       continue;
     }
-    throw new TypeError('unsupported sse field');
+    rejectSseDecode('unsupported_field');
   }
   if (dataLines.length === 0) return null;
   const data = dataLines.join('\n');
@@ -80,7 +100,7 @@ function decodeFrame(frame: string): ChatSseEvent | null {
   try {
     return { type: 'chunk', data: JSON.parse(data) as unknown };
   } catch {
-    throw new TypeError('malformed sse json');
+    rejectSseDecode('malformed_json');
   }
 }
 
@@ -108,7 +128,7 @@ export function createChatSseDecoder(
         output.push(event);
         if (event.type === 'done') {
           done = true;
-          if (buffer.trim().length > 0) throw new TypeError('sse data received after done');
+          if (buffer.trim().length > 0) rejectSseDecode('data_after_done');
           break;
         }
       }
@@ -121,7 +141,7 @@ export function createChatSseDecoder(
         if (event.type === 'done') done = true;
       }
     }
-    if (utf8Bytes(buffer) > maxBufferedBytes) throw new RangeError('sse buffer limit exceeded');
+    if (utf8Bytes(buffer) > maxBufferedBytes) rejectSseDecode('buffer_limit');
     return Object.freeze(output);
   };
 
@@ -129,12 +149,12 @@ export function createChatSseDecoder(
     push(chunk: Uint8Array | string): readonly ChatSseEvent[] {
       if (done) {
         if ((typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true })).trim().length > 0) {
-          throw new TypeError('sse data received after done');
+          rejectSseDecode('data_after_done');
         }
         return Object.freeze([]);
       }
       buffer += typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true });
-      if (utf8Bytes(buffer) > maxBufferedBytes) throw new RangeError('sse buffer limit exceeded');
+      if (utf8Bytes(buffer) > maxBufferedBytes) rejectSseDecode('buffer_limit');
       return drain(false);
     },
     finish(): readonly ChatSseEvent[] {

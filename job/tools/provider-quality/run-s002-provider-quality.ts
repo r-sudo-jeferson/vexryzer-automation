@@ -281,6 +281,7 @@ function safeFailure(result: object & { ok: false; code: string }) {
     ...('failureClass' in result && typeof result.failureClass === 'string' ? { failureClass: result.failureClass } : {}),
     ...('status' in result && typeof result.status === 'number' ? { httpStatus: result.status } : {}),
     ...('providerMalformedDetail' in result && typeof result.providerMalformedDetail === 'string' ? { providerMalformedDetail: result.providerMalformedDetail } : {}),
+    ...('providerSseDecodeDetail' in result && typeof result.providerSseDecodeDetail === 'string' ? { providerSseDecodeDetail: result.providerSseDecodeDetail } : {}),
     ...('providerStreamChunkDetail' in result && typeof result.providerStreamChunkDetail === 'string' ? { providerStreamChunkDetail: result.providerStreamChunkDetail } : {}),
   });
 }

@@ -267,7 +267,7 @@ function parseCalculationIntent(
     if (key === 'kind') continue;
     if (!safeId(value[key])) return { ok: false, code: 'INVALID_ARGUMENTS' };
   }
-  return { ok: true, request: Object.freeze({ ...value }) as Readonly<SellerCalculationIntent> };
+  return { ok: true, request: Object.freeze({ ...value }) as unknown as Readonly<SellerCalculationIntent> };
 }
 
 function parseArgumentsJson(call: Readonly<AssembledToolCall>): Record<string, unknown> | null {

@@ -135,6 +135,7 @@ export type CriticTurnRuntimeResult =
       status: number | null;
       retryAfterMs: number | null;
       providerMalformedDetail?: Exclude<ProviderChatClientResult, { ok: true }>['malformedDetail'];
+      providerSseDecodeDetail?: Exclude<ProviderChatClientResult, { ok: true }>['sseDecodeDetail'];
       providerStreamChunkDetail?: Exclude<ProviderChatClientResult, { ok: true }>['streamChunkDetail'];
     }
   | {
@@ -512,6 +513,7 @@ function providerFailure(
     status: failure.status,
     retryAfterMs: failure.retryAfterMs,
     ...(failure.malformedDetail === undefined ? {} : { providerMalformedDetail: failure.malformedDetail }),
+    ...(failure.sseDecodeDetail === undefined ? {} : { providerSseDecodeDetail: failure.sseDecodeDetail }),
     ...(failure.streamChunkDetail === undefined ? {} : { providerStreamChunkDetail: failure.streamChunkDetail }),
   };
 }

@@ -4,7 +4,15 @@ import {
   type ProviderChatMessage,
   type ProviderServerConfig,
 } from './openai-chat-wire.ts';
-import { ChatStreamChunkError, createChatSseDecoder, createChatStreamAccumulator, type AssembledChatStream, type ChatStreamChunkErrorCode } from './chat-sse.ts';
+import {
+  ChatSseDecodeError,
+  ChatStreamChunkError,
+  createChatSseDecoder,
+  createChatStreamAccumulator,
+  type AssembledChatStream,
+  type ChatSseDecodeErrorCode,
+  type ChatStreamChunkErrorCode,
+} from './chat-sse.ts';
 import { classifyHttpFailure, classifyTransportFailure } from './provider-http-errors.ts';
 import type { ProviderRouteDefinition } from '../../../ai/providers/provider-registry.ts';
 
@@ -34,6 +42,7 @@ export type ProviderChatClientResult =
       status: number | null;
       retryAfterMs: number | null;
       malformedDetail?: ProviderMalformedDetail;
+      sseDecodeDetail?: ChatSseDecodeErrorCode;
       streamChunkDetail?: ChatStreamChunkErrorCode;
     };
 
@@ -61,6 +70,7 @@ export async function consumeProviderChatSseResponse(
   const rejectMalformed = async (
     malformedDetail: ProviderMalformedDetail,
     streamChunkDetail?: ChatStreamChunkErrorCode,
+    sseDecodeDetail?: ChatSseDecodeErrorCode,
   ): Promise<ProviderChatClientResult> => {
     try {
       await reader.cancel();
@@ -73,6 +83,7 @@ export async function consumeProviderChatSseResponse(
       status: response.status,
       retryAfterMs: null,
       malformedDetail,
+      ...(sseDecodeDetail === undefined ? {} : { sseDecodeDetail }),
       ...(streamChunkDetail === undefined ? {} : { streamChunkDetail }),
     };
   };
@@ -89,8 +100,12 @@ export async function consumeProviderChatSseResponse(
       let events;
       try {
         events = decoder.push(next.value);
-      } catch {
-        return await rejectMalformed('sse_decode');
+      } catch (error) {
+        return await rejectMalformed(
+          'sse_decode',
+          undefined,
+          error instanceof ChatSseDecodeError ? error.code : undefined,
+        );
       }
       for (const event of events) {
         if (event.type === 'done') {
@@ -111,8 +126,12 @@ export async function consumeProviderChatSseResponse(
     let finalEvents;
     try {
       finalEvents = decoder.finish();
-    } catch {
-      return await rejectMalformed('sse_decode');
+    } catch (error) {
+      return await rejectMalformed(
+        'sse_decode',
+        undefined,
+        error instanceof ChatSseDecodeError ? error.code : undefined,
+      );
     }
     for (const event of finalEvents) {
       if (event.type === 'done') {
