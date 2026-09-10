@@ -47,9 +47,12 @@ function toolCallIdFromCall(value: unknown): string | null {
 
 function toolCallIdFromResult(value: unknown): string | null {
   const message = record(eventData(value)?.message);
-  if (typeof message?.toolCallId === 'string') return message.toolCallId;
-  if (typeof message?.tool_call_id === 'string') return message.tool_call_id;
-  return null;
+  const source = record(message?.source);
+  const content = Array.isArray(message?.content) ? message.content : null;
+  if (source?.kind !== 'tool' || typeof source.callId !== 'string' || content?.length !== 1) return null;
+  const block = record(content[0]);
+  if (block?.type !== 'tool-result' || typeof block.toolCallId !== 'string') return null;
+  return block.toolCallId === source.callId ? source.callId : null;
 }
 
 function validStructuredArguments(value: unknown): boolean {
