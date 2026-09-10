@@ -1,3 +1,5 @@
+import { resolve, sep } from 'node:path';
+
 export const HARNESS_CANDIDATE_VERSION = '0.1.2-rc.1' as const;
 export const DEFAULT_MISTRAL_PROVIDER_ROUTE = 'mistral' as const;
 export const DEFAULT_MISTRAL_MODEL_ID = 'mistral-medium-latest' as const;
@@ -105,4 +107,25 @@ export function renderMistralSettingsYaml(input: MistralRouteConfig): string {
     `        - id: ${input.modelId}`,
     '',
   ].join('\n');
+}
+
+export function resolveDshBinFromPackageManifest(manifest: unknown, packageDir: string): string {
+  if (typeof manifest !== 'object' || manifest === null || Array.isArray(manifest)) {
+    throw new TypeError('dsh package manifest must be an object');
+  }
+  const bin = (manifest as { bin?: unknown }).bin;
+  const relativeBin = typeof bin === 'string'
+    ? bin
+    : typeof bin === 'object' && bin !== null && !Array.isArray(bin)
+      ? (bin as Record<string, unknown>).dsh
+      : undefined;
+  if (typeof relativeBin !== 'string' || !relativeBin.trim()) {
+    throw new TypeError('dsh package manifest must declare bin.dsh');
+  }
+  const root = resolve(packageDir);
+  const target = resolve(root, relativeBin);
+  if (target !== root && !target.startsWith(`${root}${sep}`)) {
+    throw new TypeError('dsh package bin must resolve inside the package directory');
+  }
+  return target;
 }
