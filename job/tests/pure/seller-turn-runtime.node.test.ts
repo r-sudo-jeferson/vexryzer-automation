@@ -598,7 +598,7 @@ test('one invalid sibling calculation rejects the entire batch without committin
   let commitCalls = 0;
   const input = baseInput([primary], async () => completion([
     calculationTool(7, 'calc-valid', 'tool-valid'),
-    calculationTool(7, 'calc-invalid', 'tool-invalid'),
+    calculationTool(7, 'calc-invalid', 'tool-invalid', 'obs-invalid', 'obs-minutes'),
   ] as never), {
     computeVerifiedCalculation: ((context: CanonicalSalesContext, request: { id: string }) => {
       if (request.id === 'seller-calculation-r7-2') return { ok: false, code: 'UNIT_MISMATCH' as const };
