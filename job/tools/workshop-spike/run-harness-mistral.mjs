@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertWorkshopProviderCompatibility } from './provider-compatibility.ts';
 import {
+  assertMinimalHarnessRequestSurface,
   hasStreamingChunks,
   hasToolRoundTrip,
   inspectHarnessEvents,
@@ -19,9 +20,10 @@ import {
   DEFAULT_MISTRAL_BASE_URL,
   DEFAULT_MISTRAL_MODEL_ID,
   DEFAULT_MISTRAL_PROVIDER_ROUTE,
+  HARNESS_SPIKE_PROFILE,
   renderHarnessInstallPackageJson,
   renderHarnessInstallWorkspaceYaml,
-  renderMistralSettingsYaml,
+  renderMistralMinimalProfilePatchYaml,
   resolveHarnessCandidateVersion,
   sanitizeSpikeDiagnostic,
   validateSpikeInputs,
@@ -120,13 +122,24 @@ async function bootstrapHarnessRuntime(rootDir, harnessVersion) {
   const requireFromRuntime = createRequire(join(runtimeDir, 'package.json'));
   const sdkPackagePath = requireFromRuntime.resolve('@deepseek-ai/dsh-sdk-client/package.json');
   const dshPackagePath = requireFromRuntime.resolve('@deepseek-ai/dsh/package.json');
-  const [sdkManifest, dshManifest] = await Promise.all([
+  const piAiPackagePath = requireFromRuntime.resolve('@deepseek-ai/dsh-llm-pi-ai/package.json');
+  const requireFromDsh = createRequire(dshPackagePath);
+  const minimalBundlePackagePath = requireFromDsh.resolve('@deepseek-ai/dsh-sdk-minimal/package.json');
+  const [sdkManifest, dshManifest, piAiManifest, minimalBundleManifest] = await Promise.all([
     readJson(sdkPackagePath),
     readJson(dshPackagePath),
+    readJson(piAiPackagePath),
+    readJson(minimalBundlePackagePath),
   ]);
-  if (sdkManifest.version !== harnessVersion || dshManifest.version !== harnessVersion) {
+  const resolvedVersions = {
+    sdk: sdkManifest.version,
+    dsh: dshManifest.version,
+    piAi: piAiManifest.version,
+    sdkMinimal: minimalBundleManifest.version,
+  };
+  if (Object.values(resolvedVersions).some((version) => version !== harnessVersion)) {
     throw new Error(
-      `Harness package version mismatch: expected ${harnessVersion}, sdk=${String(sdkManifest.version)}, dsh=${String(dshManifest.version)}`,
+      `Harness package version mismatch: expected ${harnessVersion}, resolved=${JSON.stringify(resolvedVersions)}`,
     );
   }
 
@@ -139,20 +152,23 @@ async function bootstrapHarnessRuntime(rootDir, harnessVersion) {
   return { runtimeDir, sdk };
 }
 
-async function writeProviderSettings(dshHome, input, timeouts = undefined) {
+async function writeProviderPatch(dshHome, input, timeouts = undefined) {
   await mkdir(dshHome, { recursive: true });
-  await writeFile(join(dshHome, 'settings.yaml'), renderMistralSettingsYaml({
+  const patchPath = join(dshHome, 'mistral-profile.patch.yml');
+  await writeFile(patchPath, renderMistralMinimalProfilePatchYaml({
     providerRoute: input.providerRoute,
     modelId: input.modelId,
     baseUrl: input.baseUrl,
     ...(timeouts ?? {}),
   }), { mode: 0o600 });
+  return patchPath;
 }
 
-function createHarness({ sdk, workspace, dshHome, input }) {
+function createHarness({ sdk, workspace, dshHome, patchPath, input }) {
   return new sdk.DeepSeekHarness(buildHarnessSdkOptions(process.env, {
     workspace,
     dshHome,
+    patchPath,
     input,
     maxTokens: MAX_TOKENS,
   }));
@@ -170,12 +186,12 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
   const workspace = join(rootDir, 'workspace');
   const dshHome = join(rootDir, 'dsh-home');
   await mkdir(workspace, { recursive: true });
-  await writeProviderSettings(dshHome, input);
+  const patchPath = await writeProviderPatch(dshHome, input);
 
   const sessionId = `vxa-s002-provider-${randomUUID()}`;
   const nonce = `VXA-S002-NONCE-${randomUUID()}`;
   const probeFile = 'vxa-harness-tool-probe.txt';
-  const harness = createHarness({ ...runtime, workspace, dshHome, input });
+  const harness = createHarness({ ...runtime, workspace, dshHome, patchPath, input });
 
   let first;
   let second;
@@ -188,6 +204,7 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
     ), 'first Harness turn', NORMAL_TURN_WALL_MS);
 
     firstEvidence = inspectHarnessEvents(first.events);
+    assertMinimalHarnessRequestSurface(firstEvidence);
     const fileContent = await readFile(join(workspace, probeFile), 'utf8').catch(() => '');
     if (fileContent.trim() !== nonce) {
       throw new Error(`Harness tool probe did not create the exact expected workspace artifact; evidence=${JSON.stringify(firstEvidence)}`);
@@ -203,13 +220,14 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
   }
 
   const secondEvidence = inspectHarnessEvents(second.events);
+  assertMinimalHarnessRequestSurface(secondEvidence);
   const streaming = hasStreamingChunks(first.events) || hasStreamingChunks(second.events);
   const toolCalls = hasToolRoundTrip(first.events) && hasToolRoundTrip(second.events);
   const structuredArguments = firstEvidence.structuredToolArguments && secondEvidence.structuredToolArguments;
   const multiTurnToolReplay = hasToolRoundTrip(second.events) && second.finalResponse.includes(nonce);
 
   currentPhase = 'restart-replay';
-  const restartedHarness = createHarness({ ...runtime, workspace, dshHome, input });
+  const restartedHarness = createHarness({ ...runtime, workspace, dshHome, patchPath, input });
   let restart;
   try {
     restart = await withWallTimeout(restartedHarness.run(
@@ -220,6 +238,7 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
     await restartedHarness.close();
   }
   const restartEvidence = inspectHarnessEvents(restart.events);
+  assertMinimalHarnessRequestSurface(restartEvidence);
   const restartSafe = restart.finalResponse.includes(nonce) && restartEvidence.toolCallCount === 0;
 
   return {
@@ -240,11 +259,11 @@ async function proveTimeoutMapping(runtime, rootDir, input) {
   const workspace = join(rootDir, 'timeout-workspace');
   const dshHome = join(rootDir, 'timeout-dsh-home');
   await mkdir(workspace, { recursive: true });
-  await writeProviderSettings(dshHome, input, {
+  const patchPath = await writeProviderPatch(dshHome, input, {
     timeoutMs: TIMEOUT_PROVIDER_MS,
     streamIdleTimeoutMs: TIMEOUT_PROVIDER_MS,
   });
-  const harness = createHarness({ ...runtime, workspace, dshHome, input });
+  const harness = createHarness({ ...runtime, workspace, dshHome, patchPath, input });
   try {
     currentPhase = 'timeout-mapping';
     const result = await withWallTimeout(harness.run(
@@ -305,12 +324,14 @@ async function main() {
       schemaVersion: 1,
       status: compatible ? 'pass' : 'fail',
       compatible,
+      harnessProfile: HARNESS_SPIKE_PROFILE,
       ...compatibility,
       evidence: normal.diagnosticCounts,
       notes: [
         'Raw provider payloads and model credentials are intentionally not emitted.',
-        'The configured llm-pi-ai Mistral route is used only after the pinned catalog route proved it does not contain this exact model.',
-        'A PASS is valid only for this exact Harness version/provider/model tuple.',
+        'The official sdk-minimal profile is patched at launch to replace only the DeepSeek adapter with the configured llm-pi-ai Mistral route.',
+        'Every normal-turn request must expose exactly the two tool schemas shipped by sdk-minimal.',
+        'A PASS is valid only for this exact Harness version/profile/provider/model tuple.',
         'This proof does not authorize a public live Workshop deployment.',
       ],
     };
@@ -329,6 +350,7 @@ main().catch((error) => {
     schemaVersion: 1,
     status: 'error',
     compatible: false,
+    harnessProfile: HARNESS_SPIKE_PROFILE,
     phase: currentPhase,
     error: { name, message },
     notes: [
