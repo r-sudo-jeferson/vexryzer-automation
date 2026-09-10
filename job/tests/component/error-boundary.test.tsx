@@ -10,6 +10,6 @@ describe('ErrorBoundary', () => {
   it('shows a bounded recovery state when rendering fails', () => {
     render(<ErrorBoundary><Broken /></ErrorBoundary>);
     expect(screen.getByRole('alert')).toHaveTextContent('A experiência visual encontrou um problema.');
-    expect(screen.getByRole('button', { name: 'Recarregar experiência' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Reiniciar experiência' })).toBeVisible();
   });
 });

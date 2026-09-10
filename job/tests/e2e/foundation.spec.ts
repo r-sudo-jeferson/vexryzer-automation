@@ -108,3 +108,14 @@ test('performance probe is absent by default and enabled only for GAUNTLET measu
   const budgets = await page.evaluate(() => window.__VXA_PERF__?.budgets);
   expect(budgets).toMatchObject({ lcpMs: 2500, inpMs: 200, cls: 0.1, longTaskMs: 50 });
 });
+
+test('error recovery clears the failing fixture and returns to a safe origin state', async ({ page }) => {
+  await page.goto('/?fixture=error#process');
+  await expect(page.getByRole('alert')).toContainText('A experiência visual encontrou um problema.');
+  await page.getByRole('button', { name: 'Reiniciar experiência' }).click();
+  await expect(page.getByRole('heading', { name: /Onde o seu time ainda trabalha como máquina/i })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => ({ search: window.location.search, hash: window.location.hash }))).toEqual({
+    search: '',
+    hash: '#origin',
+  });
+});
