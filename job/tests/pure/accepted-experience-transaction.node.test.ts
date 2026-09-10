@@ -143,6 +143,8 @@ test('PASS publishes canonical evidence and reactive projection as one outer tra
   assert.equal(result.canonical.facts[0]?.confidence, null);
   assert.equal(result.canonical.opportunities[0]?.id, 'opp-new');
   assert.equal(result.canonical.artifacts[0]?.id, 'artifact-new');
+  assert.equal(result.canonical.artifacts[0]?.maturity, 'conceptual');
+  assert.equal(result.canonical.artifacts[0]?.summary, 'Visão conceitual apoiada na hipótese explicitada.');
   assert.equal(result.reactiveState.basedOnRevision, 5);
   assert.equal(result.reactiveState.projectionRevision, 1);
   assert.equal(result.reactiveState.processMutations[0]?.mutation.kind, 'upsert_node');
