@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  isUsableOpenAiSse,
   parseOpenAiSse,
   type StructuredToolCall,
 } from '../../tools/workshop-spike/provider-screen-protocol.ts';
@@ -44,4 +45,39 @@ test('SSE protocol evidence distinguishes reasoning chunks from user-visible con
     done: true,
   });
   assert.equal(JSON.stringify(parsed).includes('private-analysis'), false);
+});
+
+
+test('streaming protocol accepts structurally usable SSE even when free text does not echo a diagnostic marker', () => {
+  const parsed = parseOpenAiSse([
+    'data: {"choices":[{"delta":{"content":"Resposta diferente, mas transmitida."}}]}',
+    'data: [DONE]',
+    '',
+  ].join('\n'));
+  assert.equal(parsed.text.includes('VXA-S002-STREAM'), false);
+  assert.equal(isUsableOpenAiSse(parsed), true);
+});
+
+test('streaming protocol rejects missing DONE, empty content, and reasoning-only delivery', () => {
+  assert.equal(isUsableOpenAiSse({
+    eventCount: 1,
+    contentChunkCount: 1,
+    reasoningChunkCount: 0,
+    text: 'conteúdo',
+    done: false,
+  }), false);
+  assert.equal(isUsableOpenAiSse({
+    eventCount: 1,
+    contentChunkCount: 0,
+    reasoningChunkCount: 0,
+    text: '',
+    done: true,
+  }), false);
+  assert.equal(isUsableOpenAiSse({
+    eventCount: 2,
+    contentChunkCount: 0,
+    reasoningChunkCount: 2,
+    text: '',
+    done: true,
+  }), false);
 });
