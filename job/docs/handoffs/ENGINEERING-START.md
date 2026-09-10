@@ -6,6 +6,7 @@ next_slice: `VXA-S001@1.0.0`
 gauntlet_id: `GNT-VXA-S001-001`
 repository: `r-sudo-jeferson/vexryzer-automation`
 product_root: `job`
+base_sha: `1ebb32587bded772bbb18b053865bdfee00407bc`
 status: `PLANNED_NOT_AUTHORIZED`
 
 ## Absolute isolation
@@ -23,9 +24,9 @@ Do not access either Machina repository for any reason. This product is greenfie
 7. `job/docs/superpowers/specs/2026-09-09-vexryzer-automation-design.md`
 8. `job/docs/superpowers/plans/2026-09-09-vxa-s001-implementation-plan.md`
 
-## Current repository fact at planning time
+## Canonical repository fact
 
-The GitHub repository was verified private, default branch `main`, and empty immediately before bootstrap planning. No base SHA existed to bind at that point. Engineering must establish the actual initial planning/bootstrap SHA before any construction authorization and record it in the Slice contract/evidence. Never invent it.
+The canonical planning/bootstrap tree is bound to `1ebb32587bded772bbb18b053865bdfee00407bc`. This exact SHA is the required base reference for any later S001 authorization. S001 remains unauthorized.
 
 ## Stack direction
 
