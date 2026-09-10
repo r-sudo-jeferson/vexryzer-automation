@@ -157,7 +157,7 @@ describe('ASK AI panel', () => {
   });
 
   it('renders conceptual/prototype truth explicitly and never executes artifact content', () => {
-    (globalThis as Record<string, unknown>).__VXA_ARTIFACT_EXECUTED__ = false;
+    (globalThis as Record<string, unknown>)['__VXA_ARTIFACT_EXECUTED__'] = false;
     renderPanel({
       artifacts: [{
         id: 'artifact-hostile',
@@ -175,7 +175,7 @@ describe('ASK AI panel', () => {
 
     expect(screen.getByText(/<img src=x onerror=/)).toBeTruthy();
     expect(screen.getByText(/<script>/)).toBeTruthy();
-    expect((globalThis as Record<string, unknown>).__VXA_ARTIFACT_EXECUTED__).toBe(false);
+    expect((globalThis as Record<string, unknown>)['__VXA_ARTIFACT_EXECUTED__']).toBe(false);
   });
 
   it('offers explicit safe-session reset only for continuity failures', () => {

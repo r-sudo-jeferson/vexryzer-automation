@@ -2,6 +2,7 @@ import { getDeployStore, getStore } from '@netlify/blobs';
 import type { AskAiHttpDependencies } from '../session/ask-ai-http.ts';
 import {
   createNetlifyBlobSessionRepository,
+  type ConditionalBlobWriteOptions,
   type ConditionalJsonBlobStore,
 } from '../session/netlify-blob-session-repository.ts';
 import type { AgentRuntimeStaticConfig } from '../session/stored-agent-turn-service.ts';
@@ -45,8 +46,15 @@ export function createFailClosedAgentRuntime(): Readonly<AgentRuntimeStaticConfi
 
 function conditionalStore(store: ReturnType<typeof getStore>): ConditionalJsonBlobStore {
   return Object.freeze({
-    getWithMetadata: (key, options) => store.getWithMetadata(key, options),
-    setJSON: (key, value, options) => store.setJSON(key, value, options),
+    getWithMetadata: (
+      key: string,
+      options: { type: 'json'; consistency: 'strong' },
+    ) => store.getWithMetadata(key, options),
+    setJSON: (
+      key: string,
+      value: unknown,
+      options: ConditionalBlobWriteOptions,
+    ) => store.setJSON(key, value, options),
   });
 }
 

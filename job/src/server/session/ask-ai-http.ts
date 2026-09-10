@@ -182,7 +182,7 @@ export async function handleAskAiSessionStart(
 
   const result = await startStoredAgentSession({
     repository: dependencies.repository,
-    entropy: dependencies.entropy,
+    ...(dependencies.entropy === undefined ? {} : { entropy: dependencies.entropy }),
   });
   if (!result.ok) {
     return json({ ok: false, code: result.code }, 503, { 'Retry-After': '2' });
@@ -238,7 +238,9 @@ export async function handleAskAiTurn(
       expectedRevision,
       text,
     },
-    dependencies: dependencies.turnDependencies,
+    ...(dependencies.turnDependencies === undefined
+      ? {}
+      : { dependencies: dependencies.turnDependencies }),
   });
 
   if (!result.ok) return mapTurnFailure(result);
@@ -295,7 +297,9 @@ export async function handleAskAiCorrection(
       expectedRevision,
       correctionId,
     },
-    dependencies: dependencies.correctionDependencies,
+    ...(dependencies.correctionDependencies === undefined
+      ? {}
+      : { dependencies: dependencies.correctionDependencies }),
   });
 
   if (!result.ok) return mapCorrectionFailure(result);

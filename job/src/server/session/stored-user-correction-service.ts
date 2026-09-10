@@ -269,7 +269,14 @@ async function release(
   } catch {
     return { ok: false, code: 'STORE_UNAVAILABLE' };
   }
-  if (!write.ok) return { ok: false, code: write.code };
+  if (!write.ok) {
+    return {
+      ok: false,
+      code: write.code === 'CONFLICT'
+        ? 'SESSION_CONFLICT'
+        : write.code,
+    };
+  }
   return { ok: true, record: released };
 }
 
@@ -362,7 +369,7 @@ export async function runStoredUserCorrection(input: {
       claimed.record.reactiveState,
     );
     if (!released.ok) {
-      return { ok: false, code: released.code === 'CONFLICT' ? 'SESSION_CONFLICT' : released.code, currentRevision: claimed.record.canonical.revision };
+      return { ok: false, code: released.code, currentRevision: claimed.record.canonical.revision };
     }
     return { ok: false, code: prepared.code, currentRevision: claimed.record.canonical.revision };
   }
@@ -381,7 +388,7 @@ export async function runStoredUserCorrection(input: {
       claimed.record.reactiveState,
     );
     if (!released.ok) {
-      return { ok: false, code: released.code === 'CONFLICT' ? 'SESSION_CONFLICT' : released.code, currentRevision: claimed.record.canonical.revision };
+      return { ok: false, code: released.code, currentRevision: claimed.record.canonical.revision };
     }
     return { ok: false, code: 'CORRECTION_COMMIT_REJECTED', currentRevision: claimed.record.canonical.revision };
   }
@@ -403,7 +410,7 @@ export async function runStoredUserCorrection(input: {
     if (!released.ok) {
       return {
         ok: false,
-        code: released.code === 'CONFLICT' ? 'SESSION_CONFLICT' : released.code,
+        code: released.code,
         currentRevision: claimed.record.canonical.revision,
       };
     }
@@ -426,7 +433,7 @@ export async function runStoredUserCorrection(input: {
     if (!released.ok) {
       return {
         ok: false,
-        code: released.code === 'CONFLICT' ? 'SESSION_CONFLICT' : released.code,
+        code: released.code,
         currentRevision: claimed.record.canonical.revision,
       };
     }

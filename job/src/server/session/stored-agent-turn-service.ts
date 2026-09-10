@@ -345,7 +345,9 @@ export async function startStoredAgentSession(
         revision: created.record.canonical.revision,
       };
     }
-    if (stored.code === 'STORE_UNAVAILABLE') return stored;
+    if (stored.code === 'STORE_UNAVAILABLE') {
+      return { ok: false, code: 'STORE_UNAVAILABLE' };
+    }
   }
   return { ok: false, code: 'SESSION_ID_COLLISION' };
 }
