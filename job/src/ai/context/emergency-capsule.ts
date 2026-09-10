@@ -26,6 +26,12 @@ export interface EmergencyContinuationCapsule {
     calculations: readonly Pick<VerifiedCalculation, 'id' | 'kind' | 'expression' | 'resultValue' | 'resultUnit' | 'basedOnRevision' | 'status'>[];
   };
   sceneId: string | null;
+  processNodes: readonly {
+    id: string;
+    label: string;
+    kind: string;
+    provenance: 'user_stated' | 'ai_inferred' | 'user_confirmed';
+  }[];
   activeArtifactIds: readonly string[];
   activeArtifacts: readonly Pick<ArtifactRecord, 'id' | 'kind' | 'title' | 'summary' | 'maturity' | 'status'>[];
   estimatedInputTokens: number;
@@ -106,6 +112,12 @@ function buildPayload(canonical: CanonicalSalesContext, visualState: CurrentExpe
     openObjections: freezeArray(objections),
     quantitativeEvidence: Object.freeze({ observations: freezeArray(observations), calculations: freezeArray(calculations) }),
     sceneId: visualState.sceneId,
+    processNodes: freezeArray((visualState.processNodes ?? []).slice(0, 48).map((node) => Object.freeze({
+      id: node.id,
+      label: node.label,
+      kind: node.kind,
+      provenance: node.provenance,
+    }))),
     activeArtifactIds: freezeArray(activeArtifactIds),
     activeArtifacts: freezeArray(activeArtifacts),
   });
