@@ -1,0 +1,261 @@
+# S002 deterministic candidate gate. Increment this marker only when a remote gate is intentionally warranted: iteration 1.
+name: S002 Candidate Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - staging/vxa-s002-agent-led-accounting-seller
+    paths:
+      - .github/workflows/s002-candidate-gate.yml
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-prelock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact checkpoint
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup pnpm and Node.js
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with:
+          version: 11.25.0
+          runtime: node@24
+          package-json-file: job/package.json
+          install: false
+          cache: false
+
+      - name: Verify authority and construction boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='6244a246d8faf73e772fc944a398a71a02fb97e0a'
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test "$(git merge-base "$BASE" HEAD)" = "$BASE"
+          git diff --name-only "$BASE"...HEAD | tee s002-changed-files.txt
+          unexpected="$(grep -Ev '^(job/|\.github/workflows/[^/]+\.ya?ml$|AGENTS\.md$|README\.md$)' s002-changed-files.txt || true)"
+          if [ -n "$unexpected" ]; then
+            echo 'Unexpected files outside the authorized product/glue boundary:' >&2
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          fi
+
+      - name: Resolve dependencies and generate candidate lockfile
+        working-directory: job
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Record exact toolchain and candidate lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          pnpm --version
+          git rev-parse HEAD
+          sha256sum job/pnpm-lock.yaml | tee s002-lockfile.sha256
+
+      - name: Foundation validation
+        working-directory: job
+        run: pnpm verify:foundation
+
+      - name: TypeScript strict
+        working-directory: job
+        run: pnpm typecheck
+
+      - name: Pure unit and component tests
+        working-directory: job
+        run: pnpm test
+
+      - name: Production build
+        working-directory: job
+        run: pnpm build
+
+      - name: Production bundle provider and secret scan
+        working-directory: job
+        run: pnpm verify:bundle
+
+      - name: Dependency license inventory
+        working-directory: job
+        run: pnpm licenses list --json > s002-licenses.json
+
+      - name: Production dependency audit
+        working-directory: job
+        run: pnpm audit --prod --audit-level high
+
+      - name: Install Chromium for browser verification
+        working-directory: job
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Browser E2E and accessibility
+        working-directory: job
+        run: pnpm exec playwright test tests/e2e --output=test-results/e2e
+
+      - name: Visual verification
+        working-directory: job
+        run: pnpm exec playwright test tests/visual --project=chromium-desktop --output=test-results/visual
+
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: s002-browser-${{ github.sha }}
+          path: |
+            job/test-results/e2e
+            job/test-results/visual
+            job/playwright-report
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Upload candidate dependency evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: s002-dependency-resolution-${{ github.sha }}
+          path: |
+            job/pnpm-lock.yaml
+            job/s002-licenses.json
+            s002-changed-files.txt
+            s002-lockfile.sha256
+          if-no-files-found: warn
+          retention-days: 3
+
+  capture-lockfile:
+    needs: candidate-prelock
+    if: ${{ needs.candidate-prelock.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      candidate_sha: ${{ steps.capture.outputs.candidate_sha }}
+      lockfile_changed: ${{ steps.capture.outputs.lockfile_changed }}
+    steps:
+      - name: Checkout validated checkpoint
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Download generated lockfile
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: s002-dependency-resolution-${{ github.sha }}
+          path: .lock-artifact
+
+      - name: Capture only the generated product lockfile
+        id: capture
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          test -f .lock-artifact/job/pnpm-lock.yaml
+          cp .lock-artifact/job/pnpm-lock.yaml job/pnpm-lock.yaml
+          git add job/pnpm-lock.yaml
+          if git diff --cached --quiet; then
+            echo 'Lockfile already matches the validated artifact.'
+            echo "candidate_sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+            echo 'lockfile_changed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit \
+            -m 'chore(s002): capture validated pnpm lockfile' \
+            -m 'Binding: FORGE-VEXRYZER-AUTOMATION-v1.0.0' \
+            -m 'Slice: VXA-S002@1.0.0' \
+            -m 'Gauntlet: GNT-VXA-S002-001' \
+            -m 'Base: 6244a246d8faf73e772fc944a398a71a02fb97e0a'
+          candidate_sha="$(git rev-parse HEAD)"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          echo "candidate_sha=${candidate_sha}" >> "$GITHUB_OUTPUT"
+          echo 'lockfile_changed=true' >> "$GITHUB_OUTPUT"
+
+  captured-lockfile-exact-sha:
+    needs: capture-lockfile
+    if: ${{ needs.capture-lockfile.outputs.lockfile_changed == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact lockfile-captured candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.capture-lockfile.outputs.candidate_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup pnpm and Node.js
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with:
+          version: 11.25.0
+          runtime: node@24
+          package-json-file: job/package.json
+          install: false
+          cache: false
+
+      - name: Prove exact captured candidate and frozen lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected='${{ needs.capture-lockfile.outputs.candidate_sha }}'
+          test "$(git rev-parse HEAD)" = "$expected"
+          cd job
+          pnpm install --frozen-lockfile
+          git diff --exit-code -- pnpm-lock.yaml
+
+      - name: Foundation validation
+        working-directory: job
+        run: pnpm verify:foundation
+
+      - name: TypeScript strict
+        working-directory: job
+        run: pnpm typecheck
+
+      - name: Pure unit and component tests
+        working-directory: job
+        run: pnpm test
+
+      - name: Production build
+        working-directory: job
+        run: pnpm build
+
+      - name: Production bundle provider and secret scan
+        working-directory: job
+        run: pnpm verify:bundle
+
+      - name: Dependency license inventory
+        working-directory: job
+        run: pnpm licenses list --json > s002-final-licenses.json
+
+      - name: Production dependency audit
+        working-directory: job
+        run: pnpm audit --prod --audit-level high
+
+      - name: Install Chromium for exact-SHA browser verification
+        working-directory: job
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Exact-SHA browser E2E and accessibility
+        working-directory: job
+        run: pnpm exec playwright test tests/e2e --output=test-results/e2e-final
+
+      - name: Exact-SHA visual verification
+        working-directory: job
+        run: pnpm exec playwright test tests/visual --project=chromium-desktop --output=test-results/visual-final
+
+      - name: Upload exact-SHA evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: s002-final-${{ needs.capture-lockfile.outputs.candidate_sha }}
+          path: |
+            job/test-results/e2e-final
+            job/test-results/visual-final
+            job/playwright-report
+            job/s002-final-licenses.json
+            job/pnpm-lock.yaml
+          if-no-files-found: warn
+          retention-days: 3

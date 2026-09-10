@@ -175,6 +175,10 @@ test('hard validation failure leaves visitor text and S001 foundation untouched'
 test('pending correction requires an explicit click and correction request carries no replacement authority', async ({ page }) => {
   let correctionCalls = 0;
   let correctionPayload: Record<string, unknown> | null = null;
+  let releaseCorrectionResponse = () => {};
+  const correctionResponseGate = new Promise<void>((resolve) => {
+    releaseCorrectionResponse = resolve;
+  });
 
   await page.route('**/api/ask-ai/session', async (route) => {
     await route.fulfill({
@@ -191,6 +195,7 @@ test('pending correction requires an explicit click and correction request carri
   await page.route('**/api/ask-ai/correction', async (route) => {
     correctionCalls += 1;
     correctionPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await correctionResponseGate;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -227,9 +232,8 @@ test('pending correction requires an explicit click and correction request carri
   await apply.click();
   await expect(page.getByText(/aplicando sua correção à verdade canônica/i)).toBeVisible();
   await expect(apply).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Aplicar correção' })).toHaveCount(0);
+  await expect.poll(() => correctionCalls).toBe(1);
 
-  expect(correctionCalls).toBe(1);
   expect(Object.keys(correctionPayload!).sort()).toEqual([
     'correctionId',
     'expectedRevision',
@@ -241,6 +245,9 @@ test('pending correction requires an explicit click and correction request carri
   expect(correctionPayload).not.toHaveProperty('targetEvidenceId');
   expect(correctionPayload).not.toHaveProperty('source');
   expect(correctionPayload).not.toHaveProperty('unit');
+
+  releaseCorrectionResponse();
+  await expect(page.getByRole('button', { name: 'Aplicar correção' })).toHaveCount(0);
 });
 
 test('malformed success response is rejected locally and cannot switch the Canvas into live mode', async ({ page }) => {

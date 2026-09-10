@@ -24,6 +24,8 @@
     "verify": "pnpm verify:foundation && pnpm typecheck && pnpm test && pnpm build && pnpm verify:bundle && pnpm test:e2e && pnpm test:visual"
   },
   "dependencies": {
+    "@netlify/blobs": "11.0.3",
+    "@netlify/functions": "6.0.0",
     "@xstate/react": "6.1.0",
     "@xyflow/react": "12.11.6",
     "motion": "13.1.1",

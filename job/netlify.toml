@@ -6,6 +6,9 @@ publish = "dist"
 NODE_VERSION = "24"
 PNPM_VERSION = "11.25.0"
 
+[functions]
+directory = "netlify/functions"
+
 [[headers]]
 for = "/*"
 [headers.values]
