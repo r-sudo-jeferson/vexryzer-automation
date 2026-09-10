@@ -23,6 +23,13 @@ export interface AskAiAcceptedResponse {
   state: Readonly<AskAiPublicState>;
 }
 
+export interface AskAiCorrectionAcceptedResponse {
+  ok: true;
+  idempotent: boolean;
+  correctionId: string;
+  state: Readonly<AskAiPublicState>;
+}
+
 export interface AskAiClientFailure {
   ok: false;
   code: string;
@@ -31,9 +38,11 @@ export interface AskAiClientFailure {
 }
 
 export type AskAiClientResult = Readonly<AskAiAcceptedResponse> | Readonly<AskAiClientFailure>;
+export type AskAiCorrectionResult = Readonly<AskAiCorrectionAcceptedResponse> | Readonly<AskAiClientFailure>;
 
 export interface AskAiClient {
   submit(text: string): Promise<AskAiClientResult>;
+  applyCorrection(correctionId: string): Promise<AskAiCorrectionResult>;
   reset(): void;
   hasSession(): boolean;
 }
@@ -101,20 +110,33 @@ function validCalculations(value: unknown): value is AskAiVerifiedCalculation[] 
     && (item.status === 'valid' || item.status === 'invalidated'));
 }
 
+function validPublicState(value: unknown): value is AskAiPublicState {
+  if (!record(value)) return false;
+  return typeof value.sessionId === 'string'
+    && SAFE_ID.test(value.sessionId)
+    && Number.isInteger(value.canonicalRevision)
+    && Number(value.canonicalRevision) >= 0
+    && validCalculations(value.verifiedCalculations)
+    && validReactiveShape(value.reactiveState);
+}
+
 function validAccepted(value: unknown): value is AskAiAcceptedResponse {
-  if (!record(value) || value.ok !== true) return false;
-  if (typeof value.idempotent !== 'boolean'
-    || (value.mode !== 'agent' && value.mode !== 'guided_recovery')
-    || typeof value.narration !== 'string'
-    || !(value.nextQuestion === null || typeof value.nextQuestion === 'string')
-    || !record(value.state)) return false;
-  const state = value.state;
-  return typeof state.sessionId === 'string'
-    && SAFE_ID.test(state.sessionId)
-    && Number.isInteger(state.canonicalRevision)
-    && Number(state.canonicalRevision) >= 0
-    && validCalculations(state.verifiedCalculations)
-    && validReactiveShape(state.reactiveState);
+  return record(value)
+    && value.ok === true
+    && typeof value.idempotent === 'boolean'
+    && (value.mode === 'agent' || value.mode === 'guided_recovery')
+    && typeof value.narration === 'string'
+    && (value.nextQuestion === null || typeof value.nextQuestion === 'string')
+    && validPublicState(value.state);
+}
+
+function validCorrectionAccepted(value: unknown): value is AskAiCorrectionAcceptedResponse {
+  return record(value)
+    && value.ok === true
+    && typeof value.idempotent === 'boolean'
+    && typeof value.correctionId === 'string'
+    && SAFE_ID.test(value.correctionId)
+    && validPublicState(value.state);
 }
 
 function parseFailure(value: unknown, status: number): AskAiClientFailure {
@@ -248,6 +270,84 @@ export function createAskAiClient(options: AskAiClientOptions = {}): AskAiClient
       if (failure.currentRevision !== null && failure.code === 'AGENT_EXECUTION_FAILED') {
         active.revision = failure.currentRevision;
       }
+      if (['UNAUTHORIZED', 'NOT_FOUND', 'STALE_REVISION', 'SESSION_CONFLICT', 'REQUEST_REPLAY'].includes(failure.code)) {
+        session = null;
+      }
+      return failure;
+    },
+
+    async applyCorrection(correctionId: string): Promise<AskAiCorrectionResult> {
+      if (!SAFE_ID.test(correctionId) || correctionId.length > 96) {
+        return Object.freeze({
+          ok: false,
+          code: 'INVALID_CORRECTION_ID',
+          currentRevision: session?.revision ?? null,
+          retryable: false,
+        });
+      }
+      if (session === null) {
+        return Object.freeze({
+          ok: false,
+          code: 'NO_ACTIVE_SESSION',
+          currentRevision: null,
+          retryable: false,
+        });
+      }
+
+      const active = session;
+      const requestId = createRequestId();
+      if (!SAFE_ID.test(requestId) || requestId.length > 80) {
+        return Object.freeze({
+          ok: false,
+          code: 'INVALID_CLIENT_REQUEST_ID',
+          currentRevision: active.revision,
+          retryable: false,
+        });
+      }
+
+      let response: Response;
+      try {
+        response = await fetchImpl('/api/ask-ai/correction', {
+          method: 'POST',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${active.sessionToken}`,
+          },
+          body: JSON.stringify({
+            sessionId: active.sessionId,
+            requestId,
+            expectedRevision: active.revision,
+            correctionId,
+          }),
+        });
+      } catch {
+        return Object.freeze({
+          ok: false,
+          code: 'NETWORK_UNAVAILABLE',
+          currentRevision: active.revision,
+          retryable: true,
+        });
+      }
+
+      const payload = await readJson(response);
+      if (response.ok && validCorrectionAccepted(payload)) {
+        if (payload.state.sessionId !== active.sessionId || payload.correctionId !== correctionId) {
+          session = null;
+          return Object.freeze({
+            ok: false,
+            code: 'SESSION_ID_MISMATCH',
+            currentRevision: null,
+            retryable: false,
+          });
+        }
+        active.revision = payload.state.canonicalRevision;
+        return Object.freeze(payload);
+      }
+
+      const failure = parseFailure(payload, response.status);
       if (['UNAUTHORIZED', 'NOT_FOUND', 'STALE_REVISION', 'SESSION_CONFLICT', 'REQUEST_REPLAY'].includes(failure.code)) {
         session = null;
       }
