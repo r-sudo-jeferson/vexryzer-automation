@@ -1,7 +1,11 @@
 import { assign, setup } from 'xstate';
-import type { AskAiAcceptedResponse, AskAiPublicState } from './ask-ai-client.ts';
+import type {
+  AskAiAcceptedResponse,
+  AskAiCorrectionAcceptedResponse,
+  AskAiPublicState,
+} from './ask-ai-client.ts';
 
-export type AgentExperienceStatus = 'idle' | 'requesting' | 'awaiting_user' | 'recovery' | 'error';
+export type AgentExperienceStatus = 'idle' | 'requesting' | 'correcting' | 'awaiting_user' | 'recovery' | 'error';
 
 export interface AppMachineContext {
   focusedNodeId: string | null;
@@ -20,6 +24,9 @@ export type AppMachineEvent =
   | { type: 'ASK_REQUESTED' }
   | { type: 'ASK_ACCEPTED'; response: Readonly<AskAiAcceptedResponse> }
   | { type: 'ASK_FAILED'; code: string }
+  | { type: 'CORRECTION_REQUESTED' }
+  | { type: 'CORRECTION_ACCEPTED'; response: Readonly<AskAiCorrectionAcceptedResponse> }
+  | { type: 'CORRECTION_FAILED'; code: string }
   | { type: 'ASK_SESSION_RESET' };
 
 const initialAgentContext = Object.freeze({
@@ -37,7 +44,9 @@ export const appMachine = setup({
   },
   guards: {
     hasValidNodeId: ({ event }) => event.type === 'FOCUS_NODE' && event.nodeId.trim().length > 0,
-    hasErrorCode: ({ event }) => event.type === 'ASK_FAILED' && event.code.trim().length > 0,
+    hasErrorCode: ({ event }) =>
+      (event.type === 'ASK_FAILED' || event.type === 'CORRECTION_FAILED')
+      && event.code.trim().length > 0,
   },
   actions: {
     setFocus: assign({
@@ -58,12 +67,24 @@ export const appMachine = setup({
         agentErrorCode: null,
       };
     }),
-    failAsk: assign(({ event }) => event.type === 'ASK_FAILED'
+    markCorrectionRequested: assign({
+      agentStatus: 'correcting',
+      agentErrorCode: null,
+    }),
+    acceptCorrection: assign(({ event }) => event.type === 'CORRECTION_ACCEPTED'
       ? {
-          agentStatus: 'error' as const,
-          agentErrorCode: event.code.trim(),
+          agentStatus: 'awaiting_user' as const,
+          agentState: event.response.state,
+          agentErrorCode: null,
         }
       : {}),
+    failAsk: assign(({ event }) =>
+      event.type === 'ASK_FAILED' || event.type === 'CORRECTION_FAILED'
+        ? {
+            agentStatus: 'error' as const,
+            agentErrorCode: event.code.trim(),
+          }
+        : {}),
     resetAgent: assign({
       ...initialAgentContext,
     }),
@@ -79,6 +100,9 @@ export const appMachine = setup({
     ASK_REQUESTED: { actions: 'markAskRequested' },
     ASK_ACCEPTED: { actions: 'acceptAsk' },
     ASK_FAILED: { guard: 'hasErrorCode', actions: 'failAsk' },
+    CORRECTION_REQUESTED: { actions: 'markCorrectionRequested' },
+    CORRECTION_ACCEPTED: { actions: 'acceptCorrection' },
+    CORRECTION_FAILED: { guard: 'hasErrorCode', actions: 'failAsk' },
     ASK_SESSION_RESET: { actions: 'resetAgent' },
   },
   states: {
