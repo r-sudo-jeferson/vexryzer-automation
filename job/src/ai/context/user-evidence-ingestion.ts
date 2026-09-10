@@ -241,7 +241,10 @@ function captureOne(
   }
 
   const quote = request.quote.trim();
-  if (!quote || quote.length > MAX_QUOTE_LENGTH || !authoritative.text.includes(quote)) {
+  const quoteOccursInAuthoritativeTurn = authoritative.text
+    .toLocaleLowerCase('pt-BR')
+    .includes(quote.toLocaleLowerCase('pt-BR'));
+  if (!quote || quote.length > MAX_QUOTE_LENGTH || !quoteOccursInAuthoritativeTurn) {
     return { ok: false, code: 'QUOTE_NOT_FOUND', requestId: request.id };
   }
   if (!quoteContainsValue(quote, request.value)) {
