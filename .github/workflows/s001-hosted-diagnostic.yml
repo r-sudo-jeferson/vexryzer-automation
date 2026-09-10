@@ -1,4 +1,4 @@
-# Diagnostic iteration 5: token-boundary bundle scanner plus isolated lockfile capture after hard gates.
+# Diagnostic iteration 6: shared credential boundaries plus isolated lockfile capture after hard gates.
 name: S001 Hosted Diagnostic
 
 on:
