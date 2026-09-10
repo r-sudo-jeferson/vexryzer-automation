@@ -19,9 +19,9 @@ import {
   DEFAULT_MISTRAL_BASE_URL,
   DEFAULT_MISTRAL_MODEL_ID,
   DEFAULT_MISTRAL_PROVIDER_ROUTE,
-  HARNESS_CANDIDATE_VERSION,
   renderMistralSettingsYaml,
   resolveDshBinFromPackageManifest,
+  resolveHarnessCandidateVersion,
   validateSpikeInputs,
 } from './spike-config.ts';
 
@@ -74,15 +74,15 @@ async function withWallTimeout(promise, label, timeoutMs) {
   }
 }
 
-async function bootstrapHarnessRuntime(rootDir) {
+async function bootstrapHarnessRuntime(rootDir, harnessVersion) {
   const runtimeDir = join(rootDir, 'runtime');
   await mkdir(runtimeDir, { recursive: true });
   await writeFile(join(runtimeDir, 'package.json'), JSON.stringify({
     private: true,
     packageManager: 'pnpm@11.25.0',
     dependencies: {
-      '@deepseek-ai/dsh': HARNESS_CANDIDATE_VERSION,
-      '@deepseek-ai/dsh-sdk-client': HARNESS_CANDIDATE_VERSION,
+      '@deepseek-ai/dsh': harnessVersion,
+      '@deepseek-ai/dsh-sdk-client': harnessVersion,
     },
   }, null, 2));
 
@@ -239,6 +239,7 @@ async function proveTimeoutMapping(runtime, rootDir, input) {
 
 async function main() {
   assertSpikeNodeVersion(process.version);
+  const harnessVersion = resolveHarnessCandidateVersion(process.env.VXA_HARNESS_VERSION);
   const input = {
     providerRoute: process.env.VXA_MISTRAL_PROVIDER_ROUTE?.trim() || DEFAULT_MISTRAL_PROVIDER_ROUTE,
     modelId: process.env.VXA_MISTRAL_MODEL_ID?.trim() || DEFAULT_MISTRAL_MODEL_ID,
@@ -249,11 +250,11 @@ async function main() {
 
   const rootDir = await mkdtemp(join(tmpdir(), 'vxa-s002-harness-spike-'));
   try {
-    const runtime = await bootstrapHarnessRuntime(rootDir);
+    const runtime = await bootstrapHarnessRuntime(rootDir, harnessVersion);
     const normal = await proveNormalCompatibility(runtime, rootDir, input);
     const timeoutMapped = await proveTimeoutMapping(runtime, rootDir, input);
     const compatibility = {
-      harnessVersion: HARNESS_CANDIDATE_VERSION,
+      harnessVersion,
       providerRoute: input.providerRoute,
       modelId: input.modelId,
       streaming: normal.streaming,
