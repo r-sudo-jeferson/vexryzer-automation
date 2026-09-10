@@ -1,8 +1,6 @@
-import { resolve, sep } from 'node:path';
-
 export const HARNESS_CANDIDATE_VERSION = '0.1.2-rc.1' as const;
 export const DEFAULT_MISTRAL_PROVIDER_ROUTE = 'mistral' as const;
-export const DEFAULT_MISTRAL_MODEL_ID = 'mistral-medium-latest' as const;
+export const DEFAULT_MISTRAL_MODEL_ID = 'mistral-medium-3-5' as const;
 export const DEFAULT_MISTRAL_BASE_URL = 'https://api.mistral.ai/v1' as const;
 
 export function resolveHarnessCandidateVersion(value: string | undefined): string {
@@ -49,6 +47,28 @@ export interface HarnessEnvironmentOptions {
 export interface MistralRouteConfig extends Omit<SpikeInputs, 'mistralApiKey'> {
   timeoutMs?: number;
   streamIdleTimeoutMs?: number;
+}
+
+export interface HarnessSdkOptionsInput {
+  workspace: string;
+  dshHome: string;
+  maxTokens: number;
+  input: SpikeInputs;
+}
+
+export interface HarnessSdkOptions {
+  profile: 'sdk';
+  dshHome: string;
+  processCwd: string;
+  env: NodeJS.ProcessEnv;
+  initializeTimeoutMs: number;
+  shutdownTimeoutMs: number;
+  disposeEofGraceMs: number;
+  disposeGraceMs: number;
+  cwd: string;
+  provider: string;
+  model: string;
+  maxTokens: number;
 }
 
 const SAFE_PARENT_ENV_KEYS = [
@@ -116,6 +136,41 @@ function validateOptionalTimeout(name: string, value: number | undefined): void 
   }
 }
 
+function requireAbsoluteLikePath(name: string, value: string): void {
+  if (!value.trim()) throw new TypeError(`${name} must not be empty`);
+  if (value.includes('\0')) throw new TypeError(`${name} must not contain NUL`);
+}
+
+export function buildHarnessSdkOptions(
+  parentEnv: NodeJS.ProcessEnv,
+  options: HarnessSdkOptionsInput,
+): HarnessSdkOptions {
+  validateSpikeInputs(options.input);
+  requireAbsoluteLikePath('workspace', options.workspace);
+  requireAbsoluteLikePath('dshHome', options.dshHome);
+  if (!Number.isSafeInteger(options.maxTokens) || options.maxTokens <= 0) {
+    throw new TypeError('maxTokens must be a positive safe integer');
+  }
+
+  return {
+    profile: 'sdk',
+    dshHome: options.dshHome,
+    processCwd: options.workspace,
+    env: buildScrubbedHarnessEnv(parentEnv, {
+      dshHome: options.dshHome,
+      mistralApiKey: options.input.mistralApiKey,
+    }),
+    initializeTimeoutMs: 10_000,
+    shutdownTimeoutMs: 1_000,
+    disposeEofGraceMs: 6_000,
+    disposeGraceMs: 3_000,
+    cwd: options.workspace,
+    provider: options.input.providerRoute,
+    model: options.input.modelId,
+    maxTokens: options.maxTokens,
+  };
+}
+
 export function renderMistralSettingsYaml(input: MistralRouteConfig): string {
   validateSpikeInputs({ ...input, mistralApiKey: 'redacted-validation-key' });
   validateOptionalTimeout('timeoutMs', input.timeoutMs);
@@ -139,23 +194,9 @@ export function renderMistralSettingsYaml(input: MistralRouteConfig): string {
   ].join('\n');
 }
 
-export function resolveDshBinFromPackageManifest(manifest: unknown, packageDir: string): string {
-  if (typeof manifest !== 'object' || manifest === null || Array.isArray(manifest)) {
-    throw new TypeError('dsh package manifest must be an object');
-  }
-  const bin = (manifest as { bin?: unknown }).bin;
-  const relativeBin = typeof bin === 'string'
-    ? bin
-    : typeof bin === 'object' && bin !== null && !Array.isArray(bin)
-      ? (bin as Record<string, unknown>).dsh
-      : undefined;
-  if (typeof relativeBin !== 'string' || !relativeBin.trim()) {
-    throw new TypeError('dsh package manifest must declare bin.dsh');
-  }
-  const root = resolve(packageDir);
-  const target = resolve(root, relativeBin);
-  if (target !== root && !target.startsWith(`${root}${sep}`)) {
-    throw new TypeError('dsh package bin must resolve inside the package directory');
-  }
-  return target;
+export function sanitizeSpikeDiagnostic(message: string, secret: string | undefined): string {
+  let sanitized = message.replace(/[\r\n\t]+/g, ' ').trim();
+  if (secret?.trim()) sanitized = sanitized.split(secret.trim()).join('[REDACTED]');
+  sanitized = sanitized.replace(/(MISTRAL_API_KEY\s*[=:]\s*)\S+/gi, '$1[REDACTED]');
+  return sanitized.slice(0, 800);
 }
