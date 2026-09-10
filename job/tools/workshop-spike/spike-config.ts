@@ -66,6 +66,7 @@ export function buildPackageInstallEnv(parentEnv: NodeJS.ProcessEnv): NodeJS.Pro
     if (value) env[key] = value;
   }
   env.CI = 'true';
+  env.PNPM_CONFIG_AUTO_INSTALL_PEERS = 'true';
   return env;
 }
 
