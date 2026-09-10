@@ -51,6 +51,11 @@ export function createExperienceSemanticKey(proposal: Readonly<ExperienceProposa
   const payload = {
     actions: proposal.intent.actions.map(visualActionPayload).sort((a, b) => stableSerialize(a).localeCompare(stableSerialize(b))),
     processMutations: proposal.processMutations.map(visualMutationPayload).sort((a, b) => stableSerialize(a).localeCompare(stableSerialize(b))),
+    correctionSuggestions: proposal.correctionProposals.map((correction) => ({
+      targetEvidenceId: correction.targetEvidenceId,
+      replacementValue: correction.replacementValue,
+      reason: correction.reason,
+    })).sort((a, b) => stableSerialize(a).localeCompare(stableSerialize(b))),
     scene: proposal.sceneProposal === null ? null : {
       composition: proposal.sceneProposal.composition,
       focusIds: sorted(proposal.sceneProposal.focusIds),
