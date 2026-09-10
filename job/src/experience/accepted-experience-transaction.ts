@@ -33,11 +33,23 @@ export interface AcceptedExperienceTransactionDependencies {
   applyContextMutation: typeof applyContextMutation;
 }
 
+export interface AcceptedExperienceSurfaceGuardResult {
+  ok: boolean;
+  code?: string;
+  path?: string;
+}
+
+export type AcceptedExperienceSurfaceGuard = (input: {
+  canonical: CanonicalSalesContext;
+  reactiveState: Readonly<ReactiveExperienceState>;
+}) => Readonly<AcceptedExperienceSurfaceGuardResult>;
+
 export interface AcceptedExperienceTransactionInput {
   canonical: CanonicalSalesContext;
   reactiveState: Readonly<ReactiveExperienceState>;
   submission: Readonly<SellerSubmission>;
   review: Readonly<CriticReview>;
+  surfaceGuard: AcceptedExperienceSurfaceGuard;
   dependencies?: Partial<AcceptedExperienceTransactionDependencies>;
 }
 
@@ -57,7 +69,8 @@ export type AcceptedExperienceTransactionResult =
         | 'CRITIC_NOT_PASS'
         | 'PROJECTION_REJECTED'
         | 'CANONICAL_COMMIT_REJECTED'
-        | 'RECONCILE_REJECTED';
+        | 'RECONCILE_REJECTED'
+        | 'SURFACE_REJECTED';
       canonical: CanonicalSalesContext;
       reactiveState: Readonly<ReactiveExperienceState>;
       detail: string;
@@ -238,6 +251,28 @@ export function commitCriticApprovedExperience(
       canonical: input.canonical,
       reactiveState: input.reactiveState,
       detail: 'REACTIVE_CANONICAL_RECONCILIATION_FAILED',
+    };
+  }
+
+  let surface;
+  try {
+    surface = input.surfaceGuard({ canonical, reactiveState });
+  } catch {
+    return {
+      ok: false,
+      code: 'SURFACE_REJECTED',
+      canonical: input.canonical,
+      reactiveState: input.reactiveState,
+      detail: 'SURFACE_GUARD_THROW',
+    };
+  }
+  if (!surface.ok) {
+    return {
+      ok: false,
+      code: 'SURFACE_REJECTED',
+      canonical: input.canonical,
+      reactiveState: input.reactiveState,
+      detail: (surface.code ?? 'SURFACE_REJECTED') + ':' + (surface.path ?? 'surface'),
     };
   }
 
