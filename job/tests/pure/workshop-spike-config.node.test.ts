@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  assertSpikeRuntimeVersions,
   buildPackageInstallEnv,
   buildScrubbedHarnessEnv,
   renderMistralSettingsYaml,
@@ -117,5 +118,17 @@ test('rejects an invalid or escaping dsh bin declaration', () => {
   assert.throws(
     () => resolveDshBinFromPackageManifest({ bin: { dsh: '../escape.js' } }, '/tmp/dsh'),
     /inside the package/,
+  );
+});
+
+test('requires the repository Node and pnpm runtime versions for the live spike', () => {
+  assert.doesNotThrow(() => assertSpikeRuntimeVersions({ nodeVersion: 'v24.21.0', pnpmVersion: '11.25.0' }));
+  assert.throws(
+    () => assertSpikeRuntimeVersions({ nodeVersion: 'v22.16.0', pnpmVersion: '11.25.0' }),
+    /Node 24/,
+  );
+  assert.throws(
+    () => assertSpikeRuntimeVersions({ nodeVersion: 'v24.21.0', pnpmVersion: '11.24.0' }),
+    /pnpm 11\.25\.0/,
   );
 });
