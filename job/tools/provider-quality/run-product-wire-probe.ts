@@ -11,6 +11,7 @@ interface ProbeRoute {
   family: 'cloudflare_workers_ai' | 'groq';
   modelId: string;
   credentialEnvName: 'CLOUDFLARE_API_TOKEN' | 'GROQ_API_KEY';
+  role: 'seller' | 'critic';
 }
 
 const ROUTES: readonly Readonly<ProbeRoute>[] = Object.freeze([
@@ -19,18 +20,21 @@ const ROUTES: readonly Readonly<ProbeRoute>[] = Object.freeze([
     family: 'cloudflare_workers_ai',
     modelId: '@cf/zai-org/glm-4.7-flash',
     credentialEnvName: 'CLOUDFLARE_API_TOKEN',
+    role: 'seller',
   }),
   Object.freeze({
     routeId: 'cloudflare-gemma-4-26b-critic',
     family: 'cloudflare_workers_ai',
     modelId: '@cf/google/gemma-4-26b-a4b-it',
     credentialEnvName: 'CLOUDFLARE_API_TOKEN',
+    role: 'critic',
   }),
   Object.freeze({
     routeId: 'groq-gpt-oss-120b-seller',
     family: 'groq',
     modelId: 'openai/gpt-oss-120b',
     credentialEnvName: 'GROQ_API_KEY',
+    role: 'seller',
   }),
 ]);
 
@@ -61,7 +65,7 @@ function directRoute(spec: Readonly<ProbeRoute>): Readonly<ProviderRouteDefiniti
     routeId: spec.routeId,
     family: spec.family,
     modelId: spec.modelId,
-    roles: Object.freeze(['seller'] as const),
+    roles: Object.freeze([spec.role]),
     tier: spec.family === 'groq' ? 'independent_fallback' : 'primary',
     enabledByDefault: false,
     credentialEnvName: spec.credentialEnvName,
