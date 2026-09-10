@@ -24,6 +24,11 @@ test('opt-in probe exposes render, viewport, semantic-band and camera counters f
   assert.match(probeTypes, /cameraCommands:\s*number/);
   assert.match(probeTypes, /cameraInterruptions:\s*number/);
   assert.match(probeTypes, /cameraResizeRefits:\s*number/);
+  assert.match(probeTypes, /askSubmissions:\s*number/);
+  assert.match(probeTypes, /askAccepted:\s*number/);
+  assert.match(probeTypes, /askRecoveries:\s*number/);
+  assert.match(probeTypes, /askFailures:\s*number/);
+  assert.match(probeTypes, /askLastVisualAckMs:\s*number\s*\|\s*null/);
   assert.match(canvasSource, /canvasCommits\s*\+=\s*1/);
   assert.match(canvasSource, /viewportEvents\s*\+=\s*1/);
   assert.match(canvasSource, /semanticBandChanges\s*\+=\s*1/);
