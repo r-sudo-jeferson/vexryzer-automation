@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { processFixtures } from '../../src/canvas/fixtures.ts';
-import { validateProcessGraph } from '../../src/canvas/domain.ts';
+import { PROVENANCE_VALUES, validateProcessGraph } from '../../src/canvas/domain.ts';
 
 test('all S001 visual fixtures are deterministic valid graphs', () => {
   for (const [name, fixture] of Object.entries(processFixtures)) {
@@ -12,4 +12,21 @@ test('all S001 visual fixtures are deterministic valid graphs', () => {
 test('stress fixture contains twenty nodes and long-content fixture exceeds normal label width', () => {
   assert.equal(processFixtures.stress.graph.nodes.length, 20);
   assert.ok(processFixtures.longContent.graph.nodes.some((node) => node.label.length > 72));
+});
+
+test('single-node fixture exercises the one-node GAUNTLET state', () => {
+  assert.equal(processFixtures.single.graph.nodes.length, 1);
+  assert.equal(processFixtures.single.graph.edges.length, 0);
+});
+
+test('duplicate-label fixture proves identity is node-id based', () => {
+  const duplicates = processFixtures.duplicateLabels.graph.nodes.filter((node) => node.label === 'Conferência manual');
+  assert.equal(duplicates.length, 2);
+  assert.notEqual(duplicates[0]?.id, duplicates[1]?.id);
+});
+
+test('provenance fixture represents every canonical provenance state and uncertainty', () => {
+  const fixture = processFixtures.provenance.graph;
+  assert.deepEqual(new Set(fixture.nodes.map((node) => node.provenance)), new Set(PROVENANCE_VALUES));
+  assert.ok(fixture.nodes.some((node) => node.kind === 'uncertainty' && node.provenance === 'ai_inferred'));
 });

@@ -12,7 +12,15 @@ import './app.css';
 
 function resolveFixture(): ProcessFixture {
   const value = new URLSearchParams(window.location.search).get('fixture');
-  if (value === 'origin' || value === 'longContent' || value === 'stress') return processFixtures[value];
+  if (value === 'error') throw new Error('Visual recovery fixture');
+  if (
+    value === 'origin'
+    || value === 'single'
+    || value === 'longContent'
+    || value === 'stress'
+    || value === 'duplicateLabels'
+    || value === 'provenance'
+  ) return processFixtures[value];
   return processFixtures.standard;
 }
 
@@ -63,11 +71,11 @@ export function App() {
         </a>
         <div className="vxa-header__meta">
           <span>PROCESS INTELLIGENCE</span>
-          <span className="vxa-status-dot">S001</span>
+          <span className="vxa-status-dot">DEMONSTRAÇÃO VISUAL</span>
         </div>
       </header>
 
-      <main id="vxa-primary" className="vxa-main">
+      <main id="vxa-primary" className="vxa-main" tabIndex={-1}>
         <section className="vxa-intro" aria-labelledby="vxa-title">
           <motion.div
             className="vxa-intro__copy"
@@ -89,7 +97,7 @@ export function App() {
                   Voltar à origem
                 </button>
               )}
-              <span className="vxa-actions__note">Experiência visual · nenhum dado é enviado nesta Slice</span>
+              <span className="vxa-actions__note">Experiência visual · interação local sem envio de dados</span>
             </div>
           </motion.div>
 
@@ -117,7 +125,7 @@ export function App() {
               {mode === 'origin' ? (
                 <p className="vxa-empty">As etapas aparecem quando você entra no processo. O Canvas não exige gesto ou conhecimento técnico para começar.</p>
               ) : fixture.graph.nodes.length === 0 ? (
-                <p className="vxa-empty">Nenhuma etapa nesta fixture. A fundação preserva um estado vazio legível e recuperável.</p>
+                <p className="vxa-empty">Este cenário não contém etapas. Você pode voltar à origem e explorar outro processo.</p>
               ) : fixture.graph.nodes.map((node, index) => (
                 <button
                   key={node.id}
@@ -143,8 +151,8 @@ export function App() {
       </main>
 
       <footer className="vxa-footer">
-        <span>VEXRYZER / S001 VISUAL FOUNDATION</span>
-        <span>{motionPolicy.reduced ? 'REDUCED MOTION' : 'MOTION READY'} · FREE-TIER ARCHITECTURE</span>
+        <span>VEXRYZER / PROCESS INTELLIGENCE</span>
+        <span>{motionPolicy.reduced ? 'MOVIMENTO REDUZIDO' : 'MOVIMENTO INTENCIONAL'} · INTERAÇÃO LOCAL</span>
       </footer>
     </div>
   );

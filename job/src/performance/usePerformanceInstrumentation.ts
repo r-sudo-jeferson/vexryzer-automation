@@ -3,14 +3,40 @@ import { PERFORMANCE_BUDGETS } from './budgets.ts';
 
 declare global {
   interface Window {
-    __VXA_PERF__?: { longTasks: number; lastLongTaskMs: number; budgets: typeof PERFORMANCE_BUDGETS };
+    __VXA_PERF__?: {
+      longTasks: number;
+      lastLongTaskMs: number;
+      canvasCommits: number;
+      viewportEvents: number;
+      semanticBandChanges: number;
+      cameraCommands: number;
+      budgets: typeof PERFORMANCE_BUDGETS;
+    };
   }
 }
 
 export function usePerformanceInstrumentation(): void {
   useEffect(() => {
-    window.__VXA_PERF__ = { longTasks: 0, lastLongTaskMs: 0, budgets: PERFORMANCE_BUDGETS };
-    if (!('PerformanceObserver' in window)) return;
+    const enabled = new URLSearchParams(window.location.search).get('perf') === '1';
+    if (!enabled) {
+      delete window.__VXA_PERF__;
+      return;
+    }
+
+    window.__VXA_PERF__ = {
+      longTasks: 0,
+      lastLongTaskMs: 0,
+      canvasCommits: 0,
+      viewportEvents: 0,
+      semanticBandChanges: 0,
+      cameraCommands: 0,
+      budgets: PERFORMANCE_BUDGETS,
+    };
+
+    if (!('PerformanceObserver' in window)) {
+      return () => { delete window.__VXA_PERF__; };
+    }
+
     let observer: PerformanceObserver | null = null;
     try {
       observer = new PerformanceObserver((list) => {
@@ -25,6 +51,10 @@ export function usePerformanceInstrumentation(): void {
     } catch {
       // Unsupported entry type: browser GAUNTLET records capability separately.
     }
-    return () => observer?.disconnect();
+
+    return () => {
+      observer?.disconnect();
+      delete window.__VXA_PERF__;
+    };
   }, []);
 }

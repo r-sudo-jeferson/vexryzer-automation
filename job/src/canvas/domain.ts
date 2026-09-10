@@ -1,5 +1,5 @@
 export const PROCESS_NODE_KINDS = ['source','manual_action','transformation','system','output','evidence','effort','uncertainty','estimate','request_receipt'] as const;
-export const PROVENANCE_VALUES = ['user_stated','ai_inferred','user_confirmed','fixture'] as const;
+export const PROVENANCE_VALUES = ['user_stated','ai_inferred','user_confirmed'] as const;
 export type ProcessNodeKind = (typeof PROCESS_NODE_KINDS)[number];
 export type Provenance = (typeof PROVENANCE_VALUES)[number];
 export interface EffortModel { minutesPerOccurrence: number }

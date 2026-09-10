@@ -10,7 +10,7 @@ const kindLabels: Record<ProcessNodeModel['kind'], string> = {
   evidence: 'Evidência', effort: 'Esforço', uncertainty: 'A confirmar', estimate: 'Estimativa', request_receipt: 'Solicitação',
 };
 const provenanceLabels: Record<ProcessNodeModel['provenance'], string> = {
-  user_stated: 'Informado', ai_inferred: 'Hipótese', user_confirmed: 'Confirmado', fixture: 'Demonstração',
+  user_stated: 'Informado', ai_inferred: 'Hipótese', user_confirmed: 'Confirmado',
 };
 
 export function ProcessNode({ data, selected }: NodeProps<ProcessFlowNode>) {

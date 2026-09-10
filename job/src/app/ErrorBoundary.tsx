@@ -18,7 +18,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (!this.state.failed) return this.props.children;
     return (
       <main className="vxa-fatal" role="alert">
-        <span>VXA / RECOVERY</span>
+        <span>RECUPERAÇÃO DA EXPERIÊNCIA</span>
         <h1>A experiência visual encontrou um problema.</h1>
         <p>Nenhuma informação foi enviada ou perdida. Recarregue esta página para reiniciar a visualização.</p>
         <button type="button" onClick={() => window.location.reload()}>Recarregar experiência</button>

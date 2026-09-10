@@ -15,7 +15,7 @@
 .vxa-brand b { color: var(--vxa-text-muted); font-weight: 560; }
 .vxa-brand__mark { display: grid; place-items: center; width: 1.9rem; height: 1.9rem; border: 1px solid var(--vxa-border-strong); border-radius: 0.55rem; background: linear-gradient(145deg, #23272d, #111317); font-family: var(--vxa-font-display); font-size: 0.78rem; box-shadow: var(--vxa-shadow-inset); }
 .vxa-header__meta { display: flex; align-items: center; gap: 0.8rem; color: var(--vxa-text-subtle); font: 650 0.63rem/1 var(--vxa-font-mono); letter-spacing: 0.09em; }
-.vxa-status-dot { padding: 0.35rem 0.5rem; border: 1px solid rgba(142,214,178,0.24); border-radius: var(--vxa-radius-pill); color: var(--vxa-accent-success); background: rgba(142,214,178,0.07); }
+.vxa-status-dot { padding: 0.35rem 0.5rem; border: 1px solid rgba(138,185,255,0.22); border-radius: var(--vxa-radius-pill); color: var(--vxa-accent-intelligence); background: var(--vxa-accent-intelligence-soft); white-space: nowrap; }
 .vxa-main { position: relative; z-index: 2; padding-block: clamp(3rem, 7vw, 7rem) 3rem; }
 .vxa-intro { display: grid; grid-template-columns: minmax(0, 1fr) minmax(15rem, 22rem); align-items: end; gap: clamp(2rem, 7vw, 8rem); margin-bottom: clamp(2.5rem, 6vw, 5rem); }
 .vxa-kicker { color: var(--vxa-accent-intelligence); font: 700 0.64rem/1 var(--vxa-font-mono); letter-spacing: 0.16em; }
@@ -58,8 +58,8 @@
   .vxa-stage { grid-template-columns: 1fr; }
   .vxa-director { order: -1; padding: 0.8rem; }
   .vxa-director__heading { display: flex; align-items: baseline; justify-content: space-between; }
-  .vxa-director__steps { display: flex; overflow-x: auto; max-height: none; padding-block: 0.65rem; scroll-snap-type: x proximity; }
-  .vxa-step { flex: 0 0 min(16rem, 72vw); scroll-snap-align: start; }
+  .vxa-director__steps { display: grid; gap: 0.4rem; max-height: min(42vh, 19rem); overflow-y: auto; overflow-x: hidden; padding-block: 0.65rem; overscroll-behavior: contain; scrollbar-gutter: stable; }
+  .vxa-step { min-width: 0; }
   .vxa-director__controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 600px) {

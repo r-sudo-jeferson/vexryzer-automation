@@ -41,6 +41,10 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
   const [directedMobile, setDirectedMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 720px), (pointer: coarse)').matches);
 
   useEffect(() => {
+    if (window.__VXA_PERF__) window.__VXA_PERF__.canvasCommits += 1;
+  });
+
+  useEffect(() => {
     const media = window.matchMedia('(max-width: 720px), (pointer: coarse)');
     const update = () => setDirectedMobile(media.matches);
     update();
@@ -95,6 +99,7 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
 
   useEffect(() => {
     if (!instance) return;
+    if (window.__VXA_PERF__) window.__VXA_PERF__.cameraCommands += 1;
     const plan = createCameraPlan({
       mode,
       ...(focusedNodeId ? { focusNodeId: focusedNodeId } : {}),
@@ -116,8 +121,10 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
   }, [focusedNodeId, instance, mode, motionPolicy.reduced]);
 
   const handleViewport = (_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
+    if (window.__VXA_PERF__) window.__VXA_PERF__.viewportEvents += 1;
     const next = resolveZoomBand(viewport.zoom, zoomBandRef.current);
     if (next !== zoomBandRef.current) {
+      if (window.__VXA_PERF__) window.__VXA_PERF__.semanticBandChanges += 1;
       zoomBandRef.current = next;
       setZoomBand(next);
     }
