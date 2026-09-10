@@ -22,6 +22,8 @@ test('extracts only bounded evidence from Harness session events', () => {
     toolResultCount: 1,
     toolErrorCount: 0,
     toolErrorCodes: [],
+    turnErrorCodes: [],
+    turnErrorStatuses: [],
     structuredToolArguments: true,
     turnCompleted: true,
     turnEndReasons: ['completed'],
@@ -66,4 +68,29 @@ test('reports tool failure codes without exposing result content', () => {
   assert.deepEqual(evidence.toolErrorCodes, ['PERMISSION_DENIED']);
   assert.deepEqual(evidence.turnEndReasons, ['error']);
   assert.equal(JSON.stringify(evidence).includes('sensitive-result'), false);
+});
+
+test('reports bounded turn failure facts without exposing provider error text', () => {
+  const failed = [
+    { type: 'assistant/chunk', data: { chunk: { type: 'text-delta', text: 'partial' } } },
+    {
+      type: 'turn/end',
+      data: {
+        reason: {
+          kind: 'error',
+          error: {
+            message: 'sensitive provider detail',
+            code: 'INVALID_REQUEST',
+            status: 400,
+            requestId: 'req-private',
+          },
+        },
+      },
+    },
+  ];
+  const evidence = inspectHarnessEvents(failed);
+  assert.deepEqual(evidence.turnErrorCodes, ['INVALID_REQUEST']);
+  assert.deepEqual(evidence.turnErrorStatuses, [400]);
+  assert.equal(JSON.stringify(evidence).includes('sensitive provider detail'), false);
+  assert.equal(JSON.stringify(evidence).includes('req-private'), false);
 });

@@ -6,6 +6,8 @@ export interface HarnessEventEvidence {
   toolResultCount: number;
   toolErrorCount: number;
   toolErrorCodes: string[];
+  turnErrorCodes: string[];
+  turnErrorStatuses: number[];
   structuredToolArguments: boolean;
   turnCompleted: boolean;
   turnEndReasons: string[];
@@ -59,6 +61,21 @@ function turnEndReason(value: unknown): string | null {
   return typeof reason?.kind === 'string' ? reason.kind : null;
 }
 
+function turnEndError(value: unknown): JsonRecord | null {
+  const reason = record(eventData(value)?.reason);
+  return reason?.kind === 'error' ? record(reason.error) : null;
+}
+
+function turnErrorCode(value: unknown): string | null {
+  const error = turnEndError(value);
+  return typeof error?.code === 'string' ? error.code : null;
+}
+
+function turnErrorStatus(value: unknown): number | null {
+  const error = turnEndError(value);
+  return Number.isInteger(error?.status) ? error.status as number : null;
+}
+
 export function hasStreamingChunks(events: readonly unknown[]): boolean {
   return events.some((event) => eventType(event) === 'assistant/chunk');
 }
@@ -86,6 +103,8 @@ export function inspectHarnessEvents(events: readonly unknown[]): HarnessEventEv
   }))];
   const toolErrorCodes = [...new Set(toolResults.map(toolErrorCode).filter((code): code is string => code !== null))];
   const turnEndReasons = events.map(turnEndReason).filter((reason): reason is string => reason !== null);
+  const turnErrorCodes = [...new Set(events.map(turnErrorCode).filter((code): code is string => code !== null))];
+  const turnErrorStatuses = [...new Set(events.map(turnErrorStatus).filter((status): status is number => status !== null))];
 
   return {
     assistantChunkCount: events.filter((event) => eventType(event) === 'assistant/chunk').length,
@@ -93,6 +112,8 @@ export function inspectHarnessEvents(events: readonly unknown[]): HarnessEventEv
     toolResultCount: toolResults.length,
     toolErrorCount: toolResults.filter((event) => record(eventData(event)?.error) !== null).length,
     toolErrorCodes,
+    turnErrorCodes,
+    turnErrorStatuses,
     structuredToolArguments: toolCalls.length > 0 && toolCalls.every(validStructuredArguments),
     turnCompleted: turnEndReasons.includes('completed'),
     turnEndReasons,
