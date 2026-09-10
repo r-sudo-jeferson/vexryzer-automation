@@ -236,6 +236,20 @@ const DEFAULT_DEPENDENCIES: SellerTurnRuntimeDependencies = Object.freeze({
   executeProviderChatStream,
 });
 
+const SELLER_REVISION_LOCAL_TOOLS = Object.freeze(
+  SELLER_LOCAL_TOOLS.filter((tool) => tool.function.name === 'submit_seller_submission'),
+);
+
+function sellerLocalToolsFor(
+  revisionRequest: Readonly<SellerRevisionRequest> | undefined,
+): typeof SELLER_LOCAL_TOOLS {
+  if (revisionRequest === undefined) return SELLER_LOCAL_TOOLS;
+  if (SELLER_REVISION_LOCAL_TOOLS.length !== 1) {
+    throw new TypeError('Seller revision tool boundary is invalid');
+  }
+  return SELLER_REVISION_LOCAL_TOOLS;
+}
+
 interface PreparedRouteContext {
   routeId: string;
   tokenUsage: Readonly<ProviderRouteTokenUsage>;
@@ -492,7 +506,7 @@ function estimateSellerProviderInputTokens(
   revisionRequest?: Readonly<SellerRevisionRequest>,
 ): number {
   const messages = buildSellerProviderMessages(source, revisionRequest);
-  const measured = estimateTokens(Object.freeze({ messages, tools: SELLER_LOCAL_TOOLS }));
+  const measured = estimateTokens(Object.freeze({ messages, tools: sellerLocalToolsFor(revisionRequest) }));
   if (!Number.isInteger(measured) || measured < 0) {
     throw new TypeError('token estimator must return a non-negative integer');
   }
@@ -583,6 +597,7 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
 
   const dependencies: SellerTurnRuntimeDependencies = Object.freeze({ ...DEFAULT_DEPENDENCIES, ...input.dependencies });
   const maxProviderRounds = input.maxProviderRounds ?? DEFAULT_MAX_PROVIDER_ROUNDS;
+  const activeTools = sellerLocalToolsFor(input.revisionRequest);
   let canonical = input.canonical;
   let runtimeStates: readonly Readonly<ProviderRuntimeState>[] = Object.freeze([...input.runtimeStates]);
   let providerCalls = 0;
@@ -623,7 +638,7 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
 
       let exactInputTokens: number;
       try {
-        exactInputTokens = input.estimateTokens(Object.freeze({ messages, tools: SELLER_LOCAL_TOOLS }));
+        exactInputTokens = input.estimateTokens(Object.freeze({ messages, tools: activeTools }));
         if (!Number.isInteger(exactInputTokens) || exactInputTokens < 0) throw new TypeError('invalid token estimate');
       } catch {
         return { ok: false, code: 'CONTEXT_PREPARATION_FAILED', canonical, routeId: decision.route.routeId, detail: 'INVALID_TOKEN_ESTIMATOR' };
@@ -654,7 +669,7 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
         serverConfig: input.serverConfig,
         apiToken: credential,
         messages,
-        tools: SELLER_LOCAL_TOOLS,
+        tools: activeTools,
         timeoutMs: input.timeoutMs,
       };
       let providerResult: ProviderChatClientResult;
