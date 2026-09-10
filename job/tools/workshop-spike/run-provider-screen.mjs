@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { assertProviderCandidateRegistry, providerCandidates } from './provider-candidates.ts';
 import { classifyProviderFailure, sanitizeProviderDiagnostic } from './provider-evidence.ts';
 import { resolveDirectProviderConfig } from './provider-direct-config.ts';
-import { extractAssistantText, extractStructuredToolCall, parseOpenAiSse } from './provider-screen-protocol.ts';
+import { extractAssistantText, extractStructuredToolCall, isUsableOpenAiSse, parseOpenAiSse } from './provider-screen-protocol.ts';
 import { buildReplayRequest, buildStreamRequest, buildToolRequest } from './provider-screen-request.ts';
 
 const REQUEST_START_SPACING_MS = 2_500;
@@ -90,9 +90,9 @@ async function screenCandidate(candidate) {
   }
   const streamBody = await streamResponse.text();
   const parsedStream = parseOpenAiSse(streamBody);
-  const streaming = parsedStream.eventCount > 0 && parsedStream.done && parsedStream.text.includes(streamMarker);
+  const streaming = isUsableOpenAiSse(parsedStream);
   if (!streaming) {
-    return boundedFailure(config, 'stream-semantic', streamResponse.status, 'PROTOCOL', undefined, {
+    return boundedFailure(config, 'stream-structure', streamResponse.status, 'PROTOCOL', undefined, {
       authenticated: true,
       protocolEvidence: {
         eventCount: parsedStream.eventCount,
@@ -174,7 +174,7 @@ async function main() {
     notes: [
       'Requests are serialized across all candidates and raw provider payloads are not emitted.',
       '401/403/429 responses are recorded without blind retries.',
-      'A protocol-capable result does not by itself authorize a Seller; persuasion quality remains a separate gate.',
+      'Streaming protocol proves SSE structure and delivery, not exact free-text instruction following; tool-call/replay markers and persuasion quality remain separate gates.',
     ],
   }, null, 2)}\n`);
 }
