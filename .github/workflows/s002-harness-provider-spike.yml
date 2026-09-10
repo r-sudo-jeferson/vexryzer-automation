@@ -9,8 +9,10 @@ on:
       - .github/workflows/s002-harness-mistral-spike.yml
       - job/tools/workshop-spike/provider-*.ts
       - job/tools/workshop-spike/harness-timeout-evidence.ts
+      - job/tools/workshop-spike/opencode-*.ts
       - job/tools/workshop-spike/run-provider-screen.mjs
       - job/tools/workshop-spike/run-harness-provider.mjs
+      - job/tools/workshop-spike/run-opencode-provider.mjs
       - job/tests/pure/workshop-multiprovider.node.test.ts
       - job/tests/pure/workshop-opencode.node.test.ts
   workflow_dispatch:
@@ -51,7 +53,7 @@ jobs:
           pnpm --version
           git rev-parse HEAD
 
-      - name: Verify multiprovider pure contracts
+      - name: Verify multiprovider and OpenCode pure contracts
         working-directory: job
         shell: bash
         run: |
@@ -96,20 +98,21 @@ jobs:
           node tools/workshop-spike/run-provider-screen.mjs > "$result_file"
           cat "$result_file"
 
-      - name: Prove real agent behavior through DeepSeek Harness
-        id: harness
+      # DeepSeek Harness 0.1.2-rc.1 is intentionally not re-run on every push.
+      # Exact run 34481065588 proved the mandatory restart/session property failure
+      # for every provider-accessible Workshop tuple. The durable selection note in
+      # job/docs/handoffs/VXA-S002-HARNESS-SELECTION-NOTE.md authorizes OpenCode next.
+      - name: Prove real agent behavior through OpenCode
         working-directory: job
         shell: bash
         env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           set -euo pipefail
           mkdir -p test-results
-          result_file="test-results/s002-harness-provider-spike.json"
+          result_file="test-results/s002-opencode-provider-spike.json"
           set +e
-          node tools/workshop-spike/run-harness-provider.mjs > "$result_file"
+          node tools/workshop-spike/run-opencode-provider.mjs > "$result_file"
           status=$?
           set -e
           cat "$result_file"
@@ -122,6 +125,6 @@ jobs:
           name: s002-harness-provider-spike-${{ github.sha }}
           path: |
             job/test-results/s002-provider-screen.json
-            job/test-results/s002-harness-provider-spike.json
+            job/test-results/s002-opencode-provider-spike.json
           if-no-files-found: warn
           retention-days: 3
