@@ -15,6 +15,11 @@ export interface HarnessEnvironmentOptions {
   mistralApiKey: string;
 }
 
+export interface MistralRouteConfig extends Omit<SpikeInputs, 'mistralApiKey'> {
+  timeoutMs?: number;
+  streamIdleTimeoutMs?: number;
+}
+
 const SAFE_PARENT_ENV_KEYS = [
   'PATH',
   'HOME',
@@ -72,8 +77,17 @@ export function buildScrubbedHarnessEnv(
   return env;
 }
 
-export function renderMistralSettingsYaml(input: Omit<SpikeInputs, 'mistralApiKey'>): string {
+function validateOptionalTimeout(name: string, value: number | undefined): void {
+  if (value === undefined) return;
+  if (!Number.isSafeInteger(value) || value <= 0 || value > 2_147_483_647) {
+    throw new TypeError(`${name} must be a positive safe integer no greater than 2147483647`);
+  }
+}
+
+export function renderMistralSettingsYaml(input: MistralRouteConfig): string {
   validateSpikeInputs({ ...input, mistralApiKey: 'redacted-validation-key' });
+  validateOptionalTimeout('timeoutMs', input.timeoutMs);
+  validateOptionalTimeout('streamIdleTimeoutMs', input.streamIdleTimeoutMs);
   return [
     'llm-pi-ai:',
     '  providers:',
@@ -82,6 +96,8 @@ export function renderMistralSettingsYaml(input: Omit<SpikeInputs, 'mistralApiKe
     '      apiKeyEnv: MISTRAL_API_KEY',
     '      api: openai-completions',
     `      baseURL: ${input.baseUrl}`,
+    ...(input.timeoutMs === undefined ? [] : [`      timeoutMs: ${input.timeoutMs}`]),
+    ...(input.streamIdleTimeoutMs === undefined ? [] : [`      streamIdleTimeoutMs: ${input.streamIdleTimeoutMs}`]),
     '      compat:',
     '        supportsDeveloperRole: false',
     '        maxTokensField: max_tokens',
