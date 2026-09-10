@@ -79,13 +79,30 @@ async function touchDrag(page: Page, start: Point, end: Point): Promise<void> {
 
 async function driveZoomBand(page: Page, target: 'far' | 'near', deltaY: number): Promise<void> {
   const canvas = page.locator('.vxa-canvas');
-  const point = await findPanePoint(page);
-  await page.mouse.move(point.x, point.y);
-  for (let attempt = 0; attempt < 24; attempt += 1) {
-    if (await canvas.getAttribute('data-zoom-band') === target) return;
+  let previous = await readViewportMatrix(page);
+  let observedZoomChange = false;
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    if (await canvas.getAttribute('data-zoom-band') === target) {
+      expect(observedZoomChange).toBe(true);
+      return;
+    }
+    const point = await findPanePoint(page);
+    await page.mouse.move(point.x, point.y);
     await page.mouse.wheel(0, deltaY);
+    await page.waitForTimeout(32);
+    const current = await readViewportMatrix(page);
+    if (Math.abs(current.zoom - previous.zoom) > 0.001) observedZoomChange = true;
+    previous = current;
   }
+  expect(observedZoomChange).toBe(true);
   await expect(canvas).toHaveAttribute('data-zoom-band', target);
+}
+
+function outside(nodeBox: { x: number; y: number; width: number; height: number }, canvasBox: { x: number; y: number; width: number; height: number }): boolean {
+  return nodeBox.x + nodeBox.width < canvasBox.x
+    || nodeBox.x > canvasBox.x + canvasBox.width
+    || nodeBox.y + nodeBox.height < canvasBox.y
+    || nodeBox.y > canvasBox.y + canvasBox.height;
 }
 
 test('mouse pan, wheel zoom and semantic zoom remain optional exploration controls', async ({ page }, testInfo) => {
@@ -211,28 +228,22 @@ test('keyboard focus auto-pans an offscreen process node back into view', async 
 
   const canvas = page.locator('.vxa-canvas');
   const firstNode = page.locator('.react-flow__node-process').first();
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
     const nodeBox = await firstNode.boundingBox();
     const canvasBox = await canvas.boundingBox();
     expect(nodeBox).toBeTruthy();
     expect(canvasBox).toBeTruthy();
-    const offscreen = nodeBox!.x + nodeBox!.width < canvasBox!.x
-      || nodeBox!.x > canvasBox!.x + canvasBox!.width
-      || nodeBox!.y + nodeBox!.height < canvasBox!.y
-      || nodeBox!.y > canvasBox!.y + canvasBox!.height;
-    if (offscreen) break;
+    if (outside(nodeBox!, canvasBox!)) break;
+    const beforePan = await readViewportMatrix(page);
     await mousePan(page, { x: 180, y: 110 });
+    await expectViewportChanged(page, beforePan);
   }
 
   const displacedNodeBox = await firstNode.boundingBox();
   const displacedCanvasBox = await canvas.boundingBox();
   expect(displacedNodeBox).toBeTruthy();
   expect(displacedCanvasBox).toBeTruthy();
-  const isOffscreen = displacedNodeBox!.x + displacedNodeBox!.width < displacedCanvasBox!.x
-    || displacedNodeBox!.x > displacedCanvasBox!.x + displacedCanvasBox!.width
-    || displacedNodeBox!.y + displacedNodeBox!.height < displacedCanvasBox!.y
-    || displacedNodeBox!.y > displacedCanvasBox!.y + displacedCanvasBox!.height;
-  expect(isOffscreen).toBe(true);
+  expect(outside(displacedNodeBox!, displacedCanvasBox!)).toBe(true);
 
   const beforeFocus = await readViewportMatrix(page);
   await firstNode.focus();
@@ -242,10 +253,7 @@ test('keyboard focus auto-pans an offscreen process node back into view', async 
   const canvasBox = await canvas.boundingBox();
   expect(nodeBox).toBeTruthy();
   expect(canvasBox).toBeTruthy();
-  expect(nodeBox!.x + nodeBox!.width).toBeGreaterThan(canvasBox!.x);
-  expect(nodeBox!.x).toBeLessThan(canvasBox!.x + canvasBox!.width);
-  expect(nodeBox!.y + nodeBox!.height).toBeGreaterThan(canvasBox!.y);
-  expect(nodeBox!.y).toBeLessThan(canvasBox!.y + canvasBox!.height);
+  expect(outside(nodeBox!, canvasBox!)).toBe(false);
 });
 
 test('stress layout has no visually overlapping process-node rectangles after camera settle', async ({ page }, testInfo) => {
