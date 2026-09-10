@@ -1,14 +1,6 @@
-name: S002 Harness Mistral Spike
+name: S002 Historical Harness Mistral Spike
 
 on:
-  push:
-    branches:
-      - slice/vxa-s002-ask-ai-adaptive-experience
-    paths:
-      - .github/workflows/s002-harness-mistral-spike.yml
-      - job/tools/workshop-spike/**
-      - job/tests/pure/workshop-*.node.test.ts
-      - job/tests/pure/workshop-*.node.test.mjs
   workflow_dispatch:
 
 permissions:
@@ -47,7 +39,7 @@ jobs:
           pnpm --version
           git rev-parse HEAD
 
-      - name: Verify spike pure contracts
+      - name: Verify historical spike pure contracts
         working-directory: job
         shell: bash
         run: |
@@ -60,7 +52,7 @@ jobs:
             tests/pure/workshop-harness-probe-path.node.test.mjs \
             tests/pure/workshop-persistence-evidence.node.test.ts
 
-      - name: Run credentialed Harness plus Mistral compatibility gate
+      - name: Run historical credentialed Mistral compatibility gate
         id: compatibility
         working-directory: job
         shell: bash
@@ -83,21 +75,10 @@ jobs:
           status=$?
           set -e
 
-          node --input-type=module - "$result_file" "$VXA_MISTRAL_MODEL_ID" <<'NODE'
-          import { readFile, writeFile } from 'node:fs/promises';
-          const [file, model] = process.argv.slice(2);
-          const result = JSON.parse(await readFile(file, 'utf8'));
-          result.modelId ??= model;
-          if (Array.isArray(result.notes)) {
-            result.notes = result.notes.filter((note) => !String(note).includes('fixed Medium 3.5 id'));
-          }
-          await writeFile(file, `${JSON.stringify(result, null, 2)}\n`);
-          NODE
-
           cat "$result_file"
           exit "$status"
 
-      - name: Upload bounded compatibility evidence
+      - name: Upload bounded historical compatibility evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
