@@ -86,8 +86,8 @@ function turnErrorCode(value: unknown): string | null {
 }
 
 function turnErrorStatus(value: unknown): number | null {
-  const error = turnEndError(value);
-  return Number.isInteger(error?.status) ? error.status as number : null;
+  const status = turnEndError(value)?.status;
+  return Number.isInteger(status) ? status as number : null;
 }
 
 function assistantUsage(value: unknown): JsonRecord | null {
@@ -169,19 +169,19 @@ export function inspectHarnessEvents(events: readonly unknown[]): HarnessEventEv
     toolErrorCodes,
     turnErrorCodes,
     turnErrorStatuses,
-    reportedInputTokens: assistantMessages.reduce(
+    reportedInputTokens: assistantMessages.reduce<number>(
       (total, event) => total + safeNonNegativeInteger(assistantUsage(event)?.inputTokens),
       0,
     ),
-    reportedOutputTokens: assistantMessages.reduce(
+    reportedOutputTokens: assistantMessages.reduce<number>(
       (total, event) => total + safeNonNegativeInteger(assistantUsage(event)?.outputTokens),
       0,
     ),
-    reportedCacheReadTokens: assistantMessages.reduce(
+    reportedCacheReadTokens: assistantMessages.reduce<number>(
       (total, event) => total + safeNonNegativeInteger(assistantUsage(event)?.cacheReadTokens),
       0,
     ),
-    reportedCacheWriteTokens: assistantMessages.reduce(
+    reportedCacheWriteTokens: assistantMessages.reduce<number>(
       (total, event) => total + safeNonNegativeInteger(assistantUsage(event)?.cacheWriteTokens),
       0,
     ),
