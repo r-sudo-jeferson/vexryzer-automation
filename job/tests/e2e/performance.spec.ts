@@ -1,5 +1,13 @@
 import { expect, test } from '@playwright/test';
 
+interface LabSample {
+  lcpMs: number;
+  inpMs: number;
+  cls: number;
+  longTasks: number;
+  lastLongTaskMs: number;
+}
+
 function percentile75(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const index = Math.max(0, Math.ceil(sorted.length * 0.75) - 1);
@@ -17,7 +25,7 @@ test('production-like lab samples keep LCP, interaction latency and CLS inside S
     connectionType: 'wifi',
   });
 
-  const samples: Array<{ lcpMs: number; inpMs: number; cls: number }> = [];
+  const samples: LabSample[] = [];
   let budgets: { lcpMs: number; inpMs: number; cls: number } | null = null;
 
   for (let sample = 0; sample < 5; sample += 1) {
@@ -50,6 +58,8 @@ test('production-like lab samples keep LCP, interaction latency and CLS inside S
       // No observed event therefore has a conservative <=16 ms upper bound for this lab guard.
       inpMs: metrics!.inpMs ?? 16,
       cls: metrics!.cls,
+      longTasks: metrics!.longTasks,
+      lastLongTaskMs: metrics!.lastLongTaskMs,
     });
   }
 
@@ -60,13 +70,10 @@ test('production-like lab samples keep LCP, interaction latency and CLS inside S
     cls: percentile75(samples.map((sample) => sample.cls)),
   };
 
-  expect(p75.lcpMs).toBeLessThan(budgets!.lcpMs);
-  expect(p75.inpMs).toBeLessThan(budgets!.inpMs);
-  expect(p75.cls).toBeLessThan(budgets!.cls);
-
   await testInfo.attach('web-vitals-lab-p75.json', {
     body: JSON.stringify({
       profile: { latencyMs: 40, downloadBytesPerSecond: 1_250_000, uploadBytesPerSecond: 625_000 },
+      runner: { workers: testInfo.config.workers, workerIndex: testInfo.workerIndex, parallelIndex: testInfo.parallelIndex },
       project: testInfo.project.name,
       samples,
       p75,
@@ -74,6 +81,10 @@ test('production-like lab samples keep LCP, interaction latency and CLS inside S
     }, null, 2),
     contentType: 'application/json',
   });
+
+  expect(p75.lcpMs).toBeLessThan(budgets!.lcpMs);
+  expect(p75.inpMs).toBeLessThan(budgets!.inpMs);
+  expect(p75.cls).toBeLessThan(budgets!.cls);
 });
 
 test('stress interactions expose render/viewport/camera evidence through the opt-in probe', async ({ page }, testInfo) => {
