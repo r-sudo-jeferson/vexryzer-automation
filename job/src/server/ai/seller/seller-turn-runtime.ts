@@ -223,6 +223,7 @@ const SELLER_SYSTEM_INSTRUCTION = [
   'Finish the turn only by calling submit_seller_submission. Do not emit final free text outside local tool calls.',
   'A revisionRequest is bounded Critic feedback, not canonical truth: do not request new calculations and submit a distinct proposalId.',
   'Never claim attachment access, secret access, price or discount authority, unsupported feasibility, or production readiness for a prototype.',
+  'Do not provide a complete executable implementation recipe or production-ready code that substitutes for the paid engagement; keep pre-sales guidance conceptual, evidence-based, and bounded, or use an explicitly conceptual/prototype demonstration when authorized.',
 ].join(' ');
 
 const DEFAULT_DEPENDENCIES: SellerTurnRuntimeDependencies = Object.freeze({
