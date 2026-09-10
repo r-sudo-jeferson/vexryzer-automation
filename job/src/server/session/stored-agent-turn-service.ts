@@ -182,11 +182,6 @@ function appendRecent(
   return Object.freeze(merged.slice(-AGENT_SESSION_LIMITS.recentTurns));
 }
 
-function availabilityFailure(result: Extract<AgentLedTurnRuntimeResult, { ok: false }>): boolean {
-  if (result.code !== 'SELLER_FAILED' && result.code !== 'CRITIC_FAILED') return false;
-  return ['NO_ELIGIBLE_ROUTE', 'CREDENTIAL_UNAVAILABLE', 'PROVIDER_FAILED'].includes(result.detail);
-}
-
 async function finalize(
   repository: AgentSessionRepository,
   claimedEtag: string,
