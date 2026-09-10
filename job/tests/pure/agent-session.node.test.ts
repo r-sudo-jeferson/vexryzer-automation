@@ -218,9 +218,10 @@ test('record completion rejects request mismatch and keeps bounded immutable rec
     nowEpochMs: 1_000,
   }, entropy);
   if (!claimed.ok || claimed.idempotent || claimed.record.lease === null) throw new Error('expected claim');
+  const leaseId = claimed.record.lease.leaseId;
 
   assert.throws(() => completeAgentSession(claimed.record, {
-    leaseId: claimed.record.lease.leaseId,
+    leaseId,
     canonical: claimed.record.canonical,
     reactiveState: claimed.record.reactiveState,
     recentTurns: [],

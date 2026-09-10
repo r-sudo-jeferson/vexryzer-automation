@@ -450,7 +450,7 @@ export async function runStoredUserCorrection(input: {
   if (!finalized.ok) {
     return {
       ok: false,
-      code: finalized.code === 'CONFLICT' ? 'SESSION_CONFLICT' : finalized.code,
+      code: finalized.code,
       currentRevision: committed.context.revision,
     };
   }

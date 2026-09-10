@@ -39,8 +39,7 @@ const requests: readonly CalculationRequest[] = [
 function calculations(base: CanonicalSalesContext) {
   return requests.map((request) => {
     const result = computeVerifiedCalculation(base, request);
-    assert.equal(result.ok, true);
-    if (!result.ok) throw new Error(result.code);
+    if (!result.ok) assert.fail(result.code);
     return result.calculation;
   });
 }

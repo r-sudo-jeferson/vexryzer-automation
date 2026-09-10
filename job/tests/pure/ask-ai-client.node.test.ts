@@ -36,7 +36,10 @@ test('browser client starts lazily and sends only closed turn fields with bearer
   const client = createAskAiClient({
     createRequestId: () => 'request-client',
     fetchImpl: (async (input, init) => {
-      calls.push({ url: String(input), init });
+      calls.push({
+        url: String(input),
+        ...(init === undefined ? {} : { init }),
+      });
       if (String(input).endsWith('/session')) {
         return new Response(JSON.stringify({
           ok: true,
@@ -200,7 +203,10 @@ test('explicit correction sends only correctionId and advances revision after va
   const client = createAskAiClient({
     createRequestId: () => `request-${++request}`,
     fetchImpl: (async (input, init) => {
-      calls.push({ url: String(input), init });
+      calls.push({
+        url: String(input),
+        ...(init === undefined ? {} : { init }),
+      });
       if (String(input).endsWith('/session')) {
         return new Response(JSON.stringify({
           ok: true, sessionId: 'session-client', sessionToken: TOKEN, revision: 0,

@@ -7,8 +7,7 @@ import {
 import { applyContextMutation } from '../../src/ai/context/context-reducer.ts';
 
 function accepted(result: ReturnType<typeof applyContextMutation>): CanonicalSalesContext {
-  assert.equal(result.ok, true);
-  if (!result.ok) throw new Error(result.code);
+  if (!result.ok) assert.fail(result.code);
   return result.context;
 }
 
