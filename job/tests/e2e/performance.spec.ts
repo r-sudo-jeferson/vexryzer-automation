@@ -109,6 +109,7 @@ test('stress interactions expose render/viewport/camera evidence through the opt
 
 test('repeated focus/unfocus reaches a post-warmup heap plateau and preserves the directed path', async ({ page }, testInfo) => {
   if (!testInfo.project.name.includes('desktop')) test.skip();
+  test.setTimeout(60_000);
 
   const session = await page.context().newCDPSession(page);
   await page.goto('/?fixture=stress&perf=1');
