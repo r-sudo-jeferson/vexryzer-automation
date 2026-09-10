@@ -384,13 +384,20 @@ export async function runStoredUserCorrection(input: {
       committed.context,
     );
   } catch {
-    await release(
+    const released = await release(
       input.repository,
       claimed.record,
       claimWrite.etag,
       claimed.record.canonical,
       claimed.record.reactiveState,
     );
+    if (!released.ok) {
+      return {
+        ok: false,
+        code: released.code === 'CONFLICT' ? 'SESSION_CONFLICT' : released.code,
+        currentRevision: claimed.record.canonical.revision,
+      };
+    }
     return { ok: false, code: 'CORRECTION_COMMIT_REJECTED', currentRevision: claimed.record.canonical.revision };
   }
 
@@ -400,13 +407,20 @@ export async function runStoredUserCorrection(input: {
     committed.context,
   );
   if (!surface.ok) {
-    await release(
+    const released = await release(
       input.repository,
       claimed.record,
       claimWrite.etag,
       claimed.record.canonical,
       claimed.record.reactiveState,
     );
+    if (!released.ok) {
+      return {
+        ok: false,
+        code: released.code === 'CONFLICT' ? 'SESSION_CONFLICT' : released.code,
+        currentRevision: claimed.record.canonical.revision,
+      };
+    }
     return { ok: false, code: 'SURFACE_REJECTED', currentRevision: claimed.record.canonical.revision };
   }
 
