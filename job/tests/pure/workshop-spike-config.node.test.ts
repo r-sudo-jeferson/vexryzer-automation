@@ -83,6 +83,7 @@ test('does not expose model credentials to temporary package installation', () =
   assert.equal(env.HTTPS_PROXY, 'http://proxy.test');
   assert.equal(env.MISTRAL_API_KEY, undefined);
   assert.equal(env.NPM_TOKEN, undefined);
+  assert.equal(env.PNPM_CONFIG_AUTO_INSTALL_PEERS, 'true');
 });
 
 test('can render a deliberately bounded provider timeout probe', () => {
