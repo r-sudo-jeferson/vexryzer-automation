@@ -209,6 +209,28 @@ export function claimAgentSession(
   };
 }
 
+export function releaseAgentSessionLease(
+  claimed: Readonly<AgentSessionRecord>,
+  input: {
+    leaseId: string;
+    canonical: CanonicalSalesContext;
+    reactiveState: Readonly<ReactiveExperienceState>;
+    recentTurns: readonly Readonly<RecentContextTurn>[];
+  },
+): Readonly<AgentSessionRecord> {
+  if (claimed.status !== 'processing' || claimed.lease === null || claimed.lease.leaseId !== input.leaseId) {
+    throw new TypeError('session release does not own the active lease');
+  }
+  return freezeAgentSessionRecord({
+    ...claimed,
+    status: 'idle',
+    lease: null,
+    canonical: input.canonical,
+    reactiveState: input.reactiveState,
+    recentTurns: input.recentTurns.slice(-AGENT_SESSION_LIMITS.recentTurns),
+  });
+}
+
 export function completeAgentSession(
   claimed: Readonly<AgentSessionRecord>,
   input: {
