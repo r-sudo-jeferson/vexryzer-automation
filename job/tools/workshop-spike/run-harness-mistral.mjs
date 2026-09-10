@@ -123,23 +123,32 @@ async function bootstrapHarnessRuntime(rootDir, harnessVersion) {
   const sdkPackagePath = requireFromRuntime.resolve('@deepseek-ai/dsh-sdk-client/package.json');
   const dshPackagePath = requireFromRuntime.resolve('@deepseek-ai/dsh/package.json');
   const piAiPackagePath = requireFromRuntime.resolve('@deepseek-ai/dsh-llm-pi-ai/package.json');
+  const piAiCorePackagePath = join(runtimeDir, 'node_modules', '@earendil-works', 'pi-ai', 'package.json');
   const requireFromDsh = createRequire(dshPackagePath);
   const minimalBundlePackagePath = requireFromDsh.resolve('@deepseek-ai/dsh-sdk-minimal/package.json');
-  const [sdkManifest, dshManifest, piAiManifest, minimalBundleManifest] = await Promise.all([
+  const runtimeManifest = await readJson(join(runtimeDir, 'package.json'));
+  const [sdkManifest, dshManifest, piAiManifest, piAiCoreManifest, minimalBundleManifest] = await Promise.all([
     readJson(sdkPackagePath),
     readJson(dshPackagePath),
     readJson(piAiPackagePath),
+    readJson(piAiCorePackagePath),
     readJson(minimalBundlePackagePath),
   ]);
-  const resolvedVersions = {
+  const resolvedHarnessVersions = {
     sdk: sdkManifest.version,
     dsh: dshManifest.version,
     piAi: piAiManifest.version,
     sdkMinimal: minimalBundleManifest.version,
   };
-  if (Object.values(resolvedVersions).some((version) => version !== harnessVersion)) {
+  if (Object.values(resolvedHarnessVersions).some((version) => version !== harnessVersion)) {
     throw new Error(
-      `Harness package version mismatch: expected ${harnessVersion}, resolved=${JSON.stringify(resolvedVersions)}`,
+      `Harness package version mismatch: expected ${harnessVersion}, resolved=${JSON.stringify(resolvedHarnessVersions)}`,
+    );
+  }
+  const expectedPiAiCoreVersion = runtimeManifest.dependencies?.['@earendil-works/pi-ai'];
+  if (typeof expectedPiAiCoreVersion !== 'string' || piAiCoreManifest.version !== expectedPiAiCoreVersion) {
+    throw new Error(
+      `pi-ai core version mismatch: expected ${String(expectedPiAiCoreVersion)}, resolved=${String(piAiCoreManifest.version)}`,
     );
   }
 
