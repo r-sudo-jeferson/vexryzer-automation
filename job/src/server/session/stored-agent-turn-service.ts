@@ -4,7 +4,7 @@ import { createSessionDigest } from '../../ai/context/session-digest.ts';
 import type { CanonicalSalesContext, VerifiedCalculation } from '../../ai/context/canonical-sales-context.ts';
 import type { RecentContextTurn } from '../../ai/context/context-packager.ts';
 import type { ReactiveExperienceState } from '../../experience/reactive-experience-state.ts';
-import { projectReactiveCanvas } from '../../canvas/reactive-graph-adapter.ts';
+import { projectReactiveCanvas, type ReactiveCanvasModel } from '../../canvas/reactive-graph-adapter.ts';
 import { createProcessGraph } from '../../canvas/domain.ts';
 import {
   runAgentLedTurn,
@@ -139,7 +139,10 @@ function assistantTurnId(requestId: string): string {
   return 'assistant-' + createHash('sha256').update(requestId, 'utf8').digest('hex').slice(0, 32);
 }
 
-function visualState(record: Readonly<AgentSessionRecord>) {
+function visualState(
+  record: Readonly<AgentSessionRecord>,
+  surface: Readonly<ReactiveCanvasModel>,
+) {
   return Object.freeze({
     sceneId: record.canonical.currentSceneId,
     focusedEntityIds: Object.freeze([
@@ -151,6 +154,12 @@ function visualState(record: Readonly<AgentSessionRecord>) {
     activeArtifactIds: Object.freeze(record.reactiveState.artifacts
       .filter((artifact) => artifact.truthStatus === 'active')
       .map((artifact) => artifact.id)),
+    processNodes: Object.freeze(surface.graph.nodes.map((node) => Object.freeze({
+      id: node.id,
+      label: node.label,
+      kind: node.kind,
+      provenance: node.provenance,
+    }))),
   });
 }
 
@@ -436,6 +445,22 @@ export async function runStoredAgentTurn(
     );
   }
 
+  const currentSurface = projectReactiveCanvas(
+    createProcessGraph([], []),
+    claimed.record.reactiveState,
+    canonicalAfterInput,
+  );
+  if (!currentSurface.ok) {
+    return releaseFailedTurn(
+      input.repository,
+      claimWrite.etag,
+      claimed.record,
+      canonicalAfterInput,
+      claimed.record.reactiveState,
+      recentWithUser,
+    );
+  }
+
   const agentInput: AgentLedTurnRuntimeInput = {
     seller: {
       ...input.runtime.seller,
@@ -445,7 +470,7 @@ export async function runStoredAgentTurn(
       visualState: visualState(Object.freeze({
         ...claimed.record,
         canonical: canonicalAfterInput,
-      })),
+      }), currentSurface.model),
     },
     critic: input.runtime.critic,
     reactiveState: claimed.record.reactiveState,
