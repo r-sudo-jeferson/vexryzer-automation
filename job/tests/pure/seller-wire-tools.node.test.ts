@@ -220,8 +220,9 @@ test('final Seller tool publishes the full closed model-facing contract within t
 
   const sourceSchemas = collectPropertySchemas(submit.function.parameters, 'source');
   assert.equal(sourceSchemas.length, 1);
-  assert.ok(isRecord(sourceSchemas[0]));
-  assert.deepEqual(sourceSchemas[0]['enum'], ['inference']);
+  const sourceSchema = sourceSchemas[0];
+  assert.ok(isRecord(sourceSchema));
+  assert.deepEqual(sourceSchema['enum'], ['inference']);
 
   const enums = collectEnumStrings(submit.function.parameters);
   for (const forbidden of [
