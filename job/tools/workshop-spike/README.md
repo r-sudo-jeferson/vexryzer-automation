@@ -13,14 +13,16 @@ It is deliberately a spike, not a production runtime and not evidence that a pub
 
 ## Candidate under test
 
-- DeepSeek Harness: `0.1.2-rc.1` exact;
-- package pair: `@deepseek-ai/dsh@0.1.2-rc.1` + `@deepseek-ai/dsh-sdk-client@0.1.2-rc.1`;
+- default DeepSeek Harness candidate: `0.1.2-rc.1` exact;
+- default package pair: `@deepseek-ai/dsh@0.1.2-rc.1` + `@deepseek-ai/dsh-sdk-client@0.1.2-rc.1`;
 - provider route: `mistral` by default;
 - model: `mistral-medium-latest` by default;
 - endpoint: `https://api.mistral.ai/v1` by default;
 - route implementation: Harness `llm-pi-ai` using `openai-completions` compatibility mode.
 
 The version is a **candidate for evidence**, not an accepted product dependency. DeepSeek Harness is developer-preview software. A known public report exists against the `0.1.2-rc.1` train for Web/client-module loading; the SDK profile must therefore be proven directly rather than inferred healthy from version recency. If this exact candidate fails for a Harness defect, the root cause must be recorded before evaluating another exact release.
+
+The runner permits a different exact semver through `VXA_HARNESS_VERSION` so a controlled comparison such as `0.1.1-rc.2` can be performed **without changing the source candidate SHA**. Tags such as `latest`, ranges such as `^0.1.2-rc.1`, and other mutable selectors are rejected. Each result records the exact version it actually tested; evidence from different Harness versions may not be combined.
 
 The upstream `dsh-v0.1.2-rc.1` manifest declares the CLI executable as `bin.dsh = lib/bin.js`. The spike still resolves the installed manifest dynamically and refuses a path escaping the installed package instead of hardcoding package layout.
 
@@ -43,9 +45,10 @@ export MISTRAL_API_KEY='...'
 node tools/workshop-spike/run-harness-mistral.mjs
 ```
 
-Optional non-secret routing overrides:
+Optional non-secret routing/candidate overrides:
 
 ```bash
+export VXA_HARNESS_VERSION='0.1.2-rc.1'
 export VXA_MISTRAL_PROVIDER_ROUTE='mistral'
 export VXA_MISTRAL_MODEL_ID='mistral-medium-latest'
 export VXA_MISTRAL_BASE_URL='https://api.mistral.ai/v1'
@@ -101,7 +104,7 @@ An exit `0` proves provider/harness compatibility only. It does **not** prove th
 
 ## Tests
 
-Pure tests cover the evidence contract, event extraction, argument validation, environment scrubbing, timeout route configuration, runtime-version gates and package-manifest CLI resolution:
+Pure tests cover the evidence contract, event extraction, argument validation, environment scrubbing, timeout route configuration, exact candidate-version selection, runtime-version gates and package-manifest CLI resolution:
 
 ```bash
 cd job
@@ -126,4 +129,6 @@ Therefore DeepSeek Harness + Mistral real-provider compatibility remains `NOT_VE
 
 ## Next gate
 
-Run this exact spike in a Node 24 / pnpm 11.25.0 environment that can reach both the package registry and Mistral and that receives the existing Mistral credential securely. Preserve only the bounded JSON evidence and exact source SHA. If any required capability fails, preserve the failure, identify root cause, correct the spike/integration rather than weakening the contract, and rerun on a new exact candidate state.
+Run this exact spike in a Node 24 / pnpm 11.25.0 environment that can reach both the package registry and Mistral and that receives the existing Mistral credential securely. Start with the default exact candidate. If it fails, preserve the failure and identify whether the cause is provider compatibility, SDK/runtime packaging, profile boot, or a known Harness release defect. Only then evaluate another exact candidate using `VXA_HARNESS_VERSION`.
+
+Preserve only the bounded JSON evidence and exact source SHA. Do not combine results from different Harness versions, provider routes, model ids or source SHAs. If any required capability fails, correct the integration rather than weakening the contract, and rerun on a new exact candidate state when source changes.
