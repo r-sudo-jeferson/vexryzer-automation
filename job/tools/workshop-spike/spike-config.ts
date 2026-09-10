@@ -2,9 +2,10 @@ export const HARNESS_CANDIDATE_VERSION = '0.1.2-rc.1' as const;
 export const HARNESS_SPIKE_PROFILE = 'sdk-minimal' as const;
 export const DEFAULT_MISTRAL_PROVIDER_ROUTE = 'mistral' as const;
 export const DEFAULT_MISTRAL_MODEL_ID = 'mistral-medium-3-5' as const;
-export const DEFAULT_MISTRAL_BASE_URL = 'https://api.mistral.ai/v1' as const;
-export const MISTRAL_RATE_LIMIT_WINDOW_MS = 65_000 as const;
-export const MISTRAL_SPIKE_MAX_RETRIES = 1 as const;
+export const MISTRAL_SPIKE_MAX_RETRIES = 5 as const;
+export const MISTRAL_RETRY_INITIAL_DELAY_MS = 1_000 as const;
+export const MISTRAL_RETRY_MAX_DELAY_MS = 16_000 as const;
+export const MISTRAL_RETRY_JITTER_RATIO = 0.1 as const;
 
 const HARNESS_BUILD_SCRIPT_POLICY = {
   '0.1.2-rc.1': [
@@ -89,7 +90,6 @@ export function assertSpikeRuntimeVersions(versions: SpikeRuntimeVersions): void
 export interface SpikeInputs {
   providerRoute: string;
   modelId: string;
-  baseUrl: string;
   mistralApiKey: string;
 }
 
@@ -152,14 +152,6 @@ export function validateSpikeInputs(inputs: SpikeInputs): void {
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(inputs.modelId)) {
     throw new TypeError('modelId contains unsupported characters');
   }
-  let url: URL;
-  try {
-    url = new URL(inputs.baseUrl);
-  } catch {
-    throw new TypeError('baseUrl must be a valid HTTPS URL');
-  }
-  if (url.protocol !== 'https:') throw new TypeError('baseUrl must use HTTPS');
-  if (url.username || url.password) throw new TypeError('baseUrl must not contain credentials');
   if (!inputs.mistralApiKey.trim()) throw new TypeError('MISTRAL_API_KEY is required');
   if (/\s/.test(inputs.mistralApiKey)) throw new TypeError('MISTRAL_API_KEY must not contain whitespace');
 }
@@ -229,6 +221,13 @@ export function buildHarnessSdkOptions(
   };
 }
 
+const MISTRAL_TRANSIENT_FAILURE_CODES = [
+  'RATE_LIMIT',
+  'SERVER',
+  'TIMEOUT',
+  'TRANSPORT',
+] as const;
+
 function renderSpikeRetryPolicyLines(disableRetries: boolean, indent: string): string[] {
   const child = `${indent}  `;
   const grandchild = `${child}  `;
@@ -237,11 +236,11 @@ function renderSpikeRetryPolicyLines(disableRetries: boolean, indent: string): s
     `${child}mode: normal`,
     `${child}maxRetries: ${disableRetries ? 0 : MISTRAL_SPIKE_MAX_RETRIES}`,
     `${child}retryableCodes:`,
-    `${grandchild}- RATE_LIMIT`,
+    ...MISTRAL_TRANSIENT_FAILURE_CODES.map((code) => `${grandchild}- ${code}`),
     `${child}backoff:`,
-    `${grandchild}initialDelayMs: ${MISTRAL_RATE_LIMIT_WINDOW_MS}`,
-    `${grandchild}maxDelayMs: ${MISTRAL_RATE_LIMIT_WINDOW_MS}`,
-    `${grandchild}jitterRatio: 0`,
+    `${grandchild}initialDelayMs: ${MISTRAL_RETRY_INITIAL_DELAY_MS}`,
+    `${grandchild}maxDelayMs: ${MISTRAL_RETRY_MAX_DELAY_MS}`,
+    `${grandchild}jitterRatio: ${MISTRAL_RETRY_JITTER_RATIO}`,
   ];
 }
 
@@ -261,14 +260,9 @@ export function renderMistralMinimalProfilePatchYaml(input: MistralRouteConfig):
     `          ${input.providerRoute}:`,
     '            displayName: Mistral',
     '            apiKeyEnv: MISTRAL_API_KEY',
-    '            api: openai-completions',
-    `            baseURL: ${input.baseUrl}`,
     ...(input.timeoutMs === undefined ? [] : [`            timeoutMs: ${input.timeoutMs}`]),
     ...(input.streamIdleTimeoutMs === undefined ? [] : [`            streamIdleTimeoutMs: ${input.streamIdleTimeoutMs}`]),
     ...renderSpikeRetryPolicyLines(timeoutProbe, '            '),
-    '            compat:',
-    '              supportsDeveloperRole: false',
-    '              maxTokensField: max_tokens',
     '            models:',
     `              - id: ${input.modelId}`,
     '',
