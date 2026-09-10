@@ -83,3 +83,15 @@ test('does not expose model credentials to temporary package installation', () =
   assert.equal(env.MISTRAL_API_KEY, undefined);
   assert.equal(env.NPM_TOKEN, undefined);
 });
+
+test('can render a deliberately bounded provider timeout probe', () => {
+  const yaml = renderMistralSettingsYaml({
+    providerRoute: 'mistral-timeout',
+    modelId: 'mistral-medium-latest',
+    baseUrl: 'https://api.mistral.ai/v1',
+    timeoutMs: 5,
+    streamIdleTimeoutMs: 5,
+  });
+  assert.match(yaml, /timeoutMs: 5/);
+  assert.match(yaml, /streamIdleTimeoutMs: 5/);
+});
