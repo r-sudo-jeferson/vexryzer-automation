@@ -14,6 +14,12 @@ declare global {
       cameraCommands: number;
       cameraInterruptions: number;
       cameraResizeRefits: number;
+      askSubmissions: number;
+      askAccepted: number;
+      askRecoveries: number;
+      askFailures: number;
+      askLastVisualAckMs: number | null;
+      askMaxVisualAckMs: number;
       supportedEntryTypes: readonly string[];
       observedEntryTypes: string[];
       budgets: typeof PERFORMANCE_BUDGETS;
