@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { CanonicalSalesContext, VerifiedCalculation } from '../../src/ai/context/canonical-sales-context.ts';
+import { applyContextMutation as applyCanonicalContextMutation } from '../../src/ai/context/context-reducer.ts';
+import { computeVerifiedCalculation as computeCanonicalCalculation } from '../../src/ai/quant/calculation-engine.ts';
 import type { ProviderRouteDefinition } from '../../src/ai/providers/provider-registry.ts';
 import type { ProviderChatClientResult } from '../../src/server/ai/providers/provider-chat-client.ts';
 import {
@@ -86,6 +88,32 @@ function submissionTool(revision: number, id = 'tool-submit', proposalId = `prop
           materialClaims: [],
           calculationRequests: [],
         },
+      }),
+    }),
+  });
+}
+
+function observationTool(
+  revision: number,
+  observations: readonly {
+    id: string;
+    kind: string;
+    turnId: string;
+    quote: string;
+    value: number;
+  }[],
+  toolId = 'tool-observations',
+) {
+  return Object.freeze({
+    id: toolId,
+    type: 'function' as const,
+    function: Object.freeze({
+      name: 'capture_user_observations',
+      arguments: JSON.stringify({
+        observations: observations.map((item) => ({
+          ...item,
+          baseRevision: revision,
+        })),
       }),
     }),
   });
@@ -324,7 +352,7 @@ test('Critic revision request is same-revision, calculation-free, and requires a
     calculationInput.revisionRequest = revisionRequest;
     const calculationResult = await runSellerTurn(calculationInput);
     if (calculationResult.ok || calculationResult.code !== 'INVALID_PROVIDER_OUTPUT') throw new Error(JSON.stringify(calculationResult));
-    assert.equal(calculationResult.detail, 'CALCULATIONS_FORBIDDEN_DURING_CRITIC_REVISION');
+    assert.equal(calculationResult.detail, 'NON_SUBMISSION_TOOL_FORBIDDEN_DURING_CRITIC_REVISION');
 
     const reusedInput = baseInput([primary], async () => completion([
       submissionTool(7, 'tool-reused', 'proposal-7'),
@@ -424,6 +452,106 @@ for (const failureClass of ['cancelled', 'client'] as const) {
     assert.equal(calls, 1);
   });
 }
+
+test('explicit user numbers flow through capture then deterministic calculation then final Seller submission across exact revisions', async () => {
+  const primary = route();
+  const text = 'Somos 3 pessoas, gastamos 40 minutos por pessoa por dia e trabalhamos 22 dias por mês.';
+  const initial = Object.freeze({
+    ...canonical(7),
+    latestUserIntent: Object.freeze({ turnId: 'turn-1', text }),
+  });
+  const revisions: number[] = [];
+  let providerCall = 0;
+  const input = baseInput([primary], async (providerInput) => {
+    const payload = JSON.parse((providerInput.messages[1] as { content: string }).content) as { canonicalRevision: number };
+    revisions.push(payload.canonicalRevision);
+    providerCall += 1;
+    if (providerCall === 1) {
+      return completion([observationTool(7, [
+        { id: 'obs-people', kind: 'people_count', turnId: 'turn-1', quote: '3 pessoas', value: 3 },
+        { id: 'obs-minutes', kind: 'minutes_per_person_per_day', turnId: 'turn-1', quote: '40 minutos por pessoa por dia', value: 40 },
+        { id: 'obs-days', kind: 'working_days_per_month', turnId: 'turn-1', quote: '22 dias por mês', value: 22 },
+      ])] as never);
+    }
+    if (providerCall === 2) {
+      return completion([Object.freeze({
+        id: 'tool-calc-capacity',
+        type: 'function' as const,
+        function: Object.freeze({
+          name: 'request_calculations',
+          arguments: JSON.stringify({
+            requests: [{
+              id: 'calc-capacity',
+              kind: 'monthly_capacity',
+              baseRevision: 8,
+              peopleObservationId: 'obs-people',
+              minutesPerPersonPerDayObservationId: 'obs-minutes',
+              workingDaysPerMonthObservationId: 'obs-days',
+            }],
+          }),
+        }),
+      })] as never);
+    }
+    return completion([submissionTool(9)]);
+  }, {
+    applyContextMutation: applyCanonicalContextMutation,
+    computeVerifiedCalculation: computeCanonicalCalculation,
+  });
+  input.canonical = initial;
+  input.recentTurns = Object.freeze([{ id: 'turn-1', role: 'user', text }]);
+
+  const result = await runSellerTurn(input);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(revisions, [7, 8, 9]);
+  assert.equal(result.providerRounds, 3);
+  assert.equal(result.canonical.revision, 9);
+  assert.deepEqual(result.canonical.quantitativeObservations.map((item) => item.id), [
+    'obs-people', 'obs-minutes', 'obs-days',
+  ]);
+  assert.equal(result.canonical.quantitativeObservations.every((item) =>
+    item.source === 'user' && item.status === 'confirmed'), true);
+  assert.equal(result.canonical.verifiedCalculations[0]?.id, 'calc-capacity');
+  assert.equal(result.canonical.verifiedCalculations[0]?.resultValue, 44);
+  assert.equal(result.canonical.verifiedCalculations[0]?.resultUnit, 'hour/month');
+});
+
+test('hallucinated quoted observation is rejected before any canonical mutation', async () => {
+  const primary = route();
+  const text = 'Somos 3 pessoas.';
+  let mutationCalls = 0;
+  const input = baseInput([primary], async () => completion([
+    observationTool(7, [{
+      id: 'obs-people',
+      kind: 'people_count',
+      turnId: 'turn-1',
+      quote: '3 pessoas',
+      value: 30,
+    }]),
+  ] as never), {
+    applyContextMutation: ((...args: Parameters<typeof applyCanonicalContextMutation>) => {
+      mutationCalls += 1;
+      return applyCanonicalContextMutation(...args);
+    }) as SellerTurnRuntimeDependencies['applyContextMutation'],
+  });
+  input.canonical = Object.freeze({
+    ...canonical(7),
+    latestUserIntent: Object.freeze({ turnId: 'turn-1', text }),
+  });
+  input.recentTurns = Object.freeze([{ id: 'turn-1', role: 'user', text }]);
+
+  const result = await runSellerTurn(input);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.code, 'OBSERVATION_CAPTURE_REJECTED');
+  if (result.code === 'OBSERVATION_CAPTURE_REJECTED') {
+    assert.equal(result.detail, 'VALUE_NOT_IN_QUOTE');
+    assert.equal(result.requestId, 'obs-people');
+  }
+  assert.equal(mutationCalls, 0);
+  assert.equal(result.canonical.revision, 7);
+  assert.equal(result.canonical.quantitativeObservations.length, 0);
+});
 
 test('multiple calculation tool calls are computed against one revision and committed once atomically before the next provider round', async () => {
   const primary = route();
