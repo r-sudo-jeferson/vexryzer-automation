@@ -15,6 +15,7 @@ declare global {
       cameraInterruptions: number;
       cameraResizeRefits: number;
       supportedEntryTypes: readonly string[];
+      observedEntryTypes: string[];
       budgets: typeof PERFORMANCE_BUDGETS;
     };
   }

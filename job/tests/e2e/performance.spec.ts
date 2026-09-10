@@ -25,7 +25,7 @@ test('production-like lab samples keep LCP, interaction latency and CLS inside S
     await page.waitForTimeout(80);
 
     await page.getByRole('button', { name: /Explorar um processo/i }).click();
-    await page.getByRole('button', { name: /01\./i }).click();
+    await page.locator('.vxa-step').first().click();
     await page.waitForTimeout(80);
 
     const metrics = await page.evaluate(() => window.__VXA_PERF__);
@@ -34,6 +34,12 @@ test('production-like lab samples keep LCP, interaction latency and CLS inside S
       'largest-contentful-paint',
       'layout-shift',
       'event',
+    ]));
+    expect(metrics!.observedEntryTypes).toEqual(expect.arrayContaining([
+      'largest-contentful-paint',
+      'layout-shift',
+      'event',
+      'first-input',
     ]));
     expect(metrics!.lcpMs).not.toBeNull();
 

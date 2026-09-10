@@ -17,7 +17,6 @@ test('GAUNTLET performance observer is explicitly opt-in and cleaned up', () => 
   assert.match(source, /delete\s+window\.__VXA_PERF__/);
 });
 
-
 test('opt-in probe exposes render, viewport, semantic-band and camera counters for GAUNTLET inspection', () => {
   assert.match(probeTypes, /canvasCommits:\s*number/);
   assert.match(probeTypes, /viewportEvents:\s*number/);
@@ -33,13 +32,18 @@ test('opt-in probe exposes render, viewport, semantic-band and camera counters f
   assert.match(canvasSource, /cameraResizeRefits\s*\+=\s*1/);
 });
 
-
 test('opt-in probe measures LCP, INP and CLS rather than exposing budget constants only', () => {
   assert.match(probeTypes, /lcpMs:\s*number\s*\|\s*null/);
   assert.match(probeTypes, /inpMs:\s*number\s*\|\s*null/);
   assert.match(probeTypes, /cls:\s*number/);
+  assert.match(probeTypes, /observedEntryTypes:\s*string\[\]/);
   assert.match(source, /largest-contentful-paint/);
+  assert.match(source, /first-input/);
   assert.match(source, /layout-shift/);
   assert.match(source, /interactionId/);
   assert.match(source, /durationThreshold/);
+  assert.match(source, /observedEntryTypes\.push/);
+  const capabilityGuard = source.indexOf("'PerformanceObserver' in window");
+  const supportedTypesAccess = source.indexOf('PerformanceObserver.supportedEntryTypes');
+  assert.ok(capabilityGuard >= 0 && supportedTypesAccess > capabilityGuard, 'capability guard must precede static PerformanceObserver access');
 });

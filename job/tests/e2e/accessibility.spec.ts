@@ -72,3 +72,24 @@ test('reduced motion keeps the same semantic controls and visible focus', async 
   await page.keyboard.press('Enter');
   await expect(page.locator('.vxa-shell')).toHaveAttribute('data-motion', 'reduced');
 });
+
+test('provenance and uncertainty remain textually encoded instead of depending on hue or depth', async ({ page }) => {
+  await page.goto('/?fixture=provenance');
+  await page.getByRole('button', { name: /Explorar um processo/i }).click();
+
+  const nodes = page.locator('.react-flow__node-process');
+  await expect(nodes.filter({ hasText: 'Entrada informada' })).toContainText('Informado');
+  await expect(nodes.filter({ hasText: 'Sistema a confirmar' })).toContainText('A confirmar');
+  await expect(nodes.filter({ hasText: 'Sistema a confirmar' })).toContainText('Hipótese');
+  await expect(nodes.filter({ hasText: 'Saída confirmada' })).toContainText('Confirmado');
+});
+
+test('keyboard focus remains visibly styled after entering the process surface', async ({ page }) => {
+  await page.goto('/');
+  await tabUntilText(page, /Explorar um processo/i, 12);
+  await page.keyboard.press('Enter');
+  await tabUntilText(page, /Documentos recebidos/i, 24);
+  const focused = page.locator(':focus');
+  await expect(focused).toHaveCSS('outline-style', 'solid');
+  await expect(focused).toHaveCSS('outline-width', '2px');
+});

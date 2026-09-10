@@ -13,7 +13,9 @@ export function usePerformanceInstrumentation(): void {
       return;
     }
 
-    const supportedEntryTypes = [...(PerformanceObserver.supportedEntryTypes ?? [])];
+    const performanceObserverAvailable = 'PerformanceObserver' in window;
+    const supportedEntryTypes = performanceObserverAvailable ? [...(PerformanceObserver.supportedEntryTypes ?? [])] : [];
+    const observedEntryTypes: string[] = [];
     window.__VXA_PERF__ = {
       lcpMs: null,
       inpMs: null,
@@ -27,10 +29,11 @@ export function usePerformanceInstrumentation(): void {
       cameraInterruptions: 0,
       cameraResizeRefits: 0,
       supportedEntryTypes,
+      observedEntryTypes,
       budgets: PERFORMANCE_BUDGETS,
     };
 
-    if (!('PerformanceObserver' in window)) {
+    if (!performanceObserverAvailable) {
       return () => { delete window.__VXA_PERF__; };
     }
 
@@ -43,6 +46,7 @@ export function usePerformanceInstrumentation(): void {
         const observer = new PerformanceObserver(callback);
         observer.observe(options);
         observers.push(observer);
+        observedEntryTypes.push(type);
       } catch {
         // Browser GAUNTLET records supportedEntryTypes so unavailable metrics remain explicit.
       }
@@ -73,15 +77,20 @@ export function usePerformanceInstrumentation(): void {
       }
     }, { type: 'layout-shift', buffered: true });
 
-    observe('event', (list) => {
+    const recordInteractions: PerformanceObserverCallback = (list) => {
       const probe = window.__VXA_PERF__;
       if (!probe) return;
       for (const entry of list.getEntries() as InteractionEntry[]) {
-        if (!entry.interactionId || !Number.isFinite(entry.duration)) continue;
-        interactionDurations.set(entry.interactionId, Math.max(interactionDurations.get(entry.interactionId) ?? 0, entry.duration));
+        if (!Number.isFinite(entry.duration)) continue;
+        const interactionId = entry.interactionId || (entry.entryType === 'first-input' ? -1 : 0);
+        if (!interactionId) continue;
+        interactionDurations.set(interactionId, Math.max(interactionDurations.get(interactionId) ?? 0, entry.duration));
       }
       if (interactionDurations.size > 0) probe.inpMs = Math.max(...interactionDurations.values());
-    }, { type: 'event', buffered: true, durationThreshold: 16 });
+    };
+
+    observe('first-input', recordInteractions, { type: 'first-input', buffered: true });
+    observe('event', recordInteractions, { type: 'event', buffered: true, durationThreshold: 16 });
 
     return () => {
       for (const observer of observers) observer.disconnect();
