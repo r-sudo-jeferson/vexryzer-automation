@@ -1,4 +1,5 @@
 import type { CanonicalSalesContext } from '../../../ai/context/canonical-sales-context.ts';
+import type { CriticReview } from '../../../ai/critic/critic-contract.ts';
 import { applyContextMutation } from '../../../ai/context/context-reducer.ts';
 import {
   packageContext,
@@ -56,6 +57,8 @@ export interface SellerRouteBudgetConfig {
   budget: Readonly<ProviderRouteBudget>;
 }
 
+export interface SellerRevisionRequest { rootProposalId: string; previousProposalId: string; review: Readonly<CriticReview>; }
+
 export type SellerCredentialResolver = (credentialEnvName: string) => string | null | undefined | Promise<string | null | undefined>;
 
 export interface SellerTurnRuntimeDependencies {
@@ -84,6 +87,7 @@ export interface SellerTurnRuntimeInput {
   timeoutMs: number;
   signal?: AbortSignal;
   maxProviderRounds?: number;
+  revisionRequest?: Readonly<SellerRevisionRequest>;
   dependencies?: Partial<SellerTurnRuntimeDependencies>;
 }
 
@@ -100,7 +104,7 @@ export type SellerTurnRuntimeResult =
       ok: false;
       code: 'INVALID_RUNTIME_CONFIG';
       canonical: CanonicalSalesContext;
-      detail: 'ROUTE_BUDGET_MISMATCH' | 'INVALID_ROUND_LIMIT' | 'INVALID_TIMEOUT' | 'DUPLICATE_ROUTE' | 'DUPLICATE_RUNTIME_STATE';
+      detail: 'ROUTE_BUDGET_MISMATCH' | 'INVALID_ROUND_LIMIT' | 'INVALID_TIMEOUT' | 'DUPLICATE_ROUTE' | 'DUPLICATE_RUNTIME_STATE' | 'INVALID_REVISION_REQUEST';
     }
   | {
       ok: false;
@@ -174,6 +178,7 @@ const DEFAULT_MAX_PROVIDER_ROUNDS = 6;
 const MAX_PROVIDER_ROUNDS = 8;
 const MAX_ROUTE_COUNT = 16;
 const MAX_PROVIDER_MESSAGE_TEXT = 64_000;
+const SAFE_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const FORBIDDEN_PROVIDER_AUTHORITY_KEYS = new Set([
   'providerConversationId',
   'provider_conversation_id',
@@ -191,6 +196,7 @@ const SELLER_SYSTEM_INSTRUCTION = [
   'Choose the strongest truthful next move without reconstructing a fixed funnel or mandatory question sequence.',
   'Use request_calculations for material arithmetic, then reason only from calculations that reappear in canonical context.',
   'Finish the turn only by calling submit_seller_submission. Do not emit final free text outside local tool calls.',
+  'A revisionRequest is bounded Critic feedback, not canonical truth: do not request new calculations and submit a distinct proposalId.',
   'Never claim attachment access, secret access, price or discount authority, unsupported feasibility, or production readiness for a prototype.',
 ].join(' ');
 
@@ -247,6 +253,15 @@ function validateRuntimeConfiguration(input: SellerTurnRuntimeInput): Extract<Se
   }
   if (new Set(input.runtimeStates.map((state) => state.routeId)).size !== input.runtimeStates.length) {
     return { ok: false, code: 'INVALID_RUNTIME_CONFIG', canonical: input.canonical, detail: 'DUPLICATE_RUNTIME_STATE' };
+  }
+  if (input.revisionRequest !== undefined) {
+    const q = input.revisionRequest;
+    const validId = (value: string) => value.length >= 1 && value.length <= 96 && SAFE_ID_PATTERN.test(value);
+    if (!validId(q.rootProposalId) || !validId(q.previousProposalId) || q.review.verdict !== 'REVISE'
+      || q.review.proposalId !== q.previousProposalId || q.review.basedOnRevision !== input.canonical.revision
+      || q.review.findings.length < 1) {
+      return { ok: false, code: 'INVALID_RUNTIME_CONFIG', canonical: input.canonical, detail: 'INVALID_REVISION_REQUEST' };
+    }
   }
   if (input.routeBudgets.length !== input.routes.length || new Set(input.routeBudgets.map((item) => item.routeId)).size !== input.routeBudgets.length) {
     return { ok: false, code: 'INVALID_RUNTIME_CONFIG', canonical: input.canonical, detail: 'ROUTE_BUDGET_MISMATCH' };
@@ -310,7 +325,7 @@ function prepareRouteContexts(
           contextMode: 'full',
           fallbackReason: null,
           context: contextPayload as CanonicalDispatchContext,
-        }, input.estimateTokens),
+        }, input.estimateTokens, input.revisionRequest),
       });
       if (packaged.ok) {
         fullContext = packaged.pack;
@@ -408,6 +423,7 @@ function containsForbiddenProviderAuthorityKey(value: unknown, seen = new Set<ob
 
 export function buildSellerProviderMessages<TContext extends CanonicalDispatchContext>(
   envelope: Readonly<SellerProviderMessageSource<TContext>>,
+  revisionRequest?: Readonly<SellerRevisionRequest>,
 ): readonly ProviderChatMessage[] {
   if (envelope.role !== 'seller') throw new TypeError('Seller messages require a seller dispatch envelope');
   if (envelope.context.canonicalRevision !== envelope.canonicalRevision) {
@@ -417,12 +433,18 @@ export function buildSellerProviderMessages<TContext extends CanonicalDispatchCo
     throw new TypeError('Provider conversation authority is forbidden in Seller dispatch context');
   }
 
+  if (revisionRequest !== undefined && (revisionRequest.review.verdict !== 'REVISE'
+    || revisionRequest.review.proposalId !== revisionRequest.previousProposalId
+    || revisionRequest.review.basedOnRevision !== envelope.canonicalRevision)) {
+    throw new TypeError('Seller revision request is not bound to the canonical revision');
+  }
   const payload = Object.freeze({
     schemaVersion: 1 as const,
     canonicalRevision: envelope.canonicalRevision,
     contextMode: envelope.contextMode,
     fallbackReason: envelope.fallbackReason,
     context: envelope.context,
+    ...(revisionRequest === undefined ? {} : { revisionRequest }),
   });
   let content: string;
   try {
@@ -443,8 +465,9 @@ export function buildSellerProviderMessages<TContext extends CanonicalDispatchCo
 function estimateSellerProviderInputTokens(
   source: Readonly<SellerProviderMessageSource>,
   estimateTokens: TokenEstimator,
+  revisionRequest?: Readonly<SellerRevisionRequest>,
 ): number {
-  const messages = buildSellerProviderMessages(source);
+  const messages = buildSellerProviderMessages(source, revisionRequest);
   const measured = estimateTokens(Object.freeze({ messages, tools: SELLER_LOCAL_TOOLS }));
   if (!Number.isInteger(measured) || measured < 0) {
     throw new TypeError('token estimator must return a non-negative integer');
@@ -568,7 +591,7 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
 
       let messages: readonly ProviderChatMessage[];
       try {
-        messages = buildSellerProviderMessages(dispatch.envelope);
+        messages = buildSellerProviderMessages(dispatch.envelope, input.revisionRequest);
       } catch {
         return { ok: false, code: 'DISPATCH_REJECTED', canonical, routeId: decision.route.routeId, detail: 'MESSAGE_BUILD_FAILED' };
       }
@@ -642,7 +665,13 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
     }
 
     const first = tools.parsed[0]!;
+    if (input.revisionRequest !== undefined && first.kind !== 'seller_submission') {
+      return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'CALCULATIONS_FORBIDDEN_DURING_CRITIC_REVISION' };
+    }
     if (first.kind === 'seller_submission') {
+      if (input.revisionRequest !== undefined && first.submission.proposalId === input.revisionRequest.previousProposalId) {
+        return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'REVISED_PROPOSAL_ID_REUSED' };
+      }
       const validation = dependencies.validateSellerSubmission(first.submission, { canonical });
       if (!validation.ok) return { ok: false, code: 'SELLER_SUBMISSION_REJECTED', canonical, validation };
       return {
