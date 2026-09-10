@@ -28,6 +28,8 @@ export const ARTIFACT_KINDS = [
   'operational_object', 'data_import_preview', 'presentation', 'bi_dashboard', 'training_module', 'workflow_concept', 'prototype',
 ] as const;
 export const ARTIFACT_STATUSES = ['proposed', 'staged', 'revealed', 'invalidated'] as const;
+export const ARTIFACT_MATURITIES = ['conceptual', 'prototype'] as const;
+export type ArtifactMaturity = (typeof ARTIFACT_MATURITIES)[number];
 export type QuantitativeUnit = (typeof QUANTITATIVE_UNITS)[number];
 export type QuantitativePeriod = (typeof QUANTITATIVE_PERIODS)[number] | null;
 
@@ -96,6 +98,8 @@ export interface ArtifactRecord {
     | 'workflow_concept'
     | 'prototype';
   title: string;
+  summary: string;
+  maturity: ArtifactMaturity;
   evidenceIds: readonly string[];
   status: 'proposed' | 'staged' | 'revealed' | 'invalidated';
   invalidatedAtRevision: number | null;
@@ -249,9 +253,11 @@ function freezeArtifact(artifact: ArtifactRecord): ArtifactRecord {
   assertSafeDomainId('artifact.id', artifact.id);
   if (!(ARTIFACT_KINDS as readonly string[]).includes(artifact.kind)) throw new TypeError('artifact.kind is invalid');
   if (!(ARTIFACT_STATUSES as readonly string[]).includes(artifact.status)) throw new TypeError('artifact.status is invalid');
+  if (!(ARTIFACT_MATURITIES as readonly string[]).includes(artifact.maturity)) throw new TypeError('artifact.maturity is invalid');
   if (artifact.status === 'invalidated' && artifact.invalidatedAtRevision === null) throw new TypeError('invalidated artifact requires invalidatedAtRevision');
   if (artifact.status !== 'invalidated' && artifact.invalidatedAtRevision !== null) throw new TypeError('active artifact cannot have invalidatedAtRevision');
   assertBoundedText('artifact.title', artifact.title, 300);
+  assertBoundedText('artifact.summary', artifact.summary, 1200);
   for (const id of artifact.evidenceIds) assertSafeDomainId('artifact.evidenceId', id);
   return Object.freeze({ ...artifact, evidenceIds: freezeStrings(artifact.evidenceIds) });
 }
