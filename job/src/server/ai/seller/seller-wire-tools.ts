@@ -1,11 +1,17 @@
 import type { CalculationRequest } from '../../../ai/quant/quantity-types.ts';
+import {
+  USER_OBSERVATION_KINDS,
+  type QuotedUserObservationRequest,
+  type UserObservationKind,
+} from '../../../ai/context/user-evidence-ingestion.ts';
 import type { AssembledToolCall } from '../providers/chat-sse.ts';
 import type { LocalFunctionTool } from '../providers/openai-chat-wire.ts';
 
-export const SELLER_TOOL_NAMES = ['request_calculations', 'submit_seller_submission'] as const;
+export const SELLER_TOOL_NAMES = ['capture_user_observations', 'request_calculations', 'submit_seller_submission'] as const;
 export type SellerToolName = (typeof SELLER_TOOL_NAMES)[number];
 
 export type SellerWireToolResult =
+  | { ok: true; kind: 'user_observation_requests'; toolCallId: string; requests: readonly Readonly<QuotedUserObservationRequest>[] }
   | { ok: true; kind: 'calculation_requests'; toolCallId: string; requests: readonly Readonly<CalculationRequest>[] }
   | { ok: true; kind: 'seller_submission'; toolCallId: string; submission: Readonly<Record<string, unknown>> }
   | {
@@ -21,6 +27,7 @@ export type SellerWireToolResult =
 type SellerWireFailure = Extract<SellerWireToolResult, { ok: false }>;
 
 const SAFE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const MAX_USER_OBSERVATIONS = 8;
 const MAX_CALCULATION_REQUESTS = 8;
 const MAX_TOOL_ARGUMENT_BYTES = 1_000_000;
 
@@ -73,6 +80,41 @@ const calculationRequestSchema = Object.freeze({
       'reworkRateObservationId',
     ]),
   ]),
+});
+
+const userObservationSchema = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  properties: Object.freeze({
+    id: idSchema,
+    kind: Object.freeze({ type: 'string', enum: Object.freeze([...USER_OBSERVATION_KINDS]) }),
+    baseRevision: Object.freeze({ type: 'integer', minimum: 0 }),
+    turnId: idSchema,
+    quote: Object.freeze({ type: 'string', minLength: 1, maxLength: 500 }),
+    value: Object.freeze({ type: 'number', minimum: 0 }),
+  }),
+  required: Object.freeze(['id', 'kind', 'baseRevision', 'turnId', 'quote', 'value']),
+});
+
+const captureUserObservationsTool: LocalFunctionTool = Object.freeze({
+  type: 'function',
+  function: Object.freeze({
+    name: 'capture_user_observations',
+    description: 'Request deterministic capture of numeric evidence explicitly present in the current authoritative user turn. Quote the exact user text. The application, not the model, derives provenance, unit and period.',
+    parameters: Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      properties: Object.freeze({
+        observations: Object.freeze({
+          type: 'array',
+          minItems: 1,
+          maxItems: MAX_USER_OBSERVATIONS,
+          items: userObservationSchema,
+        }),
+      }),
+      required: Object.freeze(['observations']),
+    }),
+  }),
 });
 
 const requestCalculationsTool: LocalFunctionTool = Object.freeze({
@@ -130,6 +172,7 @@ const submitSellerTool: LocalFunctionTool = Object.freeze({
 });
 
 export const SELLER_LOCAL_TOOLS: readonly LocalFunctionTool[] = Object.freeze([
+  captureUserObservationsTool,
   requestCalculationsTool,
   submitSellerTool,
 ]);
@@ -145,6 +188,41 @@ function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): b
 
 function safeId(value: unknown): value is string {
   return typeof value === 'string' && value.length >= 1 && value.length <= 96 && SAFE_ID.test(value);
+}
+
+const USER_OBSERVATION_KEYS = Object.freeze(['id', 'kind', 'baseRevision', 'turnId', 'quote', 'value'] as const);
+
+function parseUserObservationRequest(
+  value: unknown,
+  expectedRevision: number,
+): SellerWireFailure | { ok: true; request: Readonly<QuotedUserObservationRequest> } {
+  if (!isRecord(value) || !hasOnlyKeys(value, USER_OBSERVATION_KEYS)
+    || !USER_OBSERVATION_KEYS.every((key) => Object.hasOwn(value, key))) {
+    return { ok: false, code: 'INVALID_ARGUMENTS' };
+  }
+  if (!safeId(value['id']) || !safeId(value['turnId'])) return { ok: false, code: 'INVALID_ARGUMENTS' };
+  if (value['baseRevision'] !== expectedRevision) return { ok: false, code: 'STALE_REVISION' };
+  if (typeof value['kind'] !== 'string'
+    || !(USER_OBSERVATION_KINDS as readonly string[]).includes(value['kind'])) {
+    return { ok: false, code: 'INVALID_ARGUMENTS' };
+  }
+  if (typeof value['quote'] !== 'string' || value['quote'].trim().length < 1 || value['quote'].length > 500) {
+    return { ok: false, code: 'INVALID_ARGUMENTS' };
+  }
+  if (typeof value['value'] !== 'number' || !Number.isFinite(value['value']) || value['value'] < 0) {
+    return { ok: false, code: 'INVALID_ARGUMENTS' };
+  }
+  return {
+    ok: true,
+    request: Object.freeze({
+      id: value['id'],
+      kind: value['kind'] as UserObservationKind,
+      baseRevision: expectedRevision,
+      turnId: value['turnId'],
+      quote: value['quote'],
+      value: value['value'],
+    }),
+  };
 }
 
 const CALCULATION_KEYS: Readonly<Record<CalculationRequest['kind'], readonly string[]>> = Object.freeze({
@@ -204,6 +282,31 @@ export function parseSellerToolCall(
   if (!Number.isInteger(expectedRevision) || expectedRevision < 0) return { ok: false, code: 'INVALID_ARGUMENTS' };
   const args = parseArgumentsJson(call);
   if (args === null) return { ok: false, code: 'INVALID_ARGUMENTS' };
+
+  if (call.function.name === 'capture_user_observations') {
+    if (!hasOnlyKeys(args, ['observations']) || !Array.isArray(args['observations'])) {
+      return { ok: false, code: 'INVALID_ARGUMENTS' };
+    }
+    const rawRequests = args['observations'];
+    if (rawRequests.length < 1 || rawRequests.length > MAX_USER_OBSERVATIONS) {
+      return { ok: false, code: 'LIMIT_EXCEEDED' };
+    }
+    const requests: Readonly<QuotedUserObservationRequest>[] = [];
+    const ids = new Set<string>();
+    for (const raw of rawRequests) {
+      const parsed = parseUserObservationRequest(raw, expectedRevision);
+      if (!parsed.ok) return parsed;
+      if (ids.has(parsed.request.id)) return { ok: false, code: 'DUPLICATE_ID' };
+      ids.add(parsed.request.id);
+      requests.push(parsed.request);
+    }
+    return {
+      ok: true,
+      kind: 'user_observation_requests',
+      toolCallId: call.id,
+      requests: Object.freeze(requests),
+    };
+  }
 
   if (call.function.name === 'request_calculations') {
     if (!hasOnlyKeys(args, ['requests']) || !Array.isArray(args['requests'])) return { ok: false, code: 'INVALID_ARGUMENTS' };
