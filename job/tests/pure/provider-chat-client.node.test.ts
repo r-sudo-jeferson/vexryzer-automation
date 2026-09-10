@@ -37,13 +37,13 @@ test('successful response must be SSE and terminate with DONE', async () => {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   }));
-  assert.deepEqual(nonSse, { ok: false, class: 'malformed', status: 200, retryAfterMs: null });
+  assert.deepEqual(nonSse, { ok: false, class: 'malformed', status: 200, retryAfterMs: null, malformedDetail: 'non_sse' });
 
   const missingDone = await consumeProviderChatSseResponse(new Response(
     'data: {"choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":"stop"}]}\n\n',
     { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
   ));
-  assert.deepEqual(missingDone, { ok: false, class: 'malformed', status: 200, retryAfterMs: null });
+  assert.deepEqual(missingDone, { ok: false, class: 'malformed', status: 200, retryAfterMs: null, malformedDetail: 'missing_done' });
 });
 
 test('malformed provider chunks fail closed as malformed without exposing payload content', async () => {
@@ -51,7 +51,15 @@ test('malformed provider chunks fail closed as malformed without exposing payloa
     'data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"x","type":"function","function":{"name":"../unsafe","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}\n\ndata: [DONE]\n\n',
     { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
   ));
-  assert.deepEqual(result, { ok: false, class: 'malformed', status: 200, retryAfterMs: null });
+  assert.deepEqual(result, { ok: false, class: 'malformed', status: 200, retryAfterMs: null, malformedDetail: 'completion_assembly' });
+});
+
+test('malformed SSE framing is classified separately from invalid assembled completion', async () => {
+  const result = await consumeProviderChatSseResponse(new Response(
+    'data: {not-json}\n\n',
+    { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+  ));
+  assert.deepEqual(result, { ok: false, class: 'malformed', status: 200, retryAfterMs: null, malformedDetail: 'sse_decode' });
 });
 
 test('mid-stream transport failure is classified as network rather than malformed provider output', async () => {
