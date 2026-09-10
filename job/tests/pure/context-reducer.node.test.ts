@@ -325,3 +325,85 @@ test('atomic model proposal rejects superseded and invalidated evidence as suppo
   assert.equal(context.quantitativeObservations.find((item) => item.id === 'obs-old')?.status, 'superseded');
   assert.equal(context.verifiedCalculations.find((item) => item.id === 'calc-old')?.status, 'invalidated');
 });
+
+
+test('confirmed user observation batch is atomic and cannot be invoked with model or system authority', () => {
+  const context = createCanonicalSalesContext({ sessionId: 'session-observation-batch' });
+  const observations = [{
+    id: 'obs-batch-people',
+    metric: 'pessoas envolvidas',
+    value: 3,
+    unit: 'person' as const,
+    period: null,
+    status: 'confirmed' as const,
+    source: 'user' as const,
+    supportingTurnIds: ['turn-batch'],
+    confirmedByTurnId: 'turn-batch',
+  }, {
+    id: 'obs-batch-days',
+    metric: 'dias de trabalho por mês',
+    value: 22,
+    unit: 'day' as const,
+    period: 'month' as const,
+    status: 'confirmed' as const,
+    source: 'user' as const,
+    supportingTurnIds: ['turn-batch'],
+    confirmedByTurnId: 'turn-batch',
+  }];
+
+  for (const actor of ['model', 'system'] as const) {
+    const rejected = applyContextMutation(context, {
+      baseRevision: 0,
+      actor,
+      mutation: { type: 'ADD_USER_OBSERVATIONS', observations },
+    });
+    assert.deepEqual(rejected, { ok: false, code: 'AUTHORITY_VIOLATION', revision: 0 });
+  }
+
+  const acceptedBatch = applyContextMutation(context, {
+    baseRevision: 0,
+    actor: 'user',
+    mutation: { type: 'ADD_USER_OBSERVATIONS', observations },
+  });
+  assert.equal(acceptedBatch.ok, true);
+  if (!acceptedBatch.ok) return;
+  assert.equal(acceptedBatch.context.revision, 1);
+  assert.deepEqual(acceptedBatch.context.quantitativeObservations.map((item) => item.id), [
+    'obs-batch-people', 'obs-batch-days',
+  ]);
+  assert.deepEqual(acceptedBatch.context.turnIds, ['turn-batch']);
+});
+
+test('one forged observation rejects the complete confirmed-user batch', () => {
+  const context = createCanonicalSalesContext({ sessionId: 'session-observation-forged' });
+  const result = applyContextMutation(context, {
+    baseRevision: 0,
+    actor: 'user',
+    mutation: {
+      type: 'ADD_USER_OBSERVATIONS',
+      observations: [{
+        id: 'obs-valid',
+        metric: 'pessoas envolvidas',
+        value: 3,
+        unit: 'person',
+        period: null,
+        status: 'confirmed',
+        source: 'user',
+        supportingTurnIds: ['turn-batch'],
+        confirmedByTurnId: 'turn-batch',
+      }, {
+        id: 'obs-forged',
+        metric: 'horas inventadas',
+        value: 99,
+        unit: 'hour',
+        period: 'month',
+        status: 'confirmed',
+        source: 'inference',
+        supportingTurnIds: ['turn-batch'],
+        confirmedByTurnId: 'turn-batch',
+      }],
+    },
+  });
+  assert.deepEqual(result, { ok: false, code: 'AUTHORITY_VIOLATION', revision: 0 });
+  assert.equal(context.quantitativeObservations.length, 0);
+});
