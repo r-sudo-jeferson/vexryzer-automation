@@ -82,7 +82,15 @@ test('runtime validators reject forged objection, calculation, opportunity, and 
   assert.throws(() => freezeCanonicalSalesContext({
     ...base,
     artifacts: [{
-      id: 'artifact-forged', kind: 'executable_bundle' as never, title: 'x', evidenceIds: [], status: 'proposed', invalidatedAtRevision: null,
+      id: 'artifact-forged', kind: 'executable_bundle' as never, title: 'x', summary: 'x', maturity: 'conceptual', evidenceIds: [], status: 'proposed', invalidatedAtRevision: null,
     }],
   }), /artifact\.kind/i);
+
+  assert.throws(() => freezeCanonicalSalesContext({
+    ...base,
+    artifacts: [{
+      id: 'artifact-bad-maturity', kind: 'bi_dashboard', title: 'x', summary: 'x',
+      maturity: 'production' as never, evidenceIds: [], status: 'proposed', invalidatedAtRevision: null,
+    }],
+  }), /artifact\.maturity/i);
 });
