@@ -148,3 +148,112 @@ test('stale base revision is rejected and accepted mutations increment exactly o
   assert.equal(next.revision, 1);
   assert.equal(next.latestUserIntent?.text, 'quero reduzir o fechamento');
 });
+
+
+test('model proposal canonical commit is atomic and increments revision exactly once', () => {
+  const context = createCanonicalSalesContext({ sessionId: 'session-proposal-atomic' });
+  const result = applyContextMutation(context, {
+    baseRevision: 0,
+    actor: 'model',
+    mutation: {
+      type: 'COMMIT_MODEL_PROPOSAL',
+      facts: [{
+        id: 'fact-proposed',
+        subject: 'conferencia',
+        predicate: 'gera',
+        value: 'retrabalho',
+        status: 'proposed',
+        source: 'inference',
+        confidence: null,
+        supportingTurnIds: ['turn-1'],
+        confirmedByTurnId: null,
+      }],
+      opportunities: [{
+        id: 'opp-proposed',
+        summary: 'Medir o impacto do retrabalho',
+        capabilities: ['bi_decision_intelligence'],
+        evidenceIds: ['fact-proposed'],
+        status: 'surfaced',
+        invalidatedAtRevision: null,
+      }],
+      artifacts: [{
+        id: 'artifact-proposed',
+        kind: 'bi_dashboard',
+        title: 'Mapa de retrabalho',
+        evidenceIds: ['fact-proposed'],
+        status: 'proposed',
+        invalidatedAtRevision: null,
+      }],
+    },
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.context.revision, 1);
+  assert.equal(result.context.facts[0]?.status, 'proposed');
+  assert.equal(result.context.facts[0]?.source, 'inference');
+  assert.equal(result.context.opportunities[0]?.status, 'surfaced');
+  assert.equal(result.context.artifacts[0]?.status, 'proposed');
+});
+
+test('atomic model proposal rejects forged authority or unknown evidence without partial commit', async (t) => {
+  const context = createCanonicalSalesContext({ sessionId: 'session-proposal-reject' });
+
+  await t.test('forged user fact', () => {
+    const result = applyContextMutation(context, {
+      baseRevision: 0,
+      actor: 'model',
+      mutation: {
+        type: 'COMMIT_MODEL_PROPOSAL',
+        facts: [{
+          id: 'fact-forged',
+          subject: 'equipe',
+          predicate: 'confirmou',
+          value: true,
+          status: 'confirmed',
+          source: 'user',
+          confidence: null,
+          supportingTurnIds: ['turn-1'],
+          confirmedByTurnId: 'turn-1',
+        }],
+        opportunities: [],
+        artifacts: [],
+      },
+    });
+    assert.deepEqual(result, { ok: false, code: 'AUTHORITY_VIOLATION', revision: 0 });
+    assert.equal(context.facts.length, 0);
+  });
+
+  await t.test('unknown evidence in a sibling opportunity', () => {
+    const result = applyContextMutation(context, {
+      baseRevision: 0,
+      actor: 'model',
+      mutation: {
+        type: 'COMMIT_MODEL_PROPOSAL',
+        facts: [{
+          id: 'fact-valid',
+          subject: 'fechamento',
+          predicate: 'concentra',
+          value: 'conferencia',
+          status: 'proposed',
+          source: 'inference',
+          confidence: null,
+          supportingTurnIds: ['turn-1'],
+          confirmedByTurnId: null,
+        }],
+        opportunities: [{
+          id: 'opp-invalid',
+          summary: 'Oportunidade sem evidência conhecida',
+          capabilities: ['process_data_improvement'],
+          evidenceIds: ['fact-missing'],
+          status: 'surfaced',
+          invalidatedAtRevision: null,
+        }],
+        artifacts: [],
+      },
+    });
+    assert.deepEqual(result, { ok: false, code: 'INVALID_MUTATION', revision: 0 });
+    assert.equal(context.facts.length, 0);
+    assert.equal(context.opportunities.length, 0);
+  });
+});
