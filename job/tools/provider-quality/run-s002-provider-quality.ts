@@ -22,6 +22,7 @@ import {
   evaluateAccountingSellerQuality,
   evaluateStrategyDiversity,
   type AccountingSellerQualityResult,
+  type AccountingSellerQualityScenario,
 } from '../../src/ai/evals/accounting-seller-quality.ts';
 import {
   executeProviderChatStream,
@@ -737,7 +738,7 @@ async function runFallbackContinuityCheck(
   }
 
   const canonical = fallbackCanonical(scenario.userText);
-  const fallbackRubric = Object.freeze({
+  const fallbackRubric: Readonly<AccountingSellerQualityScenario> = Object.freeze({
     id: scenario.id,
     accountingSignalGroups: Object.freeze([
       Object.freeze(['fechamento']),
