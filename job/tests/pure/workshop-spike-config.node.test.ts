@@ -6,6 +6,7 @@ import {
   buildPackageInstallEnv,
   buildScrubbedHarnessEnv,
   DEFAULT_MISTRAL_MODEL_ID,
+  renderHarnessInstallPackageJson,
   renderHarnessInstallWorkspaceYaml,
   renderMistralSettingsYaml,
   resolveHarnessCandidateVersion,
@@ -107,10 +108,24 @@ test('uses an exact reviewed build-script policy instead of weakening pnpm secur
   assert.doesNotMatch(yaml, /strictDepBuilds:\s*false/);
 });
 
-test('refuses an unreviewed Harness release before dependency build scripts can run', () => {
+test('anchors the published Harness consumer to the upstream React 18 runtime pair', () => {
+  const manifest = JSON.parse(renderHarnessInstallPackageJson('0.1.2-rc.1')) as {
+    dependencies: Record<string, string>;
+  };
+  assert.equal(manifest.dependencies['@deepseek-ai/dsh'], '0.1.2-rc.1');
+  assert.equal(manifest.dependencies['@deepseek-ai/dsh-sdk-client'], '0.1.2-rc.1');
+  assert.equal(manifest.dependencies.react, '18.3.1');
+  assert.equal(manifest.dependencies['react-dom'], '18.3.1');
+});
+
+test('refuses an unreviewed Harness release before dependency policies can run', () => {
   assert.throws(
     () => renderHarnessInstallWorkspaceYaml('0.1.1-rc.2'),
-    /No reviewed dependency build-script policy/,
+    /No reviewed dependency policy/,
+  );
+  assert.throws(
+    () => renderHarnessInstallPackageJson('0.1.1-rc.2'),
+    /No reviewed dependency policy/,
   );
 });
 

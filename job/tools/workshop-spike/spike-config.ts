@@ -13,6 +13,13 @@ const HARNESS_BUILD_SCRIPT_POLICY = {
   ],
 } as const;
 
+const HARNESS_RUNTIME_PEER_ANCHORS = {
+  '0.1.2-rc.1': {
+    react: '18.3.1',
+    reactDom: '18.3.1',
+  },
+} as const;
+
 export function resolveHarnessCandidateVersion(value: string | undefined): string {
   const version = value?.trim() || HARNESS_CANDIDATE_VERSION;
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$/.test(version)) {
@@ -21,11 +28,30 @@ export function resolveHarnessCandidateVersion(value: string | undefined): strin
   return version;
 }
 
-export function renderHarnessInstallWorkspaceYaml(harnessVersion: string): string {
-  const policy = HARNESS_BUILD_SCRIPT_POLICY[harnessVersion as keyof typeof HARNESS_BUILD_SCRIPT_POLICY];
-  if (!policy) {
-    throw new Error(`No reviewed dependency build-script policy exists for DeepSeek Harness ${harnessVersion}`);
+function requireReviewedHarnessRelease(harnessVersion: string): void {
+  if (!(harnessVersion in HARNESS_BUILD_SCRIPT_POLICY) || !(harnessVersion in HARNESS_RUNTIME_PEER_ANCHORS)) {
+    throw new Error(`No reviewed dependency policy exists for DeepSeek Harness ${harnessVersion}`);
   }
+}
+
+export function renderHarnessInstallPackageJson(harnessVersion: string): string {
+  requireReviewedHarnessRelease(harnessVersion);
+  const anchors = HARNESS_RUNTIME_PEER_ANCHORS[harnessVersion as keyof typeof HARNESS_RUNTIME_PEER_ANCHORS];
+  return `${JSON.stringify({
+    private: true,
+    packageManager: 'pnpm@11.25.0',
+    dependencies: {
+      '@deepseek-ai/dsh': harnessVersion,
+      '@deepseek-ai/dsh-sdk-client': harnessVersion,
+      react: anchors.react,
+      'react-dom': anchors.reactDom,
+    },
+  }, null, 2)}\n`;
+}
+
+export function renderHarnessInstallWorkspaceYaml(harnessVersion: string): string {
+  requireReviewedHarnessRelease(harnessVersion);
+  const policy = HARNESS_BUILD_SCRIPT_POLICY[harnessVersion as keyof typeof HARNESS_BUILD_SCRIPT_POLICY];
   return [
     'allowBuilds:',
     ...policy.map(([packageMatcher, allowed]) => `  '${packageMatcher}': ${allowed ? 'true' : 'false'}`),

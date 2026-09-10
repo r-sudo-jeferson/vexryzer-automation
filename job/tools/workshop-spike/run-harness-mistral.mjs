@@ -19,6 +19,7 @@ import {
   DEFAULT_MISTRAL_BASE_URL,
   DEFAULT_MISTRAL_MODEL_ID,
   DEFAULT_MISTRAL_PROVIDER_ROUTE,
+  renderHarnessInstallPackageJson,
   renderHarnessInstallWorkspaceYaml,
   renderMistralSettingsYaml,
   resolveHarnessCandidateVersion,
@@ -89,14 +90,10 @@ async function readJson(path) {
 async function bootstrapHarnessRuntime(rootDir, harnessVersion) {
   const runtimeDir = join(rootDir, 'runtime');
   await mkdir(runtimeDir, { recursive: true });
-  await writeFile(join(runtimeDir, 'package.json'), JSON.stringify({
-    private: true,
-    packageManager: 'pnpm@11.25.0',
-    dependencies: {
-      '@deepseek-ai/dsh': harnessVersion,
-      '@deepseek-ai/dsh-sdk-client': harnessVersion,
-    },
-  }, null, 2));
+  await writeFile(
+    join(runtimeDir, 'package.json'),
+    renderHarnessInstallPackageJson(harnessVersion),
+  );
   await writeFile(
     join(runtimeDir, 'pnpm-workspace.yaml'),
     renderHarnessInstallWorkspaceYaml(harnessVersion),
