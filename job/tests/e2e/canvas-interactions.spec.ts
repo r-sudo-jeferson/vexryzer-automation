@@ -6,6 +6,11 @@ interface ViewportMatrix {
   zoom: number;
 }
 
+interface Point {
+  x: number;
+  y: number;
+}
+
 async function readViewportMatrix(page: Page): Promise<ViewportMatrix> {
   return page.locator('.react-flow__viewport').evaluate((element) => {
     const matrix = new DOMMatrixReadOnly(getComputedStyle(element).transform);
@@ -20,9 +25,62 @@ async function expectViewportChanged(page: Page, before: ViewportMatrix): Promis
   }).toBeGreaterThan(0.5);
 }
 
+async function findPanePoint(page: Page, delta: Point = { x: 0, y: 0 }): Promise<Point> {
+  const pane = page.locator('.react-flow__pane');
+  await pane.scrollIntoViewIfNeeded();
+  const point = await pane.evaluate((element, requestedDelta) => {
+    const rect = element.getBoundingClientRect();
+    const fractions = [0.12, 0.25, 0.4, 0.6, 0.75, 0.88];
+    const guard = 36;
+    for (const yFraction of fractions) {
+      for (const xFraction of fractions) {
+        const x = rect.left + rect.width * xFraction;
+        const y = rect.top + rect.height * yFraction;
+        const endX = x + requestedDelta.x;
+        const endY = y + requestedDelta.y;
+        if (x <= guard || y <= guard || x >= innerWidth - guard || y >= innerHeight - guard) continue;
+        if (endX <= guard || endY <= guard || endX >= innerWidth - guard || endY >= innerHeight - guard) continue;
+        const probes = [[0, 0], [28, 0], [-28, 0], [0, 28], [0, -28]] as const;
+        if (probes.every(([dx, dy]) => document.elementFromPoint(x + dx, y + dy) === element)) return { x, y };
+      }
+    }
+    return null;
+  }, delta);
+  expect(point, 'expected a visible empty React Flow pane hit target').toBeTruthy();
+  return point!;
+}
+
+async function mousePan(page: Page, delta: Point): Promise<void> {
+  const start = await findPanePoint(page, delta);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + delta.x, start.y + delta.y, { steps: 6 });
+  await page.mouse.up();
+}
+
+async function touchDrag(page: Page, start: Point, end: Point): Promise<void> {
+  const session = await page.context().newCDPSession(page);
+  await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: Math.round(start.x), y: Math.round(start.y), id: 1 }] });
+  for (let step = 1; step <= 6; step += 1) {
+    const progress = step / 6;
+    await session.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{
+        x: Math.round(start.x + (end.x - start.x) * progress),
+        y: Math.round(start.y + (end.y - start.y) * progress),
+        id: 1,
+      }],
+    });
+    await page.waitForTimeout(16);
+  }
+  await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await session.detach();
+}
+
 async function driveZoomBand(page: Page, target: 'far' | 'near', deltaY: number): Promise<void> {
   const canvas = page.locator('.vxa-canvas');
-  await canvas.hover();
+  const point = await findPanePoint(page);
+  await page.mouse.move(point.x, point.y);
   for (let attempt = 0; attempt < 24; attempt += 1) {
     if (await canvas.getAttribute('data-zoom-band') === target) return;
     await page.mouse.wheel(0, deltaY);
@@ -36,14 +94,8 @@ test('mouse pan, wheel zoom and semantic zoom remain optional exploration contro
   await page.goto('/?perf=1');
   await page.getByRole('button', { name: /Explorar um processo/i }).click();
 
-  const canvas = page.locator('.vxa-canvas');
-  const box = await canvas.boundingBox();
-  expect(box).toBeTruthy();
   const beforePan = await readViewportMatrix(page);
-  await page.mouse.move(box!.x + box!.width * 0.55, box!.y + box!.height * 0.55);
-  await page.mouse.down();
-  await page.mouse.move(box!.x + box!.width * 0.68, box!.y + box!.height * 0.62, { steps: 5 });
-  await page.mouse.up();
+  await mousePan(page, { x: 140, y: 70 });
   await expectViewportChanged(page, beforePan);
   await expect(page.locator('.vxa-step[data-active="true"]')).toHaveCount(0);
 
@@ -58,36 +110,35 @@ test('touch pan and pinch move the viewport without selecting process nodes', as
   await page.goto('/?perf=1');
   await page.getByRole('button', { name: /Explorar um processo/i }).click();
 
-  const canvas = page.locator('.vxa-canvas');
-  const box = await canvas.boundingBox();
-  expect(box).toBeTruthy();
-  const session = await page.context().newCDPSession(page);
-  const centerX = Math.round(box!.x + box!.width * 0.5);
-  const centerY = Math.round(box!.y + box!.height * 0.5);
-
+  const start = await findPanePoint(page, { x: 55, y: 24 });
   const beforePan = await readViewportMatrix(page);
-  await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: centerX, y: centerY, id: 1 }] });
-  await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: centerX + 70, y: centerY + 25, id: 1 }] });
-  await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await touchDrag(page, start, { x: start.x + 55, y: start.y + 24 });
   await expectViewportChanged(page, beforePan);
   await expect(page.locator('.vxa-step[data-active="true"]')).toHaveCount(0);
 
+  const pinchCenter = await findPanePoint(page);
   const beforePinch = await readViewportMatrix(page);
+  const session = await page.context().newCDPSession(page);
   await session.send('Input.dispatchTouchEvent', {
     type: 'touchStart',
     touchPoints: [
-      { x: centerX - 30, y: centerY, id: 1 },
-      { x: centerX + 30, y: centerY, id: 2 },
+      { x: Math.round(pinchCenter.x - 24), y: Math.round(pinchCenter.y), id: 1 },
+      { x: Math.round(pinchCenter.x + 24), y: Math.round(pinchCenter.y), id: 2 },
     ],
   });
-  await session.send('Input.dispatchTouchEvent', {
-    type: 'touchMove',
-    touchPoints: [
-      { x: centerX - 85, y: centerY, id: 1 },
-      { x: centerX + 85, y: centerY, id: 2 },
-    ],
-  });
+  for (let step = 1; step <= 6; step += 1) {
+    const spread = 24 + (64 * step) / 6;
+    await session.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [
+        { x: Math.round(pinchCenter.x - spread), y: Math.round(pinchCenter.y), id: 1 },
+        { x: Math.round(pinchCenter.x + spread), y: Math.round(pinchCenter.y), id: 2 },
+      ],
+    });
+    await page.waitForTimeout(16);
+  }
   await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await session.detach();
   await expectViewportChanged(page, beforePinch);
   await expect(page.locator('.vxa-step[data-active="true"]')).toHaveCount(0);
 });
@@ -103,14 +154,7 @@ test('user drag interrupts camera travel instead of being overwritten by the pri
   await lastStep.click();
   await expect(page.locator('.vxa-canvas')).toHaveAttribute('data-mode', 'focus');
 
-  const canvas = page.locator('.vxa-canvas');
-  const box = await canvas.boundingBox();
-  expect(box).toBeTruthy();
-  await page.mouse.move(box!.x + box!.width * 0.45, box!.y + box!.height * 0.5);
-  await page.mouse.down();
-  await page.mouse.move(box!.x + box!.width * 0.62, box!.y + box!.height * 0.57, { steps: 4 });
-  await page.mouse.up();
-
+  await mousePan(page, { x: 150, y: 65 });
   const afterDrag = await readViewportMatrix(page);
   await page.waitForTimeout(450);
   const afterFormerTravelWindow = await readViewportMatrix(page);
@@ -166,14 +210,30 @@ test('keyboard focus auto-pans an offscreen process node back into view', async 
   await page.getByRole('button', { name: /Explorar um processo/i }).click();
 
   const canvas = page.locator('.vxa-canvas');
-  const box = await canvas.boundingBox();
-  expect(box).toBeTruthy();
-  await page.mouse.move(box!.x + box!.width * 0.5, box!.y + box!.height * 0.5);
-  await page.mouse.down();
-  await page.mouse.move(box!.x + box!.width * 0.92, box!.y + box!.height * 0.88, { steps: 6 });
-  await page.mouse.up();
-
   const firstNode = page.locator('.react-flow__node-process').first();
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const nodeBox = await firstNode.boundingBox();
+    const canvasBox = await canvas.boundingBox();
+    expect(nodeBox).toBeTruthy();
+    expect(canvasBox).toBeTruthy();
+    const offscreen = nodeBox!.x + nodeBox!.width < canvasBox!.x
+      || nodeBox!.x > canvasBox!.x + canvasBox!.width
+      || nodeBox!.y + nodeBox!.height < canvasBox!.y
+      || nodeBox!.y > canvasBox!.y + canvasBox!.height;
+    if (offscreen) break;
+    await mousePan(page, { x: 180, y: 110 });
+  }
+
+  const displacedNodeBox = await firstNode.boundingBox();
+  const displacedCanvasBox = await canvas.boundingBox();
+  expect(displacedNodeBox).toBeTruthy();
+  expect(displacedCanvasBox).toBeTruthy();
+  const isOffscreen = displacedNodeBox!.x + displacedNodeBox!.width < displacedCanvasBox!.x
+    || displacedNodeBox!.x > displacedCanvasBox!.x + displacedCanvasBox!.width
+    || displacedNodeBox!.y + displacedNodeBox!.height < displacedCanvasBox!.y
+    || displacedNodeBox!.y > displacedCanvasBox!.y + displacedCanvasBox!.height;
+  expect(isOffscreen).toBe(true);
+
   const beforeFocus = await readViewportMatrix(page);
   await firstNode.focus();
   await expect(firstNode).toBeFocused();
@@ -221,18 +281,16 @@ test('vertical touch scrolling in directed mobile navigation does not drag the c
   await page.getByRole('button', { name: /Explorar um processo/i }).click();
 
   const director = page.locator('.vxa-director__steps');
+  await director.scrollIntoViewIfNeeded();
+  const overflow = await director.evaluate((element) => ({ scrollHeight: element.scrollHeight, clientHeight: element.clientHeight }));
+  expect(overflow.scrollHeight).toBeGreaterThan(overflow.clientHeight);
   const box = await director.boundingBox();
   expect(box).toBeTruthy();
   const beforeViewport = await readViewportMatrix(page);
   const beforeScroll = await director.evaluate((element) => element.scrollTop);
-  const session = await page.context().newCDPSession(page);
-  const x = Math.round(box!.x + box!.width * 0.5);
-  const startY = Math.round(box!.y + box!.height * 0.75);
-  const endY = Math.round(box!.y + box!.height * 0.25);
-
-  await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: startY, id: 1 }] });
-  await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: endY, id: 1 }] });
-  await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  const start = { x: box!.x + box!.width * 0.5, y: box!.y + box!.height * 0.8 };
+  const end = { x: start.x, y: box!.y + box!.height * 0.22 };
+  await touchDrag(page, start, end);
 
   await expect.poll(() => director.evaluate((element) => element.scrollTop)).toBeGreaterThan(beforeScroll);
   const afterViewport = await readViewportMatrix(page);
