@@ -6,6 +6,7 @@ import {
   freezeCanonicalSalesContext,
   freezeFact,
   freezeObservation,
+  type ArtifactRecord,
   type CanonicalSalesContext,
   type OpportunityRecord,
   type QuantitativeObservation,
@@ -17,7 +18,7 @@ import {
 export type MutationActor = 'user' | 'model' | 'system';
 
 export type ContextMutation =
-  | { type: 'COMMIT_MODEL_PROPOSAL'; facts: readonly SalesFact[]; opportunities: readonly OpportunityRecord[]; artifacts: readonly import('./canonical-sales-context.ts').ArtifactRecord[] }
+  | { type: 'COMMIT_MODEL_PROPOSAL'; facts: readonly SalesFact[]; opportunities: readonly OpportunityRecord[]; artifacts: readonly ArtifactRecord[] }
   | { type: 'ADD_FACT'; fact: SalesFact }
   | { type: 'CONFIRM_FACT'; factId: string; turnId: string }
   | { type: 'CORRECT_FACT'; factId: string; turnId: string; replacement: SalesFact }
@@ -162,7 +163,7 @@ export function applyContextMutation(
           }));
         }
 
-        const artifacts = [];
+        const artifacts: ArtifactRecord[] = [];
         for (const raw of mutation.artifacts) {
           assertSafeDomainId('artifact.id', raw.id);
           if (idExists(context, raw.id) || batchIds.has(raw.id)) return reject(context, 'DUPLICATE_ID');
