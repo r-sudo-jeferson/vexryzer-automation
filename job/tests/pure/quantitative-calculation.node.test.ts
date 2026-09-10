@@ -113,3 +113,66 @@ test('commercial derived claims remain blocked unless a dedicated deterministic 
   assert.deepEqual(validateQuantitativeClaim(stored, { kind: 'roi', calculationId: 'calc-capacity-month' }), { ok: false, code: 'UNSUPPORTED_CLAIM' });
   assert.deepEqual(validateQuantitativeClaim(stored, { kind: 'payback', calculationId: 'calc-capacity-month' }), { ok: false, code: 'UNSUPPORTED_CLAIM' });
 });
+
+test('computes workload, explicit hourly cost, and rework volume with unit-preserving semantics', () => {
+  let context = createCanonicalSalesContext({ sessionId: 'session-quant-4' });
+  const observations = [
+    { id: 'obs-occurrences', metric: 'conferencias no mes', value: 120, unit: 'occurrence', period: 'month' },
+    { id: 'obs-minutes-event', metric: 'minutos por conferencia', value: 15, unit: 'minute', period: 'event' },
+    { id: 'obs-hours-month', metric: 'horas mensais', value: 44, unit: 'hour', period: 'month' },
+    { id: 'obs-hourly-cost', metric: 'custo hora informado', value: 75, unit: 'currency', period: 'hour' },
+    { id: 'obs-documents', metric: 'documentos no mes', value: 100, unit: 'document', period: 'month' },
+    { id: 'obs-rework-rate', metric: 'taxa de retrabalho', value: 5, unit: 'percent', period: null },
+  ] as const;
+
+  for (const observation of observations) {
+    const baseRevision = context.revision;
+    context = accept(context, { baseRevision, actor: 'user', mutation: { type: 'ADD_OBSERVATION', observation: {
+      ...observation,
+      status: 'confirmed', source: 'user', supportingTurnIds: [`turn-${baseRevision + 1}`], confirmedByTurnId: `turn-${baseRevision + 1}`,
+    } } });
+  }
+
+  const workload = computeVerifiedCalculation(context, {
+    id: 'calc-workload', baseRevision: 6, kind: 'monthly_workload',
+    occurrencesPerMonthObservationId: 'obs-occurrences', minutesPerOccurrenceObservationId: 'obs-minutes-event',
+  });
+  assert.equal(workload.ok, true);
+  if (!workload.ok) throw new Error(workload.code);
+  assert.equal(workload.calculation.resultValue, 30);
+  assert.equal(workload.calculation.resultUnit, 'hour/month');
+
+  const cost = computeVerifiedCalculation(context, {
+    id: 'calc-cost', baseRevision: 6, kind: 'monthly_cost',
+    monthlyHoursObservationId: 'obs-hours-month', hourlyCostObservationId: 'obs-hourly-cost',
+  });
+  assert.equal(cost.ok, true);
+  if (!cost.ok) throw new Error(cost.code);
+  assert.equal(cost.calculation.resultValue, 3300);
+  assert.equal(cost.calculation.resultUnit, 'currency/month');
+
+  const rework = computeVerifiedCalculation(context, {
+    id: 'calc-rework', baseRevision: 6, kind: 'rework_volume',
+    volumeObservationId: 'obs-documents', reworkRateObservationId: 'obs-rework-rate',
+  });
+  assert.equal(rework.ok, true);
+  if (!rework.ok) throw new Error(rework.code);
+  assert.equal(rework.calculation.resultValue, 5);
+  assert.equal(rework.calculation.resultUnit, 'document/month');
+});
+
+test('rejects impossible rework percentages instead of manufacturing a persuasive number', () => {
+  let context = createCanonicalSalesContext({ sessionId: 'session-quant-5' });
+  context = accept(context, { baseRevision: 0, actor: 'user', mutation: { type: 'ADD_OBSERVATION', observation: {
+    id: 'obs-documents', metric: 'documentos no mes', value: 100, unit: 'document', period: 'month',
+    status: 'confirmed', source: 'user', supportingTurnIds: ['turn-1'], confirmedByTurnId: 'turn-1',
+  } } });
+  context = accept(context, { baseRevision: 1, actor: 'user', mutation: { type: 'ADD_OBSERVATION', observation: {
+    id: 'obs-rework-rate', metric: 'taxa de retrabalho', value: 130, unit: 'percent', period: null,
+    status: 'confirmed', source: 'user', supportingTurnIds: ['turn-2'], confirmedByTurnId: 'turn-2',
+  } } });
+  assert.deepEqual(computeVerifiedCalculation(context, {
+    id: 'calc-impossible-rework', baseRevision: 2, kind: 'rework_volume',
+    volumeObservationId: 'obs-documents', reworkRateObservationId: 'obs-rework-rate',
+  }), { ok: false, code: 'INVALID_VALUE' });
+});

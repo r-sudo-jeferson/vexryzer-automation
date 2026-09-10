@@ -11,21 +11,25 @@ export const CAPABILITY_KINDS = [
 ] as const;
 
 export type CapabilityKind = (typeof CAPABILITY_KINDS)[number];
-export type EvidenceStatus = 'proposed' | 'confirmed' | 'conflicted' | 'superseded';
-export type EvidenceSource = 'user' | 'inference' | 'system';
-export type QuantitativeUnit =
-  | 'occurrence'
-  | 'minute'
-  | 'hour'
-  | 'day'
-  | 'client'
-  | 'person'
-  | 'document'
-  | 'entry'
-  | 'currency'
-  | 'percent'
-  | 'other';
-export type QuantitativePeriod = 'event' | 'day' | 'week' | 'month' | 'quarter' | 'year' | null;
+export const EVIDENCE_STATUSES = ['proposed', 'confirmed', 'conflicted', 'superseded'] as const;
+export const EVIDENCE_SOURCES = ['user', 'inference', 'system'] as const;
+export type EvidenceStatus = (typeof EVIDENCE_STATUSES)[number];
+export type EvidenceSource = (typeof EVIDENCE_SOURCES)[number];
+export const QUANTITATIVE_UNITS = [
+  'occurrence', 'minute', 'hour', 'day', 'client', 'person', 'document', 'entry', 'currency', 'percent', 'other',
+] as const;
+export const QUANTITATIVE_PERIODS = ['event', 'hour', 'day', 'week', 'month', 'quarter', 'year'] as const;
+export const OBJECTION_KINDS = ['price', 'trust', 'feasibility', 'timing', 'change', 'security', 'other'] as const;
+export const OBJECTION_STATUSES = ['open', 'addressed', 'resolved'] as const;
+export const CALCULATION_KINDS = ['time_cost', 'capacity', 'volume', 'rework', 'delay', 'custom'] as const;
+export const CALCULATION_STATUSES = ['valid', 'invalidated'] as const;
+export const OPPORTUNITY_STATUSES = ['surfaced', 'active', 'invalidated'] as const;
+export const ARTIFACT_KINDS = [
+  'operational_object', 'data_import_preview', 'presentation', 'bi_dashboard', 'training_module', 'workflow_concept', 'prototype',
+] as const;
+export const ARTIFACT_STATUSES = ['proposed', 'staged', 'revealed', 'invalidated'] as const;
+export type QuantitativeUnit = (typeof QUANTITATIVE_UNITS)[number];
+export type QuantitativePeriod = (typeof QUANTITATIVE_PERIODS)[number] | null;
 
 export interface SalesFact {
   id: string;
@@ -170,6 +174,8 @@ function freezeStrings(values: readonly string[]): readonly string[] {
 
 export function freezeFact(fact: SalesFact): SalesFact {
   assertSafeDomainId('fact.id', fact.id);
+  if (!(EVIDENCE_STATUSES as readonly string[]).includes(fact.status)) throw new TypeError('fact.status is invalid');
+  if (!(EVIDENCE_SOURCES as readonly string[]).includes(fact.source)) throw new TypeError('fact.source is invalid');
   assertBoundedText('fact.subject', fact.subject, 160);
   assertBoundedText('fact.predicate', fact.predicate, 160);
   if (typeof fact.value === 'string') assertBoundedText('fact.value', fact.value, 1000);
@@ -182,6 +188,10 @@ export function freezeFact(fact: SalesFact): SalesFact {
 
 export function freezeObservation(observation: QuantitativeObservation): QuantitativeObservation {
   assertSafeDomainId('observation.id', observation.id);
+  if (!(QUANTITATIVE_UNITS as readonly string[]).includes(observation.unit)) throw new TypeError('observation.unit is invalid');
+  if (observation.period !== null && !(QUANTITATIVE_PERIODS as readonly string[]).includes(observation.period)) throw new TypeError('observation.period is invalid');
+  if (!(EVIDENCE_STATUSES as readonly string[]).includes(observation.status)) throw new TypeError('observation.status is invalid');
+  if (!(EVIDENCE_SOURCES as readonly string[]).includes(observation.source)) throw new TypeError('observation.source is invalid');
   assertBoundedText('observation.metric', observation.metric, 200);
   if (!Number.isFinite(observation.value)) throw new TypeError('observation.value must be finite');
   for (const turnId of observation.supportingTurnIds) assertSafeDomainId('observation.supportingTurnId', turnId);
@@ -191,6 +201,9 @@ export function freezeObservation(observation: QuantitativeObservation): Quantit
 
 export function freezeCalculation(calculation: VerifiedCalculation): VerifiedCalculation {
   assertSafeDomainId('calculation.id', calculation.id);
+  if (!(CALCULATION_KINDS as readonly string[]).includes(calculation.kind)) throw new TypeError('calculation.kind is invalid');
+  if (calculation.computedBy !== 'application') throw new TypeError('calculation.computedBy is invalid');
+  if (!(CALCULATION_STATUSES as readonly string[]).includes(calculation.status)) throw new TypeError('calculation.status is invalid');
   if (!calculation.inputObservationIds.length) throw new TypeError('calculation requires input observations');
   for (const id of calculation.inputObservationIds) assertSafeDomainId('calculation.inputObservationId', id);
   assertBoundedText('calculation.expression', calculation.expression, 500);
@@ -200,11 +213,16 @@ export function freezeCalculation(calculation: VerifiedCalculation): VerifiedCal
   if (calculation.invalidatedAtRevision !== null && (!Number.isInteger(calculation.invalidatedAtRevision) || calculation.invalidatedAtRevision < 0)) {
     throw new TypeError('calculation.invalidatedAtRevision must be null or a non-negative integer');
   }
+  if (calculation.status === 'valid' && calculation.invalidatedAtRevision !== null) throw new TypeError('valid calculation cannot have invalidatedAtRevision');
+  if (calculation.status === 'invalidated' && calculation.invalidatedAtRevision === null) throw new TypeError('invalidated calculation requires invalidatedAtRevision');
   return Object.freeze({ ...calculation, inputObservationIds: freezeStrings(calculation.inputObservationIds) });
 }
 
 function freezeOpportunity(opportunity: OpportunityRecord): OpportunityRecord {
   assertSafeDomainId('opportunity.id', opportunity.id);
+  if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(opportunity.status)) throw new TypeError('opportunity.status is invalid');
+  if (opportunity.status === 'invalidated' && opportunity.invalidatedAtRevision === null) throw new TypeError('invalidated opportunity requires invalidatedAtRevision');
+  if (opportunity.status !== 'invalidated' && opportunity.invalidatedAtRevision !== null) throw new TypeError('active opportunity cannot have invalidatedAtRevision');
   assertBoundedText('opportunity.summary', opportunity.summary, 1000);
   if (new Set(opportunity.capabilities).size !== opportunity.capabilities.length) throw new TypeError('opportunity capabilities must be unique');
   for (const capability of opportunity.capabilities) {
@@ -220,6 +238,8 @@ function freezeOpportunity(opportunity: OpportunityRecord): OpportunityRecord {
 
 function freezeObjection(objection: SalesObjection): SalesObjection {
   assertSafeDomainId('objection.id', objection.id);
+  if (!(OBJECTION_KINDS as readonly string[]).includes(objection.kind)) throw new TypeError('objection.kind is invalid');
+  if (!(OBJECTION_STATUSES as readonly string[]).includes(objection.status)) throw new TypeError('objection.status is invalid');
   assertBoundedText('objection.summary', objection.summary, 1000);
   for (const id of objection.supportingTurnIds) assertSafeDomainId('objection.supportingTurnId', id);
   return Object.freeze({ ...objection, supportingTurnIds: freezeStrings(objection.supportingTurnIds) });
@@ -227,6 +247,10 @@ function freezeObjection(objection: SalesObjection): SalesObjection {
 
 function freezeArtifact(artifact: ArtifactRecord): ArtifactRecord {
   assertSafeDomainId('artifact.id', artifact.id);
+  if (!(ARTIFACT_KINDS as readonly string[]).includes(artifact.kind)) throw new TypeError('artifact.kind is invalid');
+  if (!(ARTIFACT_STATUSES as readonly string[]).includes(artifact.status)) throw new TypeError('artifact.status is invalid');
+  if (artifact.status === 'invalidated' && artifact.invalidatedAtRevision === null) throw new TypeError('invalidated artifact requires invalidatedAtRevision');
+  if (artifact.status !== 'invalidated' && artifact.invalidatedAtRevision !== null) throw new TypeError('active artifact cannot have invalidatedAtRevision');
   assertBoundedText('artifact.title', artifact.title, 300);
   for (const id of artifact.evidenceIds) assertSafeDomainId('artifact.evidenceId', id);
   return Object.freeze({ ...artifact, evidenceIds: freezeStrings(artifact.evidenceIds) });
