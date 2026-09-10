@@ -58,7 +58,11 @@ function CanvasSurface({
   const observedInitialSizeRef = useRef(false);
   const [viewportRevision, setViewportRevision] = useState(0);
   const [directedMobile, setDirectedMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 720px), (pointer: coarse)').matches);
-  const cameraIntent = `${mode}:${focusedNodeId ?? 'none'}:${motionPolicy.reduced ? 'reduced' : 'standard'}:${directedMobile ? 'directed-mobile' : 'canvas'}`;
+  const graphIntentKey = useMemo(
+    () => graph.nodes.map((node) => node.id).join('|') + '::' + graph.edges.map((edge) => edge.id).join('|'),
+    [graph],
+  );
+  const cameraIntent = `${mode}:${focusedNodeId ?? 'none'}:${motionPolicy.reduced ? 'reduced' : 'standard'}:${directedMobile ? 'directed-mobile' : 'canvas'}:${graphIntentKey}`;
   const processNodeIds = useMemo(() => new Set(graph.nodes.map((node) => node.id)), [graph]);
   const overlayByNodeId = useMemo(
     () => new Map(semanticOverlays.map((overlay) => [overlay.nodeId, overlay] as const)),
