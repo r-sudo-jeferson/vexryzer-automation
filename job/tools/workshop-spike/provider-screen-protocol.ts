@@ -1,11 +1,15 @@
 export interface ParsedSse {
   eventCount: number;
+  contentChunkCount: number;
+  reasoningChunkCount: number;
   text: string;
   done: boolean;
 }
 
 export function parseOpenAiSse(body: string): ParsedSse {
   let eventCount = 0;
+  let contentChunkCount = 0;
+  let reasoningChunkCount = 0;
   let text = '';
   let done = false;
   for (const line of body.split(/\r?\n/)) {
@@ -14,15 +18,20 @@ export function parseOpenAiSse(body: string): ParsedSse {
     if (!data) continue;
     if (data === '[DONE]') { done = true; continue; }
     try {
-      const event = JSON.parse(data) as { choices?: Array<{ delta?: { content?: unknown } }> };
+      const event = JSON.parse(data) as { choices?: Array<{ delta?: { content?: unknown; reasoning?: unknown } }> };
       eventCount += 1;
-      const content = event.choices?.[0]?.delta?.content;
-      if (typeof content === 'string') text += content;
+      const delta = event.choices?.[0]?.delta;
+      const content = delta?.content;
+      if (typeof content === 'string') {
+        contentChunkCount += 1;
+        text += content;
+      }
+      if (typeof delta?.reasoning === 'string' && delta.reasoning.length > 0) reasoningChunkCount += 1;
     } catch {
       // Invalid raw SSE data is ignored here; the caller judges whether a usable stream completed.
     }
   }
-  return { eventCount, text, done };
+  return { eventCount, contentChunkCount, reasoningChunkCount, text, done };
 }
 
 export interface StructuredToolCall {
