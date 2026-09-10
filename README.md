@@ -27,4 +27,4 @@ A premium single-page Automation Intake Canvas where a visitor describes a repet
 
 ## Current status
 
-Planning initialized. Production construction is not authorized by this bootstrap package alone.
+Planning foundation initialized and repository integrity hardening defined. `VXA-S001` remains `PLANNED_NOT_AUTHORIZED`; no product construction is authorized by the bootstrap or hardening alone.
