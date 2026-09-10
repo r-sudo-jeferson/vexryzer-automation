@@ -1,5 +1,5 @@
 import type { ExperienceAction } from './agent-intent.ts';
-import type { ArtifactProposal, ProcessMutationProposal } from './experience-proposal.ts';
+import type { ArtifactProposal, CorrectionProposal, ProcessMutationProposal } from './experience-proposal.ts';
 
 export type ProjectedActionStatus = 'active' | 'invalidated';
 
@@ -13,6 +13,13 @@ export interface ProjectedAction {
 export interface ProjectedProcessMutation {
   sourceMutationId: string;
   mutation: Readonly<ProcessMutationProposal>;
+}
+
+export interface ProjectedCorrectionSuggestion {
+  sourceCorrectionId: string;
+  correction: Readonly<CorrectionProposal>;
+  status: 'pending' | 'invalidated';
+  invalidatedReason: 'canonical-evidence-invalidated' | null;
 }
 
 export interface ProjectedArtifact {
@@ -48,6 +55,7 @@ export interface ReactiveExperienceState {
   projectionRevision: number;
   actions: readonly Readonly<ProjectedAction>[];
   processMutations: readonly Readonly<ProjectedProcessMutation>[];
+  correctionSuggestions: readonly Readonly<ProjectedCorrectionSuggestion>[];
   artifacts: readonly Readonly<ProjectedArtifact>[];
   scene: Readonly<ReactiveSceneState>;
   choreography: Readonly<ExperienceChoreographyState>;
@@ -57,6 +65,7 @@ export interface ReactiveExperienceState {
 export const REACTIVE_EXPERIENCE_LIMITS = Object.freeze({
   actions: 64,
   processMutations: 64,
+  correctionSuggestions: 24,
   artifacts: 24,
   recentSemanticKeys: 16,
 });
@@ -84,6 +93,7 @@ export function freezeReactiveExperienceState(state: ReactiveExperienceState): R
     ...state,
     actions: Object.freeze([...state.actions]),
     processMutations: Object.freeze([...state.processMutations]),
+    correctionSuggestions: Object.freeze([...state.correctionSuggestions]),
     artifacts: Object.freeze([...state.artifacts]),
     scene: freezeReactiveScene(state.scene),
     choreography: freezeExperienceChoreography(state.choreography),
@@ -101,6 +111,7 @@ export function createReactiveExperienceState(input: { basedOnRevision: number }
     projectionRevision: 0,
     actions: [],
     processMutations: [],
+    correctionSuggestions: [],
     artifacts: [],
     scene: { composition: 'stable', focusIds: [], comparisonIds: [], announcement: null },
     choreography: { generation: 0, intentKey: null, cameraTargetIds: [], interrupted: false },
