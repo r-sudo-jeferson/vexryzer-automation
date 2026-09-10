@@ -48,7 +48,7 @@ test('rejects missing/unsafe Cloudflare account id and unsupported inactive prov
   assert.throws(() => buildProviderChatEndpoint(mistral, {}), /unsupported provider family/);
 });
 
-test('chat body uses common streaming local-tool subset and contains no provider-memory or structured-output escape hatch', () => {
+test('chat body requires one or more local tool calls and contains no provider-memory or structured-output escape hatch', () => {
   const route = createVerifiedRouteFixture({ modelId: 'openai/gpt-oss-120b', family: 'groq', tier: 'independent_fallback' });
   const body = buildProviderChatBody({
     route,
@@ -57,7 +57,7 @@ test('chat body uses common streaming local-tool subset and contains no provider
   });
   assert.equal(body.model, 'openai/gpt-oss-120b');
   assert.equal(body.stream, true);
-  assert.equal(body.tool_choice, 'auto');
+  assert.equal(body.tool_choice, 'required');
   assert.equal(body.include_reasoning, false);
   assert.deepEqual(body.tools, tools);
   const serialized = JSON.stringify(body).toLowerCase();
