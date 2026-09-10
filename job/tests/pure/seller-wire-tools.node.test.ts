@@ -4,6 +4,8 @@ import {
   SELLER_LOCAL_TOOLS,
   parseSellerToolCall,
 } from '../../src/server/ai/seller/seller-wire-tools.ts';
+import { buildProviderChatBody } from '../../src/server/ai/providers/openai-chat-wire.ts';
+import { createVerifiedRouteFixture } from './provider-test-fixtures.ts';
 
 function tool(name: string, args: unknown) {
   return {
@@ -156,4 +158,82 @@ test('submission still rejects pending calculations, unknown wrapper fields and 
   }), 12);
   assert.equal(extra.ok, false);
   assert.equal(parseSellerToolCall(tool('browser_search', {}), 12).ok, false);
+});
+
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function collectPropertySchemas(value: unknown, propertyName: string, output: unknown[] = []): readonly unknown[] {
+  if (Array.isArray(value)) {
+    for (const item of value) collectPropertySchemas(item, propertyName, output);
+    return output;
+  }
+  if (!isRecord(value)) return output;
+  const properties = value['properties'];
+  if (isRecord(properties) && Object.hasOwn(properties, propertyName)) output.push(properties[propertyName]);
+  for (const nested of Object.values(value)) collectPropertySchemas(nested, propertyName, output);
+  return output;
+}
+
+function collectEnumStrings(value: unknown, output = new Set<string>()): ReadonlySet<string> {
+  if (Array.isArray(value)) {
+    for (const item of value) collectEnumStrings(item, output);
+    return output;
+  }
+  if (!isRecord(value)) return output;
+  const values = value['enum'];
+  if (Array.isArray(values)) {
+    for (const item of values) if (typeof item === 'string') output.add(item);
+  }
+  for (const nested of Object.values(value)) collectEnumStrings(nested, output);
+  return output;
+}
+
+test('final Seller tool publishes the full closed model-facing contract within the provider wire budget', () => {
+  const submit = SELLER_LOCAL_TOOLS.find((item) => item.function.name === 'submit_seller_submission');
+  assert.ok(submit);
+
+  const route = createVerifiedRouteFixture({
+    family: 'groq',
+    modelId: 'openai/gpt-oss-120b',
+    tier: 'independent_fallback',
+  });
+  assert.doesNotThrow(() => buildProviderChatBody({
+    route,
+    messages: [{ role: 'system', content: 'contract' }, { role: 'user', content: 'canonical context' }],
+    tools: SELLER_LOCAL_TOOLS,
+  }));
+
+  const bytes = new TextEncoder().encode(JSON.stringify(submit.function.parameters)).byteLength;
+  assert.ok(bytes < 64_000, `submission schema unexpectedly grew to ${bytes} bytes`);
+
+  assert.equal(collectPropertySchemas(submit.function.parameters, 'baseRevision').length, 0);
+  const criticRequired = collectPropertySchemas(submit.function.parameters, 'criticRequired');
+  assert.equal(criticRequired.length, 1);
+  assert.deepEqual(criticRequired[0], {
+    type: 'boolean',
+    enum: [true],
+    description: 'Every Seller submission requires independent Critic review.',
+  });
+
+  const sourceSchemas = collectPropertySchemas(submit.function.parameters, 'source');
+  assert.equal(sourceSchemas.length, 1);
+  assert.ok(isRecord(sourceSchemas[0]));
+  assert.deepEqual(sourceSchemas[0]['enum'], ['inference']);
+
+  const enums = collectEnumStrings(submit.function.parameters);
+  for (const forbidden of [
+    'price',
+    'discount',
+    'attachment_access',
+    'secret_access',
+    'tool_escalation',
+  ]) {
+    assert.equal(enums.has(forbidden), false, forbidden);
+  }
+  for (const safe of ['verified_numeric', 'qualitative', 'feasibility', 'artifact_readiness']) {
+    assert.equal(enums.has(safe), true, safe);
+  }
 });
