@@ -65,6 +65,69 @@ describe('app machine', () => {
     expect(actor.getSnapshot().value).toBe('origin');
   });
 
+  it('applies explicit correction state without replacing the accepted narration or question', () => {
+    const actor = createActor(appMachine).start();
+    actor.send({
+      type: 'ASK_ACCEPTED',
+      response: {
+        ok: true,
+        idempotent: false,
+        mode: 'agent',
+        narration: 'O fechamento está concentrado em conferência.',
+        nextQuestion: 'Quantas vezes isso ocorre?',
+        state: {
+          sessionId: 'session-correction',
+          canonicalRevision: 1,
+          verifiedCalculations: [],
+          reactiveState: {
+            schemaVersion: 1,
+            basedOnRevision: 1,
+            projectionRevision: 1,
+            actions: [],
+            processMutations: [],
+            correctionSuggestions: [],
+            artifacts: [],
+            scene: { composition: 'stable', focusIds: [], comparisonIds: [], announcement: null },
+            choreography: { generation: 0, intentKey: null, cameraTargetIds: [], interrupted: false },
+            recentSemanticKeys: [],
+          },
+        },
+      },
+    });
+    actor.send({ type: 'CORRECTION_REQUESTED' });
+    expect(actor.getSnapshot().context.agentStatus).toBe('correcting');
+
+    actor.send({
+      type: 'CORRECTION_ACCEPTED',
+      response: {
+        ok: true,
+        idempotent: false,
+        correctionId: 'correction-one',
+        state: {
+          sessionId: 'session-correction',
+          canonicalRevision: 2,
+          verifiedCalculations: [],
+          reactiveState: {
+            schemaVersion: 1,
+            basedOnRevision: 2,
+            projectionRevision: 1,
+            actions: [],
+            processMutations: [],
+            correctionSuggestions: [],
+            artifacts: [],
+            scene: { composition: 'stable', focusIds: [], comparisonIds: [], announcement: null },
+            choreography: { generation: 0, intentKey: null, cameraTargetIds: [], interrupted: false },
+            recentSemanticKeys: [],
+          },
+        },
+      },
+    });
+    expect(actor.getSnapshot().context.agentStatus).toBe('awaiting_user');
+    expect(actor.getSnapshot().context.agentNarration).toBe('O fechamento está concentrado em conferência.');
+    expect(actor.getSnapshot().context.agentQuestion).toBe('Quantas vezes isso ocorre?');
+    expect(actor.getSnapshot().context.agentState?.canonicalRevision).toBe(2);
+  });
+
   it('marks deterministic guided recovery distinctly from agent acceptance', () => {
     const actor = createActor(appMachine).start();
     actor.send({
