@@ -24,6 +24,7 @@ export type ContextMutation =
   | { type: 'CONFIRM_OBSERVATION'; observationId: string; turnId: string }
   | { type: 'CORRECT_OBSERVATION'; observationId: string; turnId: string; replacement: QuantitativeObservation }
   | { type: 'ADD_CALCULATION'; calculation: VerifiedCalculation }
+  | { type: 'ADD_CALCULATIONS'; calculations: readonly VerifiedCalculation[] }
   | { type: 'ADD_OPPORTUNITY'; opportunity: OpportunityRecord }
   | { type: 'ADD_OBJECTION'; objection: SalesObjection }
   | { type: 'SET_LATEST_USER_INTENT'; turnId: string; intent: string };
@@ -251,6 +252,40 @@ export function applyContextMutation(
         const inputs = calculation.inputObservationIds.map((id) => context.quantitativeObservations.find((item) => item.id === id));
         if (inputs.some((item) => item === undefined || item.status !== 'confirmed')) return reject(context, 'INVALID_MUTATION');
         return { ok: true, context: withRevision(context, { verifiedCalculations: [...context.verifiedCalculations, calculation] }) };
+      }
+
+      case 'ADD_CALCULATIONS': {
+        if (envelope.actor !== 'system') return reject(context, 'AUTHORITY_VIOLATION');
+        if (!Array.isArray(mutation.calculations) || mutation.calculations.length < 1 || mutation.calculations.length > 8) {
+          return reject(context, 'INVALID_MUTATION');
+        }
+
+        const batchIds = new Set<string>();
+        const calculations: VerifiedCalculation[] = [];
+        for (const raw of mutation.calculations) {
+          if (raw.computedBy !== 'application') return reject(context, 'AUTHORITY_VIOLATION');
+          if (idExists(context, raw.id) || batchIds.has(raw.id)) return reject(context, 'DUPLICATE_ID');
+          const calculation = freezeCalculation(raw);
+          if (
+            calculation.basedOnRevision !== context.revision
+            || calculation.status !== 'valid'
+            || calculation.invalidatedAtRevision !== null
+          ) return reject(context, 'INVALID_MUTATION');
+          const inputs = calculation.inputObservationIds.map((id) =>
+            context.quantitativeObservations.find((item) => item.id === id));
+          if (inputs.some((item) => item === undefined || item.status !== 'confirmed')) {
+            return reject(context, 'INVALID_MUTATION');
+          }
+          batchIds.add(calculation.id);
+          calculations.push(calculation);
+        }
+
+        return {
+          ok: true,
+          context: withRevision(context, {
+            verifiedCalculations: [...context.verifiedCalculations, ...calculations],
+          }),
+        };
       }
 
       case 'ADD_OPPORTUNITY': {
