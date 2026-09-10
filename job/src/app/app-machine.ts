@@ -1,14 +1,34 @@
 import { assign, setup } from 'xstate';
+import type { AskAiAcceptedResponse, AskAiPublicState } from './ask-ai-client.ts';
+
+export type AgentExperienceStatus = 'idle' | 'requesting' | 'awaiting_user' | 'recovery' | 'error';
 
 export interface AppMachineContext {
   focusedNodeId: string | null;
+  agentStatus: AgentExperienceStatus;
+  agentState: Readonly<AskAiPublicState> | null;
+  agentNarration: string | null;
+  agentQuestion: string | null;
+  agentErrorCode: string | null;
 }
 
 export type AppMachineEvent =
   | { type: 'ENTER_PROCESS' }
   | { type: 'FOCUS_NODE'; nodeId: string }
   | { type: 'EXIT_FOCUS' }
-  | { type: 'RESET' };
+  | { type: 'RESET' }
+  | { type: 'ASK_REQUESTED' }
+  | { type: 'ASK_ACCEPTED'; response: Readonly<AskAiAcceptedResponse> }
+  | { type: 'ASK_FAILED'; code: string }
+  | { type: 'ASK_SESSION_RESET' };
+
+const initialAgentContext = Object.freeze({
+  agentStatus: 'idle' as const,
+  agentState: null,
+  agentNarration: null,
+  agentQuestion: null,
+  agentErrorCode: null,
+});
 
 export const appMachine = setup({
   types: {
@@ -17,17 +37,50 @@ export const appMachine = setup({
   },
   guards: {
     hasValidNodeId: ({ event }) => event.type === 'FOCUS_NODE' && event.nodeId.trim().length > 0,
+    hasErrorCode: ({ event }) => event.type === 'ASK_FAILED' && event.code.trim().length > 0,
   },
   actions: {
     setFocus: assign({
       focusedNodeId: ({ event }) => event.type === 'FOCUS_NODE' ? event.nodeId.trim() : null,
     }),
     clearFocus: assign({ focusedNodeId: null }),
+    markAskRequested: assign({
+      agentStatus: 'requesting',
+      agentErrorCode: null,
+    }),
+    acceptAsk: assign(({ event }) => {
+      if (event.type !== 'ASK_ACCEPTED') return {};
+      return {
+        agentStatus: event.response.mode === 'guided_recovery' ? 'recovery' : 'awaiting_user',
+        agentState: event.response.state,
+        agentNarration: event.response.narration,
+        agentQuestion: event.response.nextQuestion,
+        agentErrorCode: null,
+      };
+    }),
+    failAsk: assign(({ event }) => event.type === 'ASK_FAILED'
+      ? {
+          agentStatus: 'error' as const,
+          agentErrorCode: event.code.trim(),
+        }
+      : {}),
+    resetAgent: assign({
+      ...initialAgentContext,
+    }),
   },
 }).createMachine({
   id: 'vxa-experience',
   initial: 'origin',
-  context: { focusedNodeId: null },
+  context: {
+    focusedNodeId: null,
+    ...initialAgentContext,
+  },
+  on: {
+    ASK_REQUESTED: { actions: 'markAskRequested' },
+    ASK_ACCEPTED: { actions: 'acceptAsk' },
+    ASK_FAILED: { guard: 'hasErrorCode', actions: 'failAsk' },
+    ASK_SESSION_RESET: { actions: 'resetAgent' },
+  },
   states: {
     origin: {
       on: {
