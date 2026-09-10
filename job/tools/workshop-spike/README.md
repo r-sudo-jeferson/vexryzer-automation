@@ -13,24 +13,42 @@ It is deliberately a spike, not a production runtime and not evidence that a pub
 
 ## Candidate under test
 
-- default DeepSeek Harness candidate: `0.1.2-rc.1` exact;
-- default package pair: `@deepseek-ai/dsh@0.1.2-rc.1` + `@deepseek-ai/dsh-sdk-client@0.1.2-rc.1`;
-- provider route: `mistral` by default;
-- model: `mistral-medium-3-5` by default;
-- endpoint: `https://api.mistral.ai/v1` by default;
-- route implementation: Harness `llm-pi-ai` using `openai-completions` compatibility mode.
+- DeepSeek Harness candidate: `0.1.2-rc.1` exact;
+- temporary package set: `@deepseek-ai/dsh@0.1.2-rc.1`, `@deepseek-ai/dsh-sdk-client@0.1.2-rc.1`, `@deepseek-ai/dsh-llm-pi-ai@0.1.2-rc.1`, and `@earendil-works/pi-ai@0.84.2`;
+- Harness profile: shipped `sdk-minimal`;
+- provider route: `mistral`;
+- model: `mistral-medium-3-5`;
+- endpoint: `https://api.mistral.ai/v1`;
+- route implementation: configured Harness `llm-pi-ai` using `openai-completions` compatibility mode.
 
-The Harness version is a **candidate for evidence**, not an accepted product dependency. DeepSeek Harness is developer-preview software. A known public report exists against the `0.1.2-rc.1` train for Web/client-module loading; the SDK profile must therefore be proven directly rather than inferred healthy from version recency. If this exact candidate fails for a Harness defect, the root cause must be recorded before evaluating another exact release.
+The Harness version is a **candidate for evidence**, not an accepted product dependency. The temporary runtime pins the `llm-pi-ai` adapter to the same release as the CLI and SDK. It also pins the adapter's pi-ai core to exact `0.84.2` rather than accepting the adapter manifest's `^0.84.2` range, so a later patch release cannot silently change evidence for the same source SHA. Bootstrap verifies the installed core version before any provider request.
 
-The runner permits a different exact semver through `VXA_HARNESS_VERSION` so a controlled comparison such as `0.1.1-rc.2` can be performed **without changing the source candidate SHA**. Tags such as `latest`, ranges such as `^0.1.2-rc.1`, and other mutable Harness selectors are rejected. Each result records the exact version it actually tested; evidence from different Harness versions may not be combined.
+The Mistral model is intentionally pinned to `mistral-medium-3-5`, not a moving `-latest` alias.
 
-The Mistral default is intentionally pinned to `mistral-medium-3-5`, not `mistral-medium-latest`. Mistral documents `-latest` as a moving GA alias that may switch to a newer model; an exact model id keeps compatibility evidence attributable to one model release.
+## Why `sdk-minimal`
+
+The first supported route was tested before this composition:
+
+1. The pinned pi-ai Mistral catalog route was exercised on Run `34457175731` at source SHA `6c8119253b111323a350850d8eac06cd77d7be21`. Its pure contracts passed, but the exact catalog did not contain `mistral-medium-3-5`; startup returned `pi-ai provider "mistral" has no configured model "mistral-medium-3-5"`. No provider request was needed to establish that incompatibility.
+2. The configured `llm-pi-ai` route was then exercised through the full shipped `sdk` profile on Run `34457652884` at source SHA `626276eba9a25b00ae972b22dbd14f43f201f4c2`. Its pure contracts passed and the route reached the provider, but the first model step ended in `RATE_LIMIT` even after one 65-second retry window. Bounded request evidence showed 26 advertised tool schemas and a 4,528-character system prompt.
+
+The exact Harness release also ships `sdk-minimal`, a standalone SDK coding-agent profile with persistent sessions and exactly two model-facing development tools on a platform: persistent shell plus `str_replace_editor`. Using that official profile preserves the required real tool round-trip while removing unrelated tool surface from the compatibility request. This is a diagnostic composition change, not a claim that request size caused the earlier rate limit; only the real provider run can establish whether the smaller surface changes the outcome.
+
+The spike applies one invocation patch above `sdk-minimal`:
+
+- disable only the shipped `llm-deepseek` adapter row;
+- insert `@deepseek-ai/dsh-llm-pi-ai@0.1.2-rc.1`;
+- configure only the `mistral` route and the fixed `mistral-medium-3-5` model;
+- keep the retry policy bounded to `RATE_LIMIT` only;
+- keep timeout-probe retries disabled.
+
+The patch does not recreate a Harness profile or a second architecture.
 
 ## DeepSeek Harness SDK contract
 
-The spike uses the public TypeScript SDK surface of `@deepseek-ai/dsh-sdk-client@0.1.2-rc.1` directly. `DeepSeekHarness` receives `profile`, `dshHome`, `processCwd`, `env`, `cwd`, `provider`, `model`, `maxTokens`, and lifecycle timeouts. It does **not** use the older `launch: { command, args }` shape.
+The spike uses the public TypeScript SDK surface of `@deepseek-ai/dsh-sdk-client@0.1.2-rc.1` directly. `DeepSeekHarness` receives `profile: sdk-minimal`, one explicit `patches` path, `dshHome`, `processCwd`, `env`, `cwd`, `provider`, `model`, `maxTokens`, and lifecycle timeouts. It does **not** use an older custom `launch` command shape.
 
-The SDK itself resolves the same-version `@deepseek-ai/dsh` CLI package and builds canonical `dsh --profile sdk` argv. The spike additionally verifies that both installed package manifests report the exact requested Harness version before starting a provider turn.
+The SDK resolves the same-version `@deepseek-ai/dsh` CLI package and builds the canonical profile launch. Before any provider turn, the spike verifies the installed `dsh`, SDK client, pi-ai adapter, shipped `sdk-minimal` bundle, and exact pi-ai core version.
 
 ## Required environment
 
@@ -41,7 +59,7 @@ Run from `job/` with the repository runtime contract:
 - outbound HTTPS access to the package registry and Mistral endpoint;
 - `MISTRAL_API_KEY` supplied only through the process environment.
 
-Do not place the key in source, arguments, settings YAML, logs or checked-in fixtures.
+Do not place the key in source, arguments, patches, logs or checked-in fixtures.
 
 ## Command
 
@@ -61,42 +79,44 @@ export VXA_MISTRAL_BASE_URL='https://api.mistral.ai/v1'
 export VXA_PNPM_BIN='pnpm'
 ```
 
-`VXA_PNPM_BIN` exists only for an environment where the exact pnpm executable must be selected explicitly. The runner still verifies that the selected executable reports `11.25.0`.
+`VXA_PNPM_BIN` only selects an executable; the runner still verifies it reports `11.25.0`.
 
-## Isolation behavior of the spike
+## Isolation and credential boundary
 
 The runner creates one disposable temporary root and removes it in `finally`.
 
-Package installation happens in a temporary runtime directory, not in `job/node_modules` and not in `job/package.json`. The package-install subprocess receives a scrubbed environment and does **not** receive `MISTRAL_API_KEY`, npm tokens, cloud credentials or other unrelated parent secrets. `PNPM_CONFIG_AUTO_INSTALL_PEERS=true` is set explicitly because the current Harness package family uses peer dependencies heavily.
+Package installation happens outside `job/node_modules` and never mutates `job/package.json`. The package-install subprocess receives a scrubbed environment and does **not** receive `MISTRAL_API_KEY`, npm tokens, cloud credentials or unrelated parent secrets. The pnpm build-script allowlist remains exact and reviewed.
 
-Only after installation completes does the Harness subprocess receive a narrow environment containing ordinary execution variables, an isolated `DSH_HOME`, and `MISTRAL_API_KEY`. `settings.yaml` stores only `apiKeyEnv: MISTRAL_API_KEY`; it never stores the credential value.
+Only after package installation and version verification does the Harness subprocess receive a narrow environment containing ordinary execution variables, isolated `DSH_HOME`, and `MISTRAL_API_KEY`. The generated invocation patch is written mode `0600`, stores only `apiKeyEnv: MISTRAL_API_KEY`, and never stores the credential value.
 
-The spike uses the shipped `sdk` profile in a disposable workspace. This does not approve `sdk-minimal` or an unrestricted Harness composition for visitor traffic.
+The `sdk-minimal` profile uses the local development shell/editor under its shipped danger-full-access policy, so the spike runs only against its disposable workspace. This does not authorize exposing that profile directly to public visitor traffic.
 
 ## Required proof
 
-A compatibility result is accepted only when all six fields are `true` for the exact Harness/provider/model tuple:
+A compatibility result is accepted only when all six Slice-required capabilities are `true` for the exact Harness/profile/provider/model state:
 
 | Capability | Real evidence required |
 | --- | --- |
-| `streaming` | root-session `assistant/chunk` events are observed |
+| `streaming` | root-session assistant streaming events are observed |
 | `toolCalls` | both development turns contain a matching `tool/call` → `tool/result` round trip |
 | `structuredArguments` | every observed probe `tool/call.arguments` is valid JSON object syntax |
 | `multiTurnToolReplay` | the second turn uses a tool to read the artifact produced in turn one and returns its exact nonce |
 | `restartSafe` | after closing/restarting the Harness against the same isolated home/session, the model recalls the first-turn nonce without reading the workspace again |
 | `timeoutMapped` | a deliberately tiny provider timeout produces a bounded non-success/error path rather than hanging or being misclassified as completed |
 
+In addition, every normal-turn request must expose exactly two tool schemas. That is an integrity check that the real run is using the shipped `sdk-minimal` request surface rather than silently falling back to the 26-tool `sdk` composition.
+
 The first turn must actually create `vxa-harness-tool-probe.txt` with an unpredictable nonce. The runner verifies the filesystem side effect itself; model text claiming that the file was created is not evidence.
 
 ## Output contract
 
-Stdout contains a bounded JSON result. Successful completion records the exact Harness version, provider route, model id, six compatibility booleans and bounded event counts. Bootstrap/runtime failure records only a bounded phase, error class and sanitized message.
+Stdout contains bounded JSON. A completed result records the exact Harness version, `sdk-minimal` profile, provider route, model id, six compatibility booleans and bounded event/request counts. Bootstrap/runtime failures record only bounded phase, class and sanitized message.
 
-The runner does not intentionally emit raw provider payloads, conversation transcripts, tool arguments, tool results, nonce values or credentials. Before any failure diagnostic is emitted, the current Mistral credential value is replaced with `[REDACTED]` and the diagnostic is length-bounded.
+The runner does not intentionally emit raw provider payloads, conversation transcripts, tool arguments, tool results, nonce values or credentials. Failure diagnostics redact the current Mistral credential and are length-bounded.
 
 Exit codes:
 
-- `0`: all compatibility assertions passed for the exact tuple;
+- `0`: all compatibility assertions passed for the exact state;
 - `2`: the runner completed but one or more required compatibility capabilities did not pass;
 - `1`: environment/bootstrap/runtime failure prevented a valid compatibility decision.
 
@@ -104,7 +124,7 @@ An exit `0` proves provider/Harness compatibility only. It does **not** prove th
 
 ## Tests
 
-Pure tests cover the evidence contract, event extraction, argument validation, environment scrubbing, timeout route configuration, exact candidate-version selection, pinned Mistral model selection, runtime-version gates, public Harness SDK option shape and diagnostic redaction:
+Pure tests cover the compatibility contract, bounded event evidence, minimal two-tool request surface, environment scrubbing, exact package pins, invocation-patch rendering, timeout configuration, exact candidate selection, fixed Mistral model, runtime-version gates, public SDK option shape and diagnostic redaction:
 
 ```bash
 cd job
@@ -113,21 +133,10 @@ node --test tests/pure/workshop-provider-contract.node.test.ts \
   tests/pure/workshop-spike-config.node.test.ts
 ```
 
-The repository's normal Node 24 `pnpm test:pure` remains the authoritative integrated test command once the complete branch can be checked out in a compliant environment.
-
-## Current execution evidence
-
-The current ChatGPT local execution container is not a valid environment for the credentialed proof:
-
-- Node present: `v22.16.0`, while Vexryzer requires Node 24;
-- `pnpm` is not installed locally;
-- GitHub/package network from the local container is unavailable due DNS resolution failure;
-- GitHub Environment `s002-spike` now holds `MISTRAL_API_KEY` according to Founder confirmation, but GitHub secret values are intentionally not readable through this environment.
-
-Therefore the next justified remote CI run is a hosted-runtime integration gate: Node 24 + pnpm 11.25.0 + the `s002-spike` environment secret. Until that run produces real evidence, DeepSeek Harness + Mistral compatibility remains `NOT_VERIFIED`, and the product `job/package.json` must not receive a Harness dependency.
+The hosted Node 24 gate is authoritative for the complete spike because the local ChatGPT container has Node 22, no pnpm and no outbound DNS to GitHub/package registries.
 
 ## Next gate
 
-Run this exact spike in GitHub Actions using environment `s002-spike`. Start with the default exact Harness candidate and fixed Mistral model. If it fails, preserve the failure and identify whether the cause is provider compatibility, SDK/runtime packaging, profile boot, tool availability, persistence/restart behavior or a known Harness release defect. Only then evaluate another exact candidate using `VXA_HARNESS_VERSION`.
+Run this exact `sdk-minimal` candidate once in GitHub Actions using environment `s002-spike`. Preserve the bounded result and source SHA. Do not interpret a smaller request as a PASS by itself: all six compatibility capabilities still have to pass on the fixed `mistral-medium-3-5` model.
 
-Preserve only the bounded JSON evidence and exact source SHA. Do not combine results from different Harness versions, provider routes, model ids or source SHAs. If any required capability fails, correct the integration rather than weakening the contract, and rerun on a new exact candidate state when source changes.
+If the provider still returns an operational `RATE_LIMIT`, preserve it as an external blocker rather than changing model or weakening the proof. If the minimal profile or invocation patch fails deterministically before provider execution, identify the composition root cause before another remote run.

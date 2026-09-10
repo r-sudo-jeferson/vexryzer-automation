@@ -10,7 +10,7 @@ import {
   MISTRAL_SPIKE_MAX_RETRIES,
   renderHarnessInstallPackageJson,
   renderHarnessInstallWorkspaceYaml,
-  renderMistralSettingsYaml,
+  renderMistralMinimalProfilePatchYaml,
   resolveHarnessCandidateVersion,
   sanitizeSpikeDiagnostic,
   validateSpikeInputs,
@@ -38,12 +38,15 @@ test('scrubs unrelated secrets from the Harness child environment', () => {
   assert.equal(env.AWS_SECRET_ACCESS_KEY, undefined);
 });
 
-test('uses the configured llm-pi-ai route after the catalog rejects the exact model', () => {
-  const yaml = renderMistralSettingsYaml({
+test('renders an sdk-minimal invocation patch for the configured Mistral route', () => {
+  const yaml = renderMistralMinimalProfilePatchYaml({
     providerRoute: 'mistral',
     modelId: 'mistral-medium-3-5',
     baseUrl: 'https://api.mistral.ai/v1',
   });
+  assert.match(yaml, /^- id: llm-deepseek\n  disabled: true/m);
+  assert.match(yaml, /- insert:\n\s+- id: llm-pi-ai\n\s+name: '@deepseek-ai\/dsh-llm-pi-ai'/);
+  assert.match(yaml, /providers:\n\s+mistral:/);
   assert.match(yaml, /displayName: Mistral/);
   assert.match(yaml, /apiKeyEnv: MISTRAL_API_KEY/);
   assert.match(yaml, /api: openai-completions/);
@@ -118,12 +121,14 @@ test('uses an exact reviewed build-script policy instead of weakening pnpm secur
   assert.doesNotMatch(yaml, /strictDepBuilds:\s*false/);
 });
 
-test('anchors the published Harness consumer to the upstream React 18 runtime pair', () => {
+test('anchors the published Harness consumer and pi-ai stack to reviewed exact versions', () => {
   const manifest = JSON.parse(renderHarnessInstallPackageJson('0.1.2-rc.1')) as {
     dependencies: Record<string, string>;
   };
   assert.equal(manifest.dependencies['@deepseek-ai/dsh'], '0.1.2-rc.1');
   assert.equal(manifest.dependencies['@deepseek-ai/dsh-sdk-client'], '0.1.2-rc.1');
+  assert.equal(manifest.dependencies['@deepseek-ai/dsh-llm-pi-ai'], '0.1.2-rc.1');
+  assert.equal(manifest.dependencies['@earendil-works/pi-ai'], '0.84.2');
   assert.equal(manifest.dependencies.react, '18.3.1');
   assert.equal(manifest.dependencies['react-dom'], '18.3.1');
 });
@@ -139,8 +144,8 @@ test('refuses an unreviewed Harness release before dependency policies can run',
   );
 });
 
-test('keeps the timeout probe on the configured route and disables retry amplification', () => {
-  const yaml = renderMistralSettingsYaml({
+test('keeps the timeout probe on sdk-minimal and disables retry amplification', () => {
+  const yaml = renderMistralMinimalProfilePatchYaml({
     providerRoute: 'mistral',
     modelId: 'mistral-medium-3-5',
     baseUrl: 'https://api.mistral.ai/v1',
@@ -162,6 +167,7 @@ test('builds only the public DeepSeek Harness 0.1.2-rc.1 SDK option shape', () =
   }, {
     workspace: '/tmp/workspace',
     dshHome: '/tmp/dsh-home',
+    patchPath: '/tmp/mistral-profile.patch.yml',
     maxTokens: 2048,
     input: {
       providerRoute: 'mistral',
@@ -171,7 +177,8 @@ test('builds only the public DeepSeek Harness 0.1.2-rc.1 SDK option shape', () =
     },
   });
 
-  assert.equal(options.profile, 'sdk');
+  assert.equal(options.profile, 'sdk-minimal');
+  assert.deepEqual(options.patches, ['/tmp/mistral-profile.patch.yml']);
   assert.equal(options.dshHome, '/tmp/dsh-home');
   assert.equal(options.processCwd, '/tmp/workspace');
   assert.equal(options.cwd, '/tmp/workspace');
@@ -191,27 +198,32 @@ test('builds only the public DeepSeek Harness 0.1.2-rc.1 SDK option shape', () =
 });
 
 test('rejects invalid SDK option construction before Harness startup', () => {
+  const input = {
+    providerRoute: 'mistral',
+    modelId: 'mistral-medium-3-5',
+    baseUrl: 'https://api.mistral.ai/v1',
+    mistralApiKey: 'secret',
+  };
   assert.throws(() => buildHarnessSdkOptions({}, {
     workspace: '',
     dshHome: '/tmp/dsh-home',
+    patchPath: '/tmp/mistral-profile.patch.yml',
     maxTokens: 2048,
-    input: {
-      providerRoute: 'mistral',
-      modelId: 'mistral-medium-3-5',
-      baseUrl: 'https://api.mistral.ai/v1',
-      mistralApiKey: 'secret',
-    },
+    input,
   }), /workspace/);
   assert.throws(() => buildHarnessSdkOptions({}, {
     workspace: '/tmp/workspace',
     dshHome: '/tmp/dsh-home',
+    patchPath: '',
+    maxTokens: 2048,
+    input,
+  }), /patchPath/);
+  assert.throws(() => buildHarnessSdkOptions({}, {
+    workspace: '/tmp/workspace',
+    dshHome: '/tmp/dsh-home',
+    patchPath: '/tmp/mistral-profile.patch.yml',
     maxTokens: 0,
-    input: {
-      providerRoute: 'mistral',
-      modelId: 'mistral-medium-3-5',
-      baseUrl: 'https://api.mistral.ai/v1',
-      mistralApiKey: 'secret',
-    },
+    input,
   }), /maxTokens/);
 });
 

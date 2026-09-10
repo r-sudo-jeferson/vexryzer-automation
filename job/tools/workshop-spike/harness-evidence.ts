@@ -121,6 +121,15 @@ export function hasToolRoundTrip(events: readonly unknown[]): boolean {
   });
 }
 
+export function assertMinimalHarnessRequestSurface(evidence: HarnessEventEvidence): void {
+  if (evidence.requestHeaderCount < 1) {
+    throw new Error('sdk-minimal probe did not expose a request/header event');
+  }
+  if (evidence.maxToolSchemaCount !== 2) {
+    throw new Error(`sdk-minimal probe expected exactly 2 tool schemas; got ${evidence.maxToolSchemaCount}`);
+  }
+}
+
 export function inspectHarnessEvents(events: readonly unknown[]): HarnessEventEvidence {
   const toolCalls = events.filter((event) => eventType(event) === 'tool/call');
   const toolResults = events.filter((event) => eventType(event) === 'tool/result');
