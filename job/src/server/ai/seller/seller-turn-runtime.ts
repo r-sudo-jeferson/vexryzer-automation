@@ -218,6 +218,7 @@ const SELLER_SYSTEM_INSTRUCTION = [
   'The application binds canonical revision, authoritative user turn and local request identifiers. Never invent or echo those server-owned metadata fields.',
   'When the current user explicitly states a number, use capture_user_observations with semantic kind, value and an exact quote before requesting arithmetic; the quote must include the semantic unit and period markers required by the observation kind, and the application owns provenance, unit and period.',
   'Use request_calculations with exact canonical observation ids for material arithmetic; the application binds calculation id and revision. Reason only from calculations that reappear in canonical context.',
+  'Protocol rule: each assistant/provider response may call only one local tool kind. Multiple calls are allowed only when every call has the same function name. After capture_user_observations or request_calculations, wait for the next canonical-context round before calling a different tool kind or submit_seller_submission.',
   'For Canvas actions, target only ids present in context.visualState.processNodes or ids created by processMutations in the same proposal; never guess existing node ids.',
   'Preserve the supplied provenance of existing Canvas nodes. New inferred process nodes are hypotheses until user evidence upgrades canonical truth.',
   'Finish the turn only by calling submit_seller_submission. Do not emit final free text outside local tool calls.',
