@@ -11,7 +11,7 @@ const events = [
   { type: 'assistant/chunk', seq: 2, time: 2, data: { turn: 1, step: 1, chunk: { type: 'text-delta', text: 'a' } } },
   { type: 'assistant/chunk', seq: 3, time: 3, data: { turn: 1, step: 1, chunk: { type: 'text-delta', text: 'b' } } },
   { type: 'tool/call', seq: 4, time: 4, data: { turn: 1, step: 1, callId: 'call-1', name: 'bash', arguments: '{"command":"printf probe"}' } },
-  { type: 'tool/result', seq: 5, time: 5, data: { turn: 1, step: 1, message: { toolCallId: 'call-1', content: [{ type: 'text', text: 'probe' }] } },
+  { type: 'tool/result', seq: 5, time: 5, data: { turn: 1, step: 1, message: { toolCallId: 'call-1', content: [{ type: 'text', text: 'probe' }] } } },
   { type: 'turn/end', seq: 6, time: 6, data: { turn: 1, reason: { kind: 'completed' } } },
 ] as const;
 
