@@ -62,7 +62,7 @@ export function renderOpenCodeConfig(input: { modelId: string; credentialRef: st
     },
     provider: {
       [OPENCODE_PROVIDER_ID]: {
-        npm: '@ai-sdk/openai-compatible',
+        npm: '@ai-sdk/groq',
         name: 'Vexryzer Workshop Groq',
         options: {
           baseURL: OPENCODE_PROVIDER_BASE_URL,
