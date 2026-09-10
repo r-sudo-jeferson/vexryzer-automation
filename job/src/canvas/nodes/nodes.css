@@ -47,3 +47,15 @@
 .vxa-origin-node__eyebrow { display: block; margin-bottom: 0.9rem; color: var(--vxa-accent-intelligence); font: 700 0.62rem/1 var(--vxa-font-mono); letter-spacing: 0.14em; }
 .vxa-origin-node strong { display: block; color: var(--vxa-text-platinum); font: 620 1.45rem/1.08 var(--vxa-font-display); letter-spacing: -0.035em; }
 .vxa-origin-node > span:last-child { display: block; margin-top: 0.75rem; color: var(--vxa-text-muted); font-size: 0.78rem; line-height: 1.5; }
+
+.vxa-node[data-semantic-state='hypothesis'] { border-style: dashed; }
+.vxa-node[data-semantic-state='invalidated'] { opacity: 0.42; filter: saturate(0.5); }
+.vxa-node[data-revealed='true'] { box-shadow: var(--vxa-shadow-float), 0 0 0 1px rgba(138,185,255,0.16); }
+.vxa-node__metrics { display: flex; flex-wrap: wrap; gap: 0.42rem; margin-top: 0.72rem; }
+.vxa-node__metrics > span { display: inline-flex; align-items: baseline; gap: 0.3rem; padding: 0.38rem 0.5rem; border: 1px solid rgba(138,185,255,0.24); border-radius: 0.58rem; background: var(--vxa-accent-intelligence-soft); }
+.vxa-node__metrics strong { color: var(--vxa-text-platinum); font: 720 0.82rem/1 var(--vxa-font-mono); }
+.vxa-node__metrics span span { color: var(--vxa-accent-intelligence); font: 650 0.6rem/1 var(--vxa-font-mono); }
+.vxa-node__annotations { display: grid; gap: 0.35rem; margin: 0.7rem 0 0; padding: 0; list-style: none; }
+.vxa-node__annotations li { padding-left: 0.65rem; border-left: 1px solid var(--vxa-border-strong); color: var(--vxa-text-muted); font-size: 0.69rem; line-height: 1.45; overflow-wrap: anywhere; }
+.vxa-node[data-zoom='far'] .vxa-node__metrics,
+.vxa-node[data-zoom='far'] .vxa-node__annotations { display: none; }
