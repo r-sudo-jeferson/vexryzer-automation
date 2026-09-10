@@ -45,8 +45,9 @@ test('authorized provider registry is exact, fixed-id, and zero-payment only', (
 test('keeps mistral standby and openrouter optional emergency-only', () => {
   assert.deepEqual(standbyProviders, ['mistral']);
   assert.deepEqual(optionalEmergencyProviders, ['openrouter']);
-  assert.equal(providerCandidates.some((candidate) => candidate.provider === 'mistral'), false);
-  assert.equal(providerCandidates.some((candidate) => candidate.provider === 'openrouter'), false);
+  const activeProviderNames: readonly string[] = providerCandidates.map((candidate) => candidate.provider);
+  assert.equal(activeProviderNames.includes('mistral'), false);
+  assert.equal(activeProviderNames.includes('openrouter'), false);
 });
 
 test('routes workshop code only to explicit code candidates', () => {
