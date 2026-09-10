@@ -10,12 +10,20 @@ export interface SpikeRuntimeVersions {
   pnpmVersion: string;
 }
 
-export function assertSpikeRuntimeVersions(versions: SpikeRuntimeVersions): void {
-  const nodeMajor = Number.parseInt(versions.nodeVersion.replace(/^v/, '').split('.')[0] ?? '', 10);
-  if (nodeMajor !== 24) throw new Error(`Workshop compatibility spike requires Node 24; got ${versions.nodeVersion}`);
-  if (versions.pnpmVersion.trim() !== '11.25.0') {
-    throw new Error(`Workshop compatibility spike requires pnpm 11.25.0; got ${versions.pnpmVersion}`);
+export function assertSpikeNodeVersion(nodeVersion: string): void {
+  const nodeMajor = Number.parseInt(nodeVersion.replace(/^v/, '').split('.')[0] ?? '', 10);
+  if (nodeMajor !== 24) throw new Error(`Workshop compatibility spike requires Node 24; got ${nodeVersion}`);
+}
+
+export function assertSpikePnpmVersion(pnpmVersion: string): void {
+  if (pnpmVersion.trim() !== '11.25.0') {
+    throw new Error(`Workshop compatibility spike requires pnpm 11.25.0; got ${pnpmVersion}`);
   }
+}
+
+export function assertSpikeRuntimeVersions(versions: SpikeRuntimeVersions): void {
+  assertSpikeNodeVersion(versions.nodeVersion);
+  assertSpikePnpmVersion(versions.pnpmVersion);
 }
 
 export interface SpikeInputs {
