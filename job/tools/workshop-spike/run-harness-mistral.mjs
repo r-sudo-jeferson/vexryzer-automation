@@ -13,6 +13,7 @@ import {
   hasToolRoundTrip,
   inspectHarnessEvents,
 } from './harness-evidence.ts';
+import { inspectSessionPersistence } from './persistence-evidence.ts';
 import {
   assertSpikeNodeVersion,
   assertSpikePnpmVersion,
@@ -190,6 +191,14 @@ function turnEndKinds(events) {
   });
 }
 
+function toolResultContainsMarker(events, marker) {
+  return events.some((event) => {
+    if (!event || typeof event !== 'object' || event.type !== 'tool/result') return false;
+    const data = event.data && typeof event.data === 'object' ? event.data : null;
+    return JSON.stringify(data?.message ?? null).includes(marker);
+  });
+}
+
 async function proveNormalCompatibility(runtime, rootDir, input) {
   const workspace = join(rootDir, 'workspace');
   const dshHome = join(rootDir, 'dsh-home');
@@ -228,12 +237,18 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
     await harness.close();
   }
 
+  const persistenceRoot = join(dshHome, 'sessions');
+  const persistenceBeforeRestart = await inspectSessionPersistence(persistenceRoot, nonce);
   const secondEvidence = inspectHarnessEvents(second.events);
   assertMinimalHarnessContinuationSurface(firstEvidence, secondEvidence);
   const streaming = hasStreamingChunks(first.events) || hasStreamingChunks(second.events);
   const toolCalls = hasToolRoundTrip(first.events) && hasToolRoundTrip(second.events);
   const structuredArguments = firstEvidence.structuredToolArguments && secondEvidence.structuredToolArguments;
-  const multiTurnToolReplay = hasToolRoundTrip(second.events) && second.finalResponse.includes(nonce);
+  const secondToolResultContainsNonce = toolResultContainsMarker(second.events, nonce);
+  const secondResponseIncludesNonce = second.finalResponse.includes(nonce);
+  const multiTurnToolReplay = hasToolRoundTrip(second.events)
+    && secondToolResultContainsNonce
+    && secondResponseIncludesNonce;
 
   currentPhase = 'restart-replay';
   const restartedHarness = createHarness({ ...runtime, workspace, dshHome, patchPath, input });
@@ -246,9 +261,11 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
   } finally {
     await restartedHarness.close();
   }
+  const persistenceAfterRestart = await inspectSessionPersistence(persistenceRoot, nonce);
   const restartEvidence = inspectHarnessEvents(restart.events);
   assertMinimalHarnessRequestSurface(restartEvidence);
-  const restartSafe = restart.finalResponse.includes(nonce) && restartEvidence.toolCallCount === 0;
+  const restartResponseIncludesNonce = restart.finalResponse.includes(nonce);
+  const restartSafe = restartResponseIncludesNonce && restartEvidence.toolCallCount === 0;
 
   return {
     streaming,
@@ -260,6 +277,13 @@ async function proveNormalCompatibility(runtime, rootDir, input) {
       first: firstEvidence,
       second: secondEvidence,
       restart: restartEvidence,
+    },
+    semanticChecks: {
+      secondToolResultContainsNonce,
+      secondResponseIncludesNonce,
+      restartResponseIncludesNonce,
+      persistenceBeforeRestart,
+      persistenceAfterRestart,
     },
   };
 }
@@ -335,11 +359,12 @@ async function main() {
       harnessProfile: HARNESS_SPIKE_PROFILE,
       ...compatibility,
       evidence: normal.diagnosticCounts,
+      semanticEvidence: normal.semanticChecks,
       notes: [
         'Raw provider payloads and model credentials are intentionally not emitted.',
         'The official sdk-minimal profile replaces only the DeepSeek adapter with llm-pi-ai and reuses pi-ai\'s native Mistral provider implementation.',
-        'The fixed Medium 3.5 id is added to the Mistral route without protocol, endpoint, or compatibility overrides.',
         'Every normal-turn request must expose exactly the two tool schemas shipped by sdk-minimal.',
+        'Session persistence diagnostics expose only bounded file counts, byte counts, and marker-presence booleans.',
         'A PASS is valid only for this exact Harness version/profile/provider/model tuple.',
         'This proof does not authorize a public live Workshop deployment.',
       ],
