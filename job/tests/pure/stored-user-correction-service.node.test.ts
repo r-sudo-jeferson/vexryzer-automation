@@ -18,6 +18,7 @@ import {
 import {
   runStoredUserCorrection,
 } from '../../src/server/session/stored-user-correction-service.ts';
+import { applyContextMutation } from '../../src/ai/context/context-reducer.ts';
 
 const TOKEN = 'abcdefghijklmnopqrstuvwxyzABCDEFGH0123456789_-';
 
@@ -275,7 +276,7 @@ test('claim CAS conflict prevents correction mutation entirely', async () => {
     dependencies: {
       nowEpochMs: () => 1_000,
       leaseId: () => 'lease-conflict',
-      applyContextMutation: ((...args: Parameters<typeof import('../../src/ai/context/context-reducer.ts').applyContextMutation>) => {
+      applyContextMutation: ((...args: Parameters<typeof applyContextMutation>) => {
         mutationCalls += 1;
         throw new Error(String(args.length));
       }) as never,
