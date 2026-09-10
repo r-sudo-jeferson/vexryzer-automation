@@ -108,8 +108,8 @@ const userObservationSchema = Object.freeze({
   additionalProperties: false,
   properties: Object.freeze({
     kind: Object.freeze({ type: 'string', enum: Object.freeze([...USER_OBSERVATION_KINDS]) }),
-    quote: Object.freeze({ type: 'string', minLength: 1, maxLength: 500 }),
-    value: Object.freeze({ type: 'number', minimum: 0 }),
+    quote: Object.freeze({ type: 'string', minLength: 1, maxLength: 500, description: 'A verbatim contiguous substring copied from the current authoritative user turn. Never paraphrase, normalize, translate, add words, or omit the numeric token and semantic markers needed by kind.' }),
+    value: Object.freeze({ type: 'number', minimum: 0, description: 'The exact numeric value visibly present inside quote, using the same magnitude rather than a derived or converted value.' }),
   }),
   required: Object.freeze(['kind', 'quote', 'value']),
 });
@@ -118,7 +118,7 @@ const captureUserObservationsTool: LocalFunctionTool = Object.freeze({
   type: 'function',
   function: Object.freeze({
     name: 'capture_user_observations',
-    description: 'Select numeric evidence explicitly present in the current authoritative user turn. Supply only semantic kind, exact quote and value. The application binds request id, canonical revision, authoritative turn, provenance, unit and period.',
+    description: 'Select numeric evidence explicitly present in the current authoritative user turn. quote MUST be copied verbatim as one contiguous substring of that turn and MUST visibly contain value plus the semantic unit/period markers required by kind. Never paraphrase the quote or derive/convert the value. The application binds request id, canonical revision, authoritative turn, provenance, unit and period.',
     parameters: Object.freeze({
       type: 'object',
       additionalProperties: false,
