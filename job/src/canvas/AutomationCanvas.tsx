@@ -45,8 +45,9 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
   const observedInitialSizeRef = useRef(false);
   const [viewportRevision, setViewportRevision] = useState(0);
   const [directedMobile, setDirectedMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 720px), (pointer: coarse)').matches);
-  const cameraIntent = `${mode}:${focusedNodeId ?? 'none'}:${motionPolicy.reduced ? 'reduced' : 'standard'}`;
+  const cameraIntent = `${mode}:${focusedNodeId ?? 'none'}:${motionPolicy.reduced ? 'reduced' : 'standard'}:${directedMobile ? 'directed-mobile' : 'canvas'}`;
   const processNodeIds = useMemo(() => new Set(fixture.graph.nodes.map((node) => node.id)), [fixture]);
+  const stepCount = fixture.graph.nodes.length;
 
   useEffect(() => {
     if (window.__VXA_PERF__) window.__VXA_PERF__.canvasCommits += 1;
@@ -75,7 +76,7 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
   }, []);
 
   const nodes = useMemo<CanvasNode[]>(() => {
-    const positions = layoutProcessGraph(fixture.graph);
+    const positions = layoutProcessGraph(fixture.graph, { columns: directedMobile ? 2 : 4 });
     const processNodes: ProcessFlowNode[] = fixture.graph.nodes.map((model) => ({
       id: model.id,
       type: 'process',
@@ -94,20 +95,22 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
       deletable: false,
     }));
 
+    if (mode !== 'origin') return processNodes;
+
     const origin: OriginFlowNode = {
       id: 'origin',
       type: 'origin',
       position: { x: -440, y: -40 },
-      data: { muted: mode !== 'origin' },
+      data: { muted: false },
       draggable: false,
       connectable: false,
       selectable: false,
-      focusable: mode === 'origin',
+      focusable: true,
       deletable: false,
     };
 
     return [origin, ...processNodes];
-  }, [fixture, focusedNodeId, mode, zoomBand]);
+  }, [directedMobile, fixture, focusedNodeId, mode, zoomBand]);
 
   const edges = useMemo<Edge[]>(() => fixture.graph.edges.map((edge) => ({
     ...edge,
@@ -210,7 +213,7 @@ function CanvasSurface({ fixture, mode, focusedNodeId, motionPolicy, onFocusNode
       </ReactFlow>
       <div className="vxa-canvas__status" aria-live="polite">
         <span>{zoomBand}</span>
-        <span>{fixture.graph.nodes.length} etapas</span>
+        <span>{stepCount} {stepCount === 1 ? 'etapa' : 'etapas'}</span>
       </div>
     </div>
   );

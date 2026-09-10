@@ -18,6 +18,7 @@
 .vxa-status-dot { padding: 0.35rem 0.5rem; border: 1px solid rgba(138,185,255,0.22); border-radius: var(--vxa-radius-pill); color: var(--vxa-accent-intelligence); background: var(--vxa-accent-intelligence-soft); white-space: nowrap; }
 .vxa-main { position: relative; z-index: 2; padding-block: clamp(3rem, 7vw, 7rem) 3rem; }
 .vxa-intro { display: grid; grid-template-columns: minmax(0, 1fr) minmax(15rem, 22rem); align-items: end; gap: clamp(2rem, 7vw, 8rem); margin-bottom: clamp(2.5rem, 6vw, 5rem); }
+.vxa-intro__copy { animation: vxa-intro-enter 450ms var(--vxa-ease-standard) both; }
 .vxa-kicker { color: var(--vxa-accent-intelligence); font: 700 0.64rem/1 var(--vxa-font-mono); letter-spacing: 0.16em; }
 .vxa-intro h1 { max-width: 13ch; margin: 0.95rem 0 1.25rem; color: var(--vxa-text-platinum); font: 610 var(--vxa-text-hero)/0.92 var(--vxa-font-display); letter-spacing: -0.065em; text-wrap: balance; }
 .vxa-intro__copy > p { max-width: 43rem; margin: 0; color: var(--vxa-text-muted); font-size: var(--vxa-text-lg); line-height: 1.58; text-wrap: pretty; }
@@ -52,6 +53,35 @@
 .vxa-fatal p { color: var(--vxa-text-muted); line-height: 1.6; }
 .vxa-fatal button { min-height: var(--vxa-touch-target); margin-top: 1rem; padding: 0.8rem 1rem; border: 1px solid var(--vxa-border-strong); border-radius: var(--vxa-radius-control); background: var(--vxa-surface-platinum); color: var(--vxa-text-on-light); cursor: pointer; }
 
+.vxa-shell:is([data-mode='process'], [data-mode='focus']) .vxa-main { padding-top: clamp(1.5rem, 3vw, 2.75rem); }
+.vxa-shell:is([data-mode='process'], [data-mode='focus']) .vxa-intro {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 0;
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255,255,255,0.055);
+}
+.vxa-shell:is([data-mode='process'], [data-mode='focus']) .vxa-kicker,
+.vxa-shell:is([data-mode='process'], [data-mode='focus']) .vxa-intro__copy > p,
+.vxa-shell:is([data-mode='process'], [data-mode='focus']) .vxa-principle { display: none; }
+.vxa-shell:is([data-mode='process'], [data-mode='focus']) .vxa-intro h1 {
+  max-width: none;
+  margin: 0;
+  font-size: clamp(1.45rem, 2.4vw, 2.25rem);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+  text-wrap: pretty;
+}
+.vxa-shell:is([data-mode='process'], [data-mode='focus']) .vxa-actions { margin-top: 0.8rem; }
+.vxa-shell:is([data-mode='process'], [data-mode='focus']) .vxa-actions__note { max-width: none; }
+.vxa-shell[data-motion='reduced'] .vxa-intro__copy { animation: none; transform: none; }
+
+@keyframes vxa-intro-enter {
+  from { transform: translateY(14px); }
+  to { transform: translateY(0); }
+}
+
 @media (max-width: 980px) {
   .vxa-intro { grid-template-columns: 1fr; gap: 2rem; }
   .vxa-principle { max-width: 34rem; }
@@ -61,6 +91,7 @@
   .vxa-director__steps { display: grid; gap: 0.4rem; max-height: min(42vh, 19rem); overflow-y: auto; overflow-x: hidden; padding-block: 0.65rem; overscroll-behavior: contain; scrollbar-gutter: stable; }
   .vxa-step { min-width: 0; }
   .vxa-director__controls { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .vxa-shell:is([data-mode='process'], [data-mode='focus']) .vxa-stage > .vxa-canvas { order: -2; }
 }
 @media (max-width: 600px) {
   .vxa-header, .vxa-main, .vxa-footer { width: min(calc(100% - 1.25rem), var(--vxa-content-max)); }
@@ -76,5 +107,11 @@
   .vxa-actions__note { max-width: none; }
   .vxa-principle { display: none; }
   .vxa-footer { flex-direction: column; }
+  .vxa-shell:is([data-mode='process'], [data-mode='focus']) .vxa-main { padding-top: 1rem; }
+  .vxa-shell:is([data-mode='process'], [data-mode='focus']) .vxa-intro { margin-bottom: 0.85rem; padding-bottom: 0.85rem; }
+  .vxa-shell:is([data-mode='process'], [data-mode='focus']) .vxa-intro h1 { max-width: 24ch; font-size: 1.35rem; }
+  .vxa-shell:is([data-mode='process'], [data-mode='focus']) .vxa-actions { margin-top: 0.65rem; }
+  .vxa-shell:is([data-mode='process'], [data-mode='focus']) .vxa-actions__note { display: none; }
+  .vxa-shell:is([data-mode='process'], [data-mode='focus']) .vxa-button { width: auto; max-width: 100%; min-height: 2.75rem; padding: 0.65rem 0.85rem; }
 }
 @media (prefers-reduced-motion: reduce) { .vxa-button:hover { transform: none; } }

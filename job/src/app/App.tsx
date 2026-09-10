@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useMachine } from '@xstate/react';
-import { motion } from 'motion/react';
 import { appMachine, type AppMachineEvent } from './app-machine.ts';
 import { transitionExperience, type ExperienceMode } from './experience-state.ts';
 import { decodeViewState, encodeViewState } from './view-state.ts';
@@ -33,6 +32,8 @@ export function App() {
   const mode: ExperienceMode = snapshot.matches('origin') ? 'origin' : snapshot.matches('process') ? 'process' : 'focus';
   const focusedNodeId = snapshot.context.focusedNodeId;
   const validNodeIds = useMemo(() => fixture.graph.nodes.map((node) => node.id), [fixture]);
+  const stepCount = fixture.graph.nodes.length;
+  const mappedStepLabel = `${stepCount} ${stepCount === 1 ? 'etapa mapeada' : 'etapas mapeadas'}`;
 
   const restoreFromLocation = useCallback(() => {
     const desired = decodeViewState(window.location.hash, validNodeIds);
@@ -63,7 +64,7 @@ export function App() {
   };
 
   return (
-    <div className="vxa-shell" data-motion={motionPolicy.reduced ? 'reduced' : 'standard'}>
+    <div className="vxa-shell" data-mode={mode} data-motion={motionPolicy.reduced ? 'reduced' : 'standard'}>
       <a className="vxa-skip" href="#vxa-primary">Ir para a experiência</a>
       <header className="vxa-header">
         <a className="vxa-brand" href="/" aria-label="Vexryzer Automation — início">
@@ -78,12 +79,7 @@ export function App() {
 
       <main id="vxa-primary" className="vxa-main" tabIndex={-1}>
         <section className="vxa-intro" aria-labelledby="vxa-title">
-          <motion.div
-            className="vxa-intro__copy"
-            initial={{ y: motionPolicy.reduced ? 0 : 14 }}
-            animate={{ y: 0 }}
-            transition={{ duration: motionPolicy.reduced ? 0.09 : 0.45 }}
-          >
+          <div className="vxa-intro__copy">
             <span className="vxa-kicker">AUTOMAÇÃO COMEÇA COM CLAREZA</span>
             <h1 id="vxa-title">Onde o seu time ainda trabalha como máquina?</h1>
             <p>Mostre o processo. A Vexryzer transforma trabalho repetitivo em uma visão operacional clara — antes de qualquer promessa técnica.</p>
@@ -100,7 +96,7 @@ export function App() {
               )}
               <span className="vxa-actions__note">Experiência visual · interação local sem envio de dados</span>
             </div>
-          </motion.div>
+          </div>
 
           <aside className="vxa-principle" aria-label="Princípio da experiência">
             <span>01 / ENTENDER</span>
@@ -120,7 +116,7 @@ export function App() {
           <nav className="vxa-director" aria-label="Navegação dirigida do processo">
             <div className="vxa-director__heading">
               <span>PROCESSO</span>
-              <strong>{mode === 'origin' ? 'Pronto para revelar' : `${fixture.graph.nodes.length} etapas mapeadas`}</strong>
+              <strong>{mode === 'origin' ? 'Pronto para revelar' : mappedStepLabel}</strong>
             </div>
             <div className="vxa-director__steps">
               {mode === 'origin' ? (
