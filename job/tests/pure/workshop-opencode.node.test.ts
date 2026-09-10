@@ -20,7 +20,7 @@ test('pins the immutable OpenCode release and installation package exactly', () 
   assert.equal(manifest.private, true);
 });
 
-test('renders a Groq-only OpenCode config with deny-by-default Workshop permissions', () => {
+test('renders a Groq-native OpenCode config with deny-by-default Workshop permissions', () => {
   const config = JSON.parse(renderOpenCodeConfig({
     modelId: 'openai/gpt-oss-120b',
     credentialRef: 'GROQ_API_KEY',
@@ -30,7 +30,8 @@ test('renders a Groq-only OpenCode config with deny-by-default Workshop permissi
   assert.equal(config.share, 'disabled');
   assert.equal(config.autoupdate, false);
   assert.deepEqual(Object.keys(config.provider), ['vxa-groq']);
-  assert.equal(config.provider['vxa-groq'].npm, '@ai-sdk/openai-compatible');
+  assert.equal(config.provider['vxa-groq'].npm, '@ai-sdk/groq');
+  assert.notEqual(config.provider['vxa-groq'].npm, '@ai-sdk/openai-compatible');
   assert.equal(config.provider['vxa-groq'].options.baseURL, 'https://api.groq.com/openai/v1');
   assert.equal(config.provider['vxa-groq'].options.apiKey, '{env:GROQ_API_KEY}');
   assert.deepEqual(Object.keys(config.provider['vxa-groq'].models), ['openai/gpt-oss-120b']);
