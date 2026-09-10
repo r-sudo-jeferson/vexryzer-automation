@@ -309,7 +309,7 @@ async function main() {
       evidence: normal.diagnosticCounts,
       notes: [
         'Raw provider payloads and model credentials are intentionally not emitted.',
-        'The primary proof uses the pinned Harness Mistral catalog route before any configured transport override.',
+        'The configured llm-pi-ai Mistral route is used only after the pinned catalog route proved it does not contain this exact model.',
         'A PASS is valid only for this exact Harness version/provider/model tuple.',
         'This proof does not authorize a public live Workshop deployment.',
       ],
