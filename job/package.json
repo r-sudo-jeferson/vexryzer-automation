@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.25.0",
-  "engines": { "node": ">=24 <25" },
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -16,9 +18,9 @@
     "test:component": "vitest run tests/component",
     "test:e2e": "playwright test tests/e2e",
     "test:a11y": "playwright test tests/e2e/accessibility.spec.ts",
-    "test:visual": "playwright test tests/visual",
+    "test:visual": "playwright test tests/visual --project=chromium-desktop",
     "verify:foundation": "node scripts/validate-foundation.mjs ..",
-    "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm test:e2e"
+    "verify": "pnpm verify:foundation && pnpm typecheck && pnpm test && pnpm build && pnpm test:e2e && pnpm test:visual"
   },
   "dependencies": {
     "@xstate/react": "6.1.0",
