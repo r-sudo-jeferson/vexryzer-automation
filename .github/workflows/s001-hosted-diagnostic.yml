@@ -1,4 +1,4 @@
-# Diagnostic iteration 7: SHA-pinned supply chain, browser convergence, and isolated lockfile capture.
+# Diagnostic iteration 8: browser regression root-cause fixes, unchanged hard gates, isolated lockfile capture.
 name: S001 Hosted Diagnostic
 
 on:
