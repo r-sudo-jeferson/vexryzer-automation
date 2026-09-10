@@ -194,6 +194,131 @@ test('busy and network failure keep a valid session for retry', async () => {
   assert.equal(starts, 1);
 });
 
+test('explicit correction sends only correctionId and advances revision after validated response', async () => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  let request = 0;
+  const client = createAskAiClient({
+    createRequestId: () => `request-${++request}`,
+    fetchImpl: (async (input, init) => {
+      calls.push({ url: String(input), init });
+      if (String(input).endsWith('/session')) {
+        return new Response(JSON.stringify({
+          ok: true, sessionId: 'session-client', sessionToken: TOKEN, revision: 0,
+        }), { status: 201 });
+      }
+      if (String(input).endsWith('/correction')) {
+        return new Response(JSON.stringify({
+          ok: true,
+          idempotent: false,
+          correctionId: 'correction-one',
+          state: {
+            ...accepted(2).state,
+            canonicalRevision: 2,
+          },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify(accepted(1)), { status: 200 });
+    }) as typeof fetch,
+  });
+
+  assert.equal((await client.submit('Primeiro turno')).ok, true);
+  const correction = await client.applyCorrection('correction-one');
+  assert.equal(correction.ok, true);
+  const correctionCall = calls.find((item) => item.url.endsWith('/correction'))!;
+  assert.equal(new Headers(correctionCall.init?.headers).get('authorization'), `Bearer ${TOKEN}`);
+  const body = JSON.parse(String(correctionCall.init?.body)) as Record<string, unknown>;
+  assert.deepEqual(body, {
+    sessionId: 'session-client',
+    requestId: 'request-2',
+    expectedRevision: 1,
+    correctionId: 'correction-one',
+  });
+  assert.equal(Object.hasOwn(body, 'replacementValue'), false);
+  assert.equal(Object.hasOwn(body, 'targetEvidenceId'), false);
+  assert.equal(Object.hasOwn(body, 'source'), false);
+
+  await client.submit('Depois da correção');
+  const lastTurnBody = JSON.parse(String(calls.at(-1)?.init?.body)) as Record<string, unknown>;
+  assert.equal(lastTurnBody.expectedRevision, 2);
+});
+
+test('correction action requires active session and exact returned correction identity', async () => {
+  let starts = 0;
+  let correctionCalls = 0;
+  let request = 0;
+  const client = createAskAiClient({
+    createRequestId: () => `request-${++request}`,
+    fetchImpl: (async (input) => {
+      if (String(input).endsWith('/session')) {
+        starts += 1;
+        return new Response(JSON.stringify({
+          ok: true, sessionId: 'session-client', sessionToken: TOKEN, revision: 0,
+        }), { status: 201 });
+      }
+      if (String(input).endsWith('/correction')) {
+        correctionCalls += 1;
+        return new Response(JSON.stringify({
+          ok: true,
+          idempotent: false,
+          correctionId: 'different-correction',
+          state: accepted(2).state,
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify(accepted(1)), { status: 200 });
+    }) as typeof fetch,
+  });
+
+  const noSession = await client.applyCorrection('correction-one');
+  assert.equal(noSession.ok, false);
+  if (!noSession.ok) assert.equal(noSession.code, 'NO_ACTIVE_SESSION');
+  assert.equal(starts, 0);
+
+  assert.equal((await client.submit('Cria sessão')).ok, true);
+  const mismatch = await client.applyCorrection('correction-one');
+  assert.equal(mismatch.ok, false);
+  if (!mismatch.ok) assert.equal(mismatch.code, 'SESSION_ID_MISMATCH');
+  assert.equal(correctionCalls, 1);
+  assert.equal(client.hasSession(), false);
+});
+
+test('correction stale/conflict invalidates uncertain local session while busy keeps it retryable', async () => {
+  let phase: 'turn' | 'busy' | 'conflict' = 'turn';
+  let request = 0;
+  const client = createAskAiClient({
+    createRequestId: () => `request-${++request}`,
+    fetchImpl: (async (input) => {
+      if (String(input).endsWith('/session')) {
+        return new Response(JSON.stringify({
+          ok: true, sessionId: 'session-client', sessionToken: TOKEN, revision: 0,
+        }), { status: 201 });
+      }
+      if (String(input).endsWith('/correction')) {
+        if (phase === 'busy') {
+          return new Response(JSON.stringify({
+            ok: false, code: 'SESSION_BUSY', currentRevision: 1,
+          }), { status: 409 });
+        }
+        return new Response(JSON.stringify({
+          ok: false, code: 'SESSION_CONFLICT', currentRevision: 1,
+        }), { status: 409 });
+      }
+      return new Response(JSON.stringify(accepted(1)), { status: 200 });
+    }) as typeof fetch,
+  });
+
+  assert.equal((await client.submit('Cria sessão')).ok, true);
+  phase = 'busy';
+  const busy = await client.applyCorrection('correction-one');
+  assert.equal(busy.ok, false);
+  if (!busy.ok) assert.equal(busy.retryable, true);
+  assert.equal(client.hasSession(), true);
+
+  phase = 'conflict';
+  const conflict = await client.applyCorrection('correction-one');
+  assert.equal(conflict.ok, false);
+  assert.equal(client.hasSession(), false);
+});
+
 test('malformed accepted payload never mutates client revision', async () => {
   const bodies: Record<string, unknown>[] = [];
   let count = 0;
