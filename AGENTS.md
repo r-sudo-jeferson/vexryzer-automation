@@ -70,7 +70,7 @@ No disposable MVP, generic template UI, superficial chatbot, placeholder flows, 
 AI_PROVIDER: `DeepSeek`
 AI_MODEL: `deepseek-v4-pro`
 AI_HARNESS: `DeepSeek Harness`
-AI_HARNESS_TARGET_VERSION: `0.1.5-rc.2`
+AI_HARNESS_TARGET_VERSION: `0.1.5-rc.1`
 AI_CREDENTIAL_ENV: `DEEPSEEK_API_KEY`
 AI_API_BASE: `https://api.deepseek.com`
 
