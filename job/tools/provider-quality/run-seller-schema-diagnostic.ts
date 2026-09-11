@@ -36,15 +36,6 @@ function syntheticTool(name: string, parameters: Readonly<Record<string, unknown
   });
 }
 
-const paddedSimpleControlTool = syntheticTool('capture_padded_signal', Object.freeze({
-  type: 'object',
-  additionalProperties: false,
-  properties: Object.freeze({
-    value: Object.freeze({ type: 'string', description: 'x'.repeat(7_000) }),
-  }),
-  required: Object.freeze(['value']),
-}));
-
 function buildDeepSchema(levels: number): Readonly<Record<string, unknown>> {
   let nested: Readonly<Record<string, unknown>> = Object.freeze({ type: 'string' });
   for (let index = 0; index < levels; index += 1) {
@@ -192,6 +183,18 @@ export function buildSellerSchemaDiagnosticCases(): readonly Readonly<SellerSche
   if (capture === undefined || calculation === undefined || submit === undefined) {
     throw new TypeError('complete Seller tool set is required for schema diagnostics');
   }
+  const submitSchemaBytes = new TextEncoder().encode(JSON.stringify([submit])).byteLength;
+  const paddedSimpleControlTool = syntheticTool('capture_padded_signal', Object.freeze({
+    type: 'object',
+    additionalProperties: false,
+    properties: Object.freeze({
+      value: Object.freeze({
+        type: 'string',
+        description: 'x'.repeat(Math.min(48_000, Math.max(7_000, submitSchemaBytes + 1_024))),
+      }),
+    }),
+    required: Object.freeze(['value']),
+  }));
   const envelopeOnly = buildSubmitSubsetTool(submit, ['schemaVersion', 'proposalId']);
   const intentOnly = buildSubmitSubsetTool(
     submit,

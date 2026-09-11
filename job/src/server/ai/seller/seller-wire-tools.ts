@@ -188,84 +188,25 @@ function closedObjectSchema(
   });
 }
 
-const actionKindSchema = (kind: string): Readonly<Record<string, unknown>> => Object.freeze({
-  type: 'string',
-  enum: Object.freeze([kind]),
-});
+const experienceActionSchema = closedObjectSchema({
+  kind: Object.freeze({ type: 'string', enum: Object.freeze([...EXPERIENCE_ACTION_KINDS]) }),
+  id: idSchema,
+  targetId: Object.freeze({ oneOf: Object.freeze([idSchema, Object.freeze({ type: 'null' })]) }),
+  targetIds: idArraySchema(AGENT_INTENT_LIMITS.actionTargetIds),
+  reason: nonEmptyTextSchema(600),
+  text: nonEmptyTextSchema(1000),
+  evidenceIds: idArraySchema(AGENT_INTENT_LIMITS.evidenceIds),
+  groupId: idSchema,
+  memberIds: idArraySchema(AGENT_INTENT_LIMITS.actionTargetIds),
+  label: nonEmptyTextSchema(200),
+  calculationId: idSchema,
+  artifactIntentId: idSchema,
+  sourceId: idSchema,
+}, ['id', 'kind']);
 
-const experienceActionSchema = Object.freeze({
-  oneOf: Object.freeze([
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('focus'),
-      targetId: idSchema,
-      reason: nonEmptyTextSchema(600),
-    }, ['id', 'kind', 'targetId', 'reason']),
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('reveal'),
-      targetId: idSchema,
-      reason: nonEmptyTextSchema(600),
-    }, ['id', 'kind', 'targetId', 'reason']),
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('compare'),
-      targetIds: idArraySchema(AGENT_INTENT_LIMITS.actionTargetIds, 2),
-      reason: nonEmptyTextSchema(600),
-    }, ['id', 'kind', 'targetIds', 'reason']),
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('de_emphasize'),
-      targetIds: idArraySchema(AGENT_INTENT_LIMITS.actionTargetIds, 1),
-      reason: nonEmptyTextSchema(600),
-    }, ['id', 'kind', 'targetIds', 'reason']),
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('annotate'),
-      targetId: idSchema,
-      text: nonEmptyTextSchema(1000),
-      evidenceIds: idArraySchema(AGENT_INTENT_LIMITS.evidenceIds),
-    }, ['id', 'kind', 'targetId', 'text', 'evidenceIds']),
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('group'),
-      groupId: idSchema,
-      memberIds: idArraySchema(AGENT_INTENT_LIMITS.actionTargetIds, 2),
-      label: nonEmptyTextSchema(200),
-    }, ['id', 'kind', 'groupId', 'memberIds', 'label']),
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('quantify'),
-      calculationId: idSchema,
-      targetId: Object.freeze({ oneOf: Object.freeze([idSchema, Object.freeze({ type: 'null' })]) }),
-      reason: nonEmptyTextSchema(600),
-    }, ['id', 'kind', 'calculationId', 'targetId', 'reason']),
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('demonstrate'),
-      artifactIntentId: idSchema,
-      reason: nonEmptyTextSchema(600),
-    }, ['id', 'kind', 'artifactIntentId', 'reason']),
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('stage_artifact'),
-      artifactIntentId: idSchema,
-      reason: nonEmptyTextSchema(600),
-    }, ['id', 'kind', 'artifactIntentId', 'reason']),
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('request_workshop'),
-      artifactIntentId: idSchema,
-      reason: nonEmptyTextSchema(600),
-    }, ['id', 'kind', 'artifactIntentId', 'reason']),
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('explain_relationship'),
-      sourceId: idSchema,
-      targetId: idSchema,
-      text: nonEmptyTextSchema(1000),
-    }, ['id', 'kind', 'sourceId', 'targetId', 'text']),
-  ]),
+const experienceActionSchemaWithContract = Object.freeze({
+  ...experienceActionSchema,
+  description: 'Emit only fields allowed by kind: focus/reveal=id+kind+targetId+reason; compare/de_emphasize=id+kind+targetIds+reason; annotate=id+kind+targetId+text+evidenceIds; group=id+kind+groupId+memberIds+label; quantify=id+kind+calculationId+targetId+reason; demonstrate/stage_artifact/request_workshop=id+kind+artifactIntentId+reason; explain_relationship=id+kind+sourceId+targetId+text. Never mix fields from different kinds.',
 });
 
 const quantitativeOpportunitySchema = closedObjectSchema({
@@ -314,7 +255,7 @@ const agentIntentSchema = closedObjectSchema({
   actions: Object.freeze({
     type: 'array',
     maxItems: AGENT_INTENT_LIMITS.actions,
-    items: experienceActionSchema,
+    items: experienceActionSchemaWithContract,
   }),
   quantitativeOpportunities: Object.freeze({
     type: 'array',
@@ -359,39 +300,24 @@ const correctionProposalSchema = closedObjectSchema({
   supportingTurnIds: idArraySchema(EXPERIENCE_PROPOSAL_LIMITS.evidenceIds),
 }, ['id', 'targetEvidenceId', 'reason', 'replacementValue', 'supportingTurnIds']);
 
-const processMutationSchema = Object.freeze({
-  oneOf: Object.freeze([
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('upsert_node'),
-      nodeId: idSchema,
-      label: nonEmptyTextSchema(EXPERIENCE_PROPOSAL_LIMITS.processNodeLabel),
-      summary: nonEmptyTextSchema(EXPERIENCE_PROPOSAL_LIMITS.processNodeSummary),
-      evidenceIds: idArraySchema(EXPERIENCE_PROPOSAL_LIMITS.evidenceIds),
-    }, ['id', 'kind', 'nodeId', 'label', 'summary', 'evidenceIds']),
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('upsert_relationship'),
-      relationshipId: idSchema,
-      sourceNodeId: idSchema,
-      targetNodeId: idSchema,
-      label: nonEmptyTextSchema(EXPERIENCE_PROPOSAL_LIMITS.processRelationshipLabel),
-      evidenceIds: idArraySchema(EXPERIENCE_PROPOSAL_LIMITS.evidenceIds),
-    }, ['id', 'kind', 'relationshipId', 'sourceNodeId', 'targetNodeId', 'label', 'evidenceIds']),
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('remove_element'),
-      targetId: idSchema,
-      reason: nonEmptyTextSchema(600),
-    }, ['id', 'kind', 'targetId', 'reason']),
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('set_node_state'),
-      nodeId: idSchema,
-      state: Object.freeze({ type: 'string', enum: Object.freeze(['active', 'hypothesis', 'invalidated']) }),
-      reason: nonEmptyTextSchema(600),
-    }, ['id', 'kind', 'nodeId', 'state', 'reason']),
-  ]),
+const processMutationSchema = closedObjectSchema({
+  id: idSchema,
+  kind: Object.freeze({ type: 'string', enum: Object.freeze(['upsert_node', 'upsert_relationship', 'remove_element', 'set_node_state']) }),
+  nodeId: idSchema,
+  label: nonEmptyTextSchema(EXPERIENCE_PROPOSAL_LIMITS.processNodeLabel),
+  summary: nonEmptyTextSchema(EXPERIENCE_PROPOSAL_LIMITS.processNodeSummary),
+  evidenceIds: idArraySchema(EXPERIENCE_PROPOSAL_LIMITS.evidenceIds),
+  relationshipId: idSchema,
+  sourceNodeId: idSchema,
+  targetNodeId: idSchema,
+  targetId: idSchema,
+  reason: nonEmptyTextSchema(600),
+  state: Object.freeze({ type: 'string', enum: Object.freeze(['active', 'hypothesis', 'invalidated']) }),
+}, ['id', 'kind']);
+
+const processMutationSchemaWithContract = Object.freeze({
+  ...processMutationSchema,
+  description: 'Emit only fields allowed by kind: upsert_node=id+kind+nodeId+label+summary+evidenceIds; upsert_relationship=id+kind+relationshipId+sourceNodeId+targetNodeId+label+evidenceIds; remove_element=id+kind+targetId+reason; set_node_state=id+kind+nodeId+state+reason. Never mix fields from different kinds.',
 });
 
 const sceneProposalSchema = Object.freeze({
@@ -437,7 +363,7 @@ const modelFacingProposalSchema = closedObjectSchema({
   processMutations: Object.freeze({
     type: 'array',
     maxItems: EXPERIENCE_PROPOSAL_LIMITS.processMutations,
-    items: processMutationSchema,
+    items: processMutationSchemaWithContract,
   }),
   sceneProposal: sceneProposalSchema,
   artifactProposals: Object.freeze({
@@ -462,35 +388,20 @@ const modelFacingProposalSchema = closedObjectSchema({
   'criticRequired',
 ]);
 
-const safeMaterialClaimSchema = Object.freeze({
-  oneOf: Object.freeze([
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('verified_numeric'),
-      text: nonEmptyTextSchema(1200),
-      calculationId: idSchema,
-    }, ['id', 'kind', 'text', 'calculationId']),
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('qualitative'),
-      text: nonEmptyTextSchema(1200),
-      evidenceIds: idArraySchema(32),
-    }, ['id', 'kind', 'text', 'evidenceIds']),
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('feasibility'),
-      text: nonEmptyTextSchema(1200),
-      state: Object.freeze({ type: 'string', enum: Object.freeze(['unknown', 'conditional']) }),
-      evidenceIds: idArraySchema(32),
-    }, ['id', 'kind', 'text', 'state', 'evidenceIds']),
-    closedObjectSchema({
-      id: idSchema,
-      kind: actionKindSchema('artifact_readiness'),
-      text: nonEmptyTextSchema(1200),
-      artifactId: idSchema,
-      readiness: Object.freeze({ type: 'string', enum: Object.freeze(['conceptual', 'prototype']) }),
-    }, ['id', 'kind', 'text', 'artifactId', 'readiness']),
-  ]),
+const safeMaterialClaimSchema = closedObjectSchema({
+  id: idSchema,
+  kind: Object.freeze({ type: 'string', enum: Object.freeze(['verified_numeric', 'qualitative', 'feasibility', 'artifact_readiness']) }),
+  text: nonEmptyTextSchema(1200),
+  calculationId: idSchema,
+  evidenceIds: idArraySchema(32),
+  state: Object.freeze({ type: 'string', enum: Object.freeze(['unknown', 'conditional']) }),
+  artifactId: idSchema,
+  readiness: Object.freeze({ type: 'string', enum: Object.freeze(['conceptual', 'prototype']) }),
+}, ['id', 'kind', 'text']);
+
+const safeMaterialClaimSchemaWithContract = Object.freeze({
+  ...safeMaterialClaimSchema,
+  description: 'Required fields by kind: verified_numeric=id+kind+text+calculationId; qualitative=id+kind+text+evidenceIds; feasibility=id+kind+text+state+evidenceIds; artifact_readiness=id+kind+text+artifactId+readiness. Never emit fields from another kind.',
 });
 
 const submitSellerTool: LocalFunctionTool = Object.freeze({
@@ -506,7 +417,7 @@ const submitSellerTool: LocalFunctionTool = Object.freeze({
         materialClaims: Object.freeze({
           type: 'array',
           maxItems: 20,
-          items: safeMaterialClaimSchema,
+          items: safeMaterialClaimSchemaWithContract,
         }),
         calculationRequests: Object.freeze({
           type: 'array',
