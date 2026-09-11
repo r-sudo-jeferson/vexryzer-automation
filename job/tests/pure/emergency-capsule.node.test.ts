@@ -16,7 +16,7 @@ const canonical = {
   openUncertainties: [],
   opportunities: [],
   artifacts: [{
-    id: 'artifact-fallback',
+    id: 'artifact-recovery',
     kind: 'prototype',
     title: 'Portal demonstrativo',
     summary: 'Protótipo não produtivo para reduzir incerteza.',
@@ -32,7 +32,7 @@ const canonical = {
 const visualState = {
   sceneId: 'scene-portfolio',
   focusedEntityIds: ['fact-clients'],
-  activeArtifactIds: ['artifact-fallback'],
+  activeArtifactIds: ['artifact-recovery'],
   processNodes: [{
     id: 'closing-review',
     label: 'Conferência do fechamento',
@@ -41,7 +41,7 @@ const visualState = {
   }],
 } as const;
 
-test('emergency capsule module exposes the fallback boundary', async () => {
+test('emergency capsule module exposes the deterministic recovery boundary', async () => {
   let moduleValue: Record<string, unknown> | null = null;
   try {
     moduleValue = await import('../../src/ai/context/emergency-capsule.ts');
@@ -53,7 +53,7 @@ test('emergency capsule module exposes the fallback boundary', async () => {
 
 test('bounded emergency context rebuilds from canonical truth and stays inside the injected budget', async () => {
   const { buildEmergencyContinuationCapsule } = await import('../../src/ai/context/emergency-capsule.ts');
-  const budget = { maxInputTokens: 8000, reservedOutputTokens: 2000, emergencyInputTokens: 1800 } as const;
+  const budget = { inputTokenLimit: 1800 } as const;
   const estimateTokens = (value: unknown) => JSON.stringify(value).length;
   const result = buildEmergencyContinuationCapsule({ canonical, visualState, budget, estimateTokens });
 
@@ -62,12 +62,12 @@ test('bounded emergency context rebuilds from canonical truth and stays inside t
   assert.equal(result.capsule.canonicalRevision, canonical.revision);
   assert.equal(result.capsule.confirmedFacts[0]?.id, 'fact-clients');
   assert.equal(result.capsule.latestUserIntent?.text, canonical.latestUserIntent.text);
-  assert.equal(result.capsule.activeArtifacts[0]?.id, 'artifact-fallback');
+  assert.equal(result.capsule.activeArtifacts[0]?.id, 'artifact-recovery');
   assert.equal(result.capsule.activeArtifacts[0]?.maturity, 'prototype');
   assert.equal(result.capsule.activeArtifacts[0]?.status, 'revealed');
   assert.deepEqual(result.capsule.processNodes.map((item) => item.id), ['closing-review']);
   assert.equal(result.capsule.processNodes[0]?.provenance, 'user_confirmed');
-  assert.equal(result.capsule.estimatedInputTokens <= budget.emergencyInputTokens, true);
+  assert.equal(result.capsule.estimatedInputTokens <= budget.inputTokenLimit, true);
   const serialized = JSON.stringify(result.capsule);
   assert.equal(serialized.includes('providerConversationId'), false);
   assert.equal(serialized.includes('conversationId'), false);
