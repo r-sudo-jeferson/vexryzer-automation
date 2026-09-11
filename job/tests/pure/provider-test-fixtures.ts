@@ -27,7 +27,6 @@ export function createVerifiedRouteFixture(
       structuredArguments: 'PASS',
     } as const),
     maxInputTokens: 16_000,
-    emergencyInputTokens: 4_000,
     evidence: Object.freeze({ verifiedSha: 'fixture-sha', runId: 'fixture-run' }),
     ...overrides,
   });
