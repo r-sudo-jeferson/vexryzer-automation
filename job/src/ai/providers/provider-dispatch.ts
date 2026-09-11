@@ -20,7 +20,14 @@ export interface ProviderDispatchEnvelope<TContext extends CanonicalDispatchCont
 
 export type ProviderDispatchResult<TContext extends CanonicalDispatchContext = CanonicalDispatchContext> =
   | { ok: true; envelope: Readonly<ProviderDispatchEnvelope<TContext>> }
-  | { ok: false; code: 'CLIENT_CREDENTIAL_FORBIDDEN' | 'ROUTE_NOT_ACTIVE' | 'SELECTED_CONTEXT_MISSING' | 'CANONICAL_REVISION_MISMATCH' };
+  | {
+      ok: false;
+      code:
+        | 'CLIENT_CREDENTIAL_FORBIDDEN'
+        | 'ROUTE_NOT_ACTIVE'
+        | 'SELECTED_CONTEXT_MISSING'
+        | 'CANONICAL_REVISION_MISMATCH';
+    };
 
 function routeHasRequiredRoleQuality(decision: Readonly<ProviderRouteDecision>): boolean {
   const route = decision.route;
@@ -28,7 +35,8 @@ function routeHasRequiredRoleQuality(decision: Readonly<ProviderRouteDecision>):
     case 'seller': return route.sellerQuality === 'PASS';
     case 'critic': return route.criticQuality === 'PASS';
     case 'composer': return route.composerQuality === 'PASS';
-    case 'workshop': return route.harnessCompatibility === 'PASS' && route.workshopSafety === 'PASS';
+    case 'workshop':
+      return route.harnessCompatibility === 'PASS' && route.workshopSafety === 'PASS';
   }
 }
 
@@ -39,30 +47,31 @@ function routeIsStaticallyDispatchable(decision: Readonly<ProviderRouteDecision>
     || route.modelId !== 'deepseek-v4-pro'
     || route.credentialEnvName !== 'DEEPSEEK_API_KEY'
     || route.tier !== 'primary'
-  ) return false;
-  const requirements = decision.requirements;
-  const expectedContextMode = route.tier === 'primary' ? 'full' : 'emergency_capsule';
-  const expectedFallback = route.tier === 'primary' ? decision.fallbackReason === null : decision.fallbackReason !== null;
-  if (decision.contextMode !== expectedContextMode || !expectedFallback) return false;
-  if (
-    !requirements ||
-    !Number.isFinite(requirements.inputTokens) ||
-    requirements.inputTokens < 0 ||
-    typeof requirements.requiresStreaming !== 'boolean' ||
-    typeof requirements.requiresTools !== 'boolean' ||
-    typeof requirements.requiresStructuredArguments !== 'boolean'
+    || decision.contextMode !== 'full'
+    || decision.fallbackReason !== null
   ) return false;
 
-  const contextLimit = decision.contextMode === 'full' ? route.maxInputTokens : route.emergencyInputTokens;
-  if (contextLimit === null || requirements.inputTokens > contextLimit) return false;
+  const requirements = decision.requirements;
+  if (
+    !requirements
+    || !Number.isFinite(requirements.inputTokens)
+    || requirements.inputTokens < 0
+    || typeof requirements.requiresStreaming !== 'boolean'
+    || typeof requirements.requiresTools !== 'boolean'
+    || typeof requirements.requiresStructuredArguments !== 'boolean'
+  ) return false;
+
+  if (route.maxInputTokens === null || requirements.inputTokens > route.maxInputTokens) return false;
   if (requirements.requiresStreaming && route.capabilities.streaming !== 'PASS') return false;
   if (requirements.requiresTools && route.capabilities.tools !== 'PASS') return false;
-  if (requirements.requiresStructuredArguments && route.capabilities.structuredArguments !== 'PASS') return false;
+  if (
+    requirements.requiresStructuredArguments
+    && route.capabilities.structuredArguments !== 'PASS'
+  ) return false;
 
   return route.enabledByDefault
-    && route.tier !== 'standby'
     && route.credentialScope === 'server'
-    && route.noPaymentEligibility === 'PASS'
+    && route.billingAuthorization === 'PASS'
     && route.protocolCompatibility === 'PASS'
     && route.runtimeActivation === 'PASS'
     && route.roles.includes(decision.role)
@@ -78,9 +87,14 @@ export function createProviderDispatchEnvelope<
   emergencyCapsule?: TEmergency;
 }): ProviderDispatchResult<TFull | TEmergency> {
   const route = input.decision.route;
-  if (route.credentialScope !== 'server') return { ok: false, code: 'CLIENT_CREDENTIAL_FORBIDDEN' };
-  if (!routeIsStaticallyDispatchable(input.decision)) return { ok: false, code: 'ROUTE_NOT_ACTIVE' };
-  const context = input.decision.contextMode === 'full' ? input.fullContext : input.emergencyCapsule;
+  if (route.credentialScope !== 'server') {
+    return { ok: false, code: 'CLIENT_CREDENTIAL_FORBIDDEN' };
+  }
+  if (!routeIsStaticallyDispatchable(input.decision)) {
+    return { ok: false, code: 'ROUTE_NOT_ACTIVE' };
+  }
+
+  const context = input.fullContext;
   if (context === undefined) return { ok: false, code: 'SELECTED_CONTEXT_MISSING' };
   if (context.canonicalRevision !== input.decision.canonicalRevision) {
     return { ok: false, code: 'CANONICAL_REVISION_MISMATCH' };
@@ -95,8 +109,8 @@ export function createProviderDispatchEnvelope<
       modelId: route.modelId,
       role: input.decision.role,
       canonicalRevision: input.decision.canonicalRevision,
-      contextMode: input.decision.contextMode,
-      fallbackReason: input.decision.fallbackReason,
+      contextMode: 'full',
+      fallbackReason: null,
       credentialEnvName: route.credentialEnvName,
       context,
     }),
