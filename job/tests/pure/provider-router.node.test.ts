@@ -30,7 +30,7 @@ test('authorized registry exposes exactly one fail-closed DeepSeek V4 Pro route'
   assert.equal(route.protocolCompatibility, 'NOT_VERIFIED');
   assert.equal(route.runtimeActivation, 'NOT_VERIFIED');
   assert.equal(route.harnessCompatibility, 'NOT_VERIFIED');
-  assert.equal(route.workshopHarness, 'DeepSeek-Harness@0.1.5-rc.2');
+  assert.equal(route.workshopHarness, 'DeepSeek-Harness@0.1.5-rc.1');
 });
 
 test('Founder prepaid billing authorization is mandatory but never substitutes technical verification', () => {
