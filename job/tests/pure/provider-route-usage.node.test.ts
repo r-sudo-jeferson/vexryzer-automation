@@ -30,8 +30,8 @@ test('single-route packed token usage binds the exact DeepSeek input measurement
   if (!result.ok) return;
   assert.equal(result.route.routeId, route.routeId);
   assert.equal(result.requirements.inputTokens, 875);
-  assert.equal(result.contextMode, 'full');
-  assert.equal(result.fallbackReason, null);
+  assert.equal('contextMode' in result, false);
+  assert.equal('fallbackReason' in result, false);
 });
 
 test('single-route token usage is fail-closed on wrong route or invalid measurement', async (t) => {
