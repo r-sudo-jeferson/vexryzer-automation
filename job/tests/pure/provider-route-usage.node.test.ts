@@ -7,81 +7,71 @@ function runtime(routeId: string) {
   return { routeId, circuit: 'closed', quota: 'available' } as const;
 }
 
-test('route-specific packed token usage preserves an eligible compacted primary', () => {
-  const compactPrimary = createVerifiedRouteFixture({
-    routeId: 'compact-primary',
-    tier: 'primary',
-    priority: 1,
-    maxInputTokens: 1_000,
-    emergencyInputTokens: 400,
-  });
-  const roomyPrimary = createVerifiedRouteFixture({
-    routeId: 'roomy-primary',
-    tier: 'primary',
-    priority: 2,
-    maxInputTokens: 2_000,
-    emergencyInputTokens: 800,
-  });
+const BASE_REQUEST = Object.freeze({
+  role: 'seller' as const,
+  canonicalRevision: 9,
+  fullContextInputTokens: 900,
+  emergencyCapsuleInputTokens: 0,
+  requiresStreaming: true,
+  requiresTools: true,
+  requiresStructuredArguments: true,
+});
 
-  const result = selectProviderRoute([compactPrimary, roomyPrimary], {
-    role: 'seller',
-    canonicalRevision: 9,
-    fullContextInputTokens: 1_500,
-    emergencyCapsuleInputTokens: 300,
-    requiresStreaming: true,
-    requiresTools: true,
-    requiresStructuredArguments: true,
-    routeTokenUsage: [
-      { routeId: 'compact-primary', fullContextInputTokens: 900, emergencyCapsuleInputTokens: 300 },
-      { routeId: 'roomy-primary', fullContextInputTokens: 1_500, emergencyCapsuleInputTokens: 300 },
-    ],
-  } as Parameters<typeof selectProviderRoute>[1], [runtime(compactPrimary.routeId), runtime(roomyPrimary.routeId)]);
+test('single-route packed token usage binds the exact DeepSeek input measurement', () => {
+  const route = createVerifiedRouteFixture({ maxInputTokens: 1_000 });
+  const result = selectProviderRoute([route], {
+    ...BASE_REQUEST,
+    routeTokenUsage: [{
+      routeId: route.routeId,
+      fullContextInputTokens: 875,
+      emergencyCapsuleInputTokens: 0,
+    }],
+  }, [runtime(route.routeId)]);
 
   assert.equal(result.ok, true);
   if (!result.ok) return;
-  assert.equal(result.route.routeId, 'compact-primary');
-  assert.equal(result.requirements.inputTokens, 900);
+  assert.equal(result.route.routeId, route.routeId);
+  assert.equal(result.requirements.inputTokens, 875);
+  assert.equal(result.contextMode, 'full');
+  assert.equal(result.fallbackReason, null);
 });
 
-test('route-specific usage is fail-closed on duplicate, missing, unknown, or invalid measurements', async (t) => {
-  const first = createVerifiedRouteFixture({ routeId: 'route-a', tier: 'primary', priority: 1 });
-  const second = createVerifiedRouteFixture({ routeId: 'route-b', tier: 'independent_fallback', priority: 1 });
-  const states = [runtime(first.routeId), runtime(second.routeId)];
-  const base = {
-    role: 'seller' as const,
-    canonicalRevision: 4,
-    fullContextInputTokens: 800,
-    emergencyCapsuleInputTokens: 300,
-    requiresStreaming: true,
-    requiresTools: true,
-    requiresStructuredArguments: true,
-  };
-
+test('single-route token usage is fail-closed on wrong route or invalid measurement', async (t) => {
+  const route = createVerifiedRouteFixture();
   const cases = [
-    ['duplicate', [
-      { routeId: 'route-a', fullContextInputTokens: 700, emergencyCapsuleInputTokens: 250 },
-      { routeId: 'route-a', fullContextInputTokens: 700, emergencyCapsuleInputTokens: 250 },
-    ]],
-    ['missing', [
-      { routeId: 'route-a', fullContextInputTokens: 700, emergencyCapsuleInputTokens: 250 },
-    ]],
-    ['unknown', [
-      { routeId: 'route-a', fullContextInputTokens: 700, emergencyCapsuleInputTokens: 250 },
-      { routeId: 'route-c', fullContextInputTokens: 700, emergencyCapsuleInputTokens: 250 },
-    ]],
-    ['negative', [
-      { routeId: 'route-a', fullContextInputTokens: -1, emergencyCapsuleInputTokens: 250 },
-      { routeId: 'route-b', fullContextInputTokens: 700, emergencyCapsuleInputTokens: 250 },
-    ]],
-    ['nan', [
-      { routeId: 'route-a', fullContextInputTokens: Number.NaN, emergencyCapsuleInputTokens: 250 },
-      { routeId: 'route-b', fullContextInputTokens: 700, emergencyCapsuleInputTokens: 250 },
+    ['missing', []],
+    ['wrong-route', [{
+      routeId: 'other-route',
+      fullContextInputTokens: 700,
+      emergencyCapsuleInputTokens: 0,
+    }]],
+    ['negative', [{
+      routeId: route.routeId,
+      fullContextInputTokens: -1,
+      emergencyCapsuleInputTokens: 0,
+    }]],
+    ['nan', [{
+      routeId: route.routeId,
+      fullContextInputTokens: Number.NaN,
+      emergencyCapsuleInputTokens: 0,
+    }]],
+    ['plural', [
+      {
+        routeId: route.routeId,
+        fullContextInputTokens: 700,
+        emergencyCapsuleInputTokens: 0,
+      },
+      {
+        routeId: route.routeId,
+        fullContextInputTokens: 700,
+        emergencyCapsuleInputTokens: 0,
+      },
     ]],
   ] as const;
 
   for (const [name, routeTokenUsage] of cases) {
     await t.test(name, () => {
-      const result = selectProviderRoute([first, second], { ...base, routeTokenUsage }, states);
+      const result = selectProviderRoute([route], { ...BASE_REQUEST, routeTokenUsage }, [runtime(route.routeId)]);
       assert.deepEqual(result, {
         ok: false,
         code: 'INVALID_ROUTE_REQUEST',
@@ -92,32 +82,21 @@ test('route-specific usage is fail-closed on duplicate, missing, unknown, or inv
   }
 });
 
-test('independent fallback uses its own emergency-capsule measurement and keeps context fallback semantics', () => {
-  const primary = createVerifiedRouteFixture({
-    routeId: 'primary-small', tier: 'primary', priority: 1, maxInputTokens: 1_000, emergencyInputTokens: 400,
-  });
-  const fallback = createVerifiedRouteFixture({
-    routeId: 'fallback-groq', tier: 'independent_fallback', priority: 1, maxInputTokens: 2_000, emergencyInputTokens: 600,
-  });
-
-  const result = selectProviderRoute([primary, fallback], {
-    role: 'seller',
-    canonicalRevision: 12,
+test('context overflow never selects a second model', () => {
+  const route = createVerifiedRouteFixture({ maxInputTokens: 1_000 });
+  const result = selectProviderRoute([route], {
+    ...BASE_REQUEST,
     fullContextInputTokens: 1_500,
-    emergencyCapsuleInputTokens: 900,
-    requiresStreaming: true,
-    requiresTools: true,
-    requiresStructuredArguments: true,
-    routeTokenUsage: [
-      { routeId: primary.routeId, fullContextInputTokens: 1_200, emergencyCapsuleInputTokens: 300 },
-      { routeId: fallback.routeId, fullContextInputTokens: 1_100, emergencyCapsuleInputTokens: 350 },
-    ],
-  }, [runtime(primary.routeId), runtime(fallback.routeId)]);
+    routeTokenUsage: [{
+      routeId: route.routeId,
+      fullContextInputTokens: 1_500,
+      emergencyCapsuleInputTokens: 0,
+    }],
+  }, [runtime(route.routeId)]);
 
-  assert.equal(result.ok, true);
-  if (!result.ok) return;
-  assert.equal(result.route.routeId, fallback.routeId);
-  assert.equal(result.contextMode, 'emergency_capsule');
-  assert.equal(result.requirements.inputTokens, 350);
-  assert.equal(result.fallbackReason, 'PRIMARY_CONTEXT_EXCEEDED');
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.code, 'NO_ELIGIBLE_ROUTE');
+  assert.equal(result.recovery, 'deterministic_guided_discovery');
+  assert.ok(result.rejections[0]?.reasons.includes('CONTEXT_EXCEEDED'));
 });
