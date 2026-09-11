@@ -9,6 +9,34 @@ import { selectProviderRoute } from '../../src/ai/providers/provider-router.ts';
 const JOB_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const REPO_ROOT = join(JOB_ROOT, '..');
 
+const FORBIDDEN_PROVIDER_IDENTITIES = Object.freeze([
+  'openai',
+  'mistral',
+  'groq',
+  'anthropic',
+  'claude',
+  'gemini',
+  'llama',
+  'qwen',
+  'cerebras',
+  'openrouter',
+  'cohere',
+  'together',
+  'fireworks',
+  'ollama',
+]);
+
+const FORBIDDEN_ROUTING_SHAPES = Object.freeze([
+  'independent_fallback',
+  'fallbackreason',
+  'contextmode',
+  'emergencycapsuleinputtokens',
+  'emergency_llm',
+  'emergency_model',
+  'emergency_provider',
+  'emergency_route',
+]);
+
 async function sourceFiles(root: string): Promise<string[]> {
   const entries = await readdir(root, { withFileTypes: true });
   const files: string[] = [];
@@ -57,7 +85,7 @@ test('unavailable DeepSeek fails closed instead of selecting another LLM', () =>
   assert.equal(result.recovery, 'deterministic_guided_discovery');
 });
 
-test('active AI surfaces expose no second provider identity, model id or LLM credential', async () => {
+test('active AI surfaces expose no second provider identity, model id, LLM credential or fallback-only route shape', async () => {
   const roots = [
     join(JOB_ROOT, 'src', 'ai'),
     join(JOB_ROOT, 'src', 'server', 'ai'),
@@ -72,21 +100,40 @@ test('active AI surfaces expose no second provider identity, model id or LLM cre
 
   for (const root of roots) {
     for (const path of await sourceFiles(root)) {
+      const repoPath = relative(REPO_ROOT, path);
+      const normalizedPath = repoPath.toLowerCase();
       const source = await readFile(path, 'utf8');
+      const normalizedSource = source.toLowerCase();
+
+      for (const identity of FORBIDDEN_PROVIDER_IDENTITIES) {
+        if (normalizedPath.includes(identity)) {
+          violations.push(`${repoPath} forbidden-provider-path=${identity}`);
+        }
+        if (normalizedSource.includes(identity)) {
+          violations.push(`${repoPath} forbidden-provider-source=${identity}`);
+        }
+      }
+
+      for (const shape of FORBIDDEN_ROUTING_SHAPES) {
+        if (normalizedSource.includes(shape)) {
+          violations.push(`${repoPath} forbidden-routing-shape=${shape}`);
+        }
+      }
+
       for (const match of source.matchAll(/modelId\s*:\s*['"]([^'"]+)['"]/g)) {
-        if (!allowedModels.has(match[1]!)) violations.push(`${relative(REPO_ROOT, path)} model=${match[1]}`);
+        if (!allowedModels.has(match[1]!)) violations.push(`${repoPath} model=${match[1]}`);
       }
       for (const match of source.matchAll(/family\s*:\s*['"]([^'"]+)['"]/g)) {
-        if (!allowedFamilies.has(match[1]!)) violations.push(`${relative(REPO_ROOT, path)} family=${match[1]}`);
+        if (!allowedFamilies.has(match[1]!)) violations.push(`${repoPath} family=${match[1]}`);
       }
       for (const match of source.matchAll(/credentialEnvName\s*:\s*['"]([^'"]+)['"]/g)) {
         if (!allowedCredentials.has(match[1]!)) {
-          violations.push(`${relative(REPO_ROOT, path)} credential=${match[1]}`);
+          violations.push(`${repoPath} credential=${match[1]}`);
         }
       }
       for (const match of source.matchAll(/workshopHarness\s*:\s*['"]([^'"]+)['"]/g)) {
         if (!allowedHarnesses.has(match[1]!)) {
-          violations.push(`${relative(REPO_ROOT, path)} harness=${match[1]}`);
+          violations.push(`${repoPath} harness=${match[1]}`);
         }
       }
     }
