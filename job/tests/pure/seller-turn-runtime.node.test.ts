@@ -55,7 +55,6 @@ function route(overrides: Partial<ProviderRouteDefinition> = {}): Readonly<Provi
     runtimeActivation: 'PASS',
     capabilities: Object.freeze({ streaming: 'PASS', tools: 'PASS', structuredArguments: 'PASS' } as const),
     maxInputTokens: 16_000,
-    emergencyInputTokens: 4_000,
     evidence: Object.freeze({ verifiedSha: 'fixture', runId: 'fixture' }),
     ...overrides,
   });
@@ -63,13 +62,11 @@ function route(overrides: Partial<ProviderRouteDefinition> = {}): Readonly<Provi
 
 function budgetFor(item: Readonly<ProviderRouteDefinition>) {
   assert.notEqual(item.maxInputTokens, null);
-  assert.notEqual(item.emergencyInputTokens, null);
   return Object.freeze({
     routeId: item.routeId,
     budget: Object.freeze({
       maxInputTokens: item.maxInputTokens! + 2_000,
       reservedOutputTokens: 2_000,
-      emergencyInputTokens: item.emergencyInputTokens!,
     }),
   });
 }
@@ -240,8 +237,6 @@ test('builds every Seller provider message from the revision-bound dispatch cont
     modelId: 'deepseek-v4-pro',
     role: 'seller' as const,
     canonicalRevision: 7,
-    contextMode: 'full' as const,
-    fallbackReason: null,
     credentialEnvName: 'DEEPSEEK_API_KEY',
     context: Object.freeze({ schemaVersion: 1 as const, canonicalRevision: 7, marker: 'canon-derived' }),
   });
@@ -259,9 +254,10 @@ test('builds every Seller provider message from the revision-bound dispatch cont
   assert.equal(messages[1]?.role, 'user');
   const userMessage = messages[1];
   if (userMessage === undefined || userMessage.role !== 'user') throw new Error('expected bounded user context message');
-  const payload = JSON.parse(userMessage.content) as { canonicalRevision: number; contextMode: string; context: { marker: string } };
+  const payload = JSON.parse(userMessage.content) as { canonicalRevision: number; context: { marker: string } };
   assert.equal(payload.canonicalRevision, 7);
-  assert.equal(payload.contextMode, 'full');
+  assert.equal('contextMode' in payload, false);
+  assert.equal('fallbackReason' in payload, false);
   assert.equal(payload.context.marker, 'canon-derived');
   assert.equal(JSON.stringify(messages).includes('server-secret'), false);
 
@@ -277,7 +273,7 @@ test('rejects route and token-budget divergence before packaging or provider exe
   const input = baseInput([primary], async () => { calls += 1; return completion([submissionTool(7)]) as never; });
   input.routeBudgets = [{
     routeId: primary.routeId,
-    budget: { maxInputTokens: 18_001, reservedOutputTokens: 2_000, emergencyInputTokens: 4_000 },
+    budget: { maxInputTokens: 18_001, reservedOutputTokens: 2_000 },
   }];
   const result = await runSellerTurn(input);
   if (result.ok || result.code !== 'INVALID_RUNTIME_CONFIG') throw new Error(`unexpected result: ${JSON.stringify(result)}`);
@@ -302,8 +298,9 @@ test('primary Seller call requires only full context and final submission is acc
   assert.equal(result.canonical.revision, 7);
   assert.equal(validatorCalls, 1);
   const messages = observedMessages[0] as Array<{ role: string; content: string }>;
-  const payload = JSON.parse(messages[1]!.content) as { contextMode: string; canonicalRevision: number; context: { marker: string } };
-  assert.equal(payload.contextMode, 'full');
+  const payload = JSON.parse(messages[1]!.content) as { canonicalRevision: number; context: { marker: string } };
+  assert.equal('contextMode' in payload, false);
+  assert.equal('fallbackReason' in payload, false);
   assert.equal(payload.canonicalRevision, 7);
   assert.equal(payload.context.marker, 'full-7');
 });
