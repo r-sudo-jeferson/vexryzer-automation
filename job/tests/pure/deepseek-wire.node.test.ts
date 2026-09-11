@@ -34,7 +34,6 @@ const route: Readonly<ProviderRouteDefinition> = Object.freeze({
     structuredArguments: 'NOT_VERIFIED',
   }),
   maxInputTokens: null,
-  emergencyInputTokens: null,
   evidence: null,
 });
 
