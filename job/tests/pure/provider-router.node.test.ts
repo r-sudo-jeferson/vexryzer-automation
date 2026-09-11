@@ -60,8 +60,8 @@ test('single verified DeepSeek route is selected with full canonical context onl
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.route.routeId, route.routeId);
-  assert.equal(result.contextMode, 'full');
-  assert.equal(result.fallbackReason, null);
+  assert.equal('contextMode' in result, false);
+  assert.equal('fallbackReason' in result, false);
   assert.equal(result.canonicalRevision, 7);
 });
 
