@@ -231,6 +231,7 @@ export async function handleAskAiTurn(
   const result = await runStoredAgentTurn({
     repository: dependencies.repository,
     runtime: dependencies.runtime,
+    signal: request.signal,
     request: {
       sessionId,
       sessionToken,
