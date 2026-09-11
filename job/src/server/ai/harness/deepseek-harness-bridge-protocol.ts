@@ -52,6 +52,7 @@ export type DeepSeekHarnessBridgeRequestValidation =
 
 export type DeepSeekHarnessBridgeExecutionErrorCode =
   | 'STALE_REVISION'
+  | 'SESSION_MISMATCH'
   | 'LEASE_MISMATCH'
   | 'REQUEST_MISMATCH'
   | 'UNAUTHORIZED_TOOL'
@@ -130,6 +131,7 @@ const TOOL_ARGUMENT_KEYS: Readonly<Record<DeepSeekHarnessAgentRole, Readonly<Rec
 
 const EXECUTION_ERROR_CODES = new Set<DeepSeekHarnessBridgeExecutionErrorCode>([
   'STALE_REVISION',
+  'SESSION_MISMATCH',
   'LEASE_MISMATCH',
   'REQUEST_MISMATCH',
   'UNAUTHORIZED_TOOL',
