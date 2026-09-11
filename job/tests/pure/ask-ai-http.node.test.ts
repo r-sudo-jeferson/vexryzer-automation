@@ -16,7 +16,10 @@ import {
   handleAskAiSessionStart,
   handleAskAiTurn,
 } from '../../src/server/session/ask-ai-http.ts';
-import type { AgentRuntimeStaticConfig } from '../../src/server/session/stored-agent-turn-service.ts';
+import {
+  AGENT_EXECUTION_TIMEOUT_LIMITS,
+  type AgentRuntimeStaticConfig,
+} from '../../src/server/session/stored-agent-turn-service.ts';
 
 const TOKEN = 'abcdefghijklmnopqrstuvwxyzABCDEFGH0123456789_-';
 const ORIGIN = 'https://vexryzer.example';
@@ -74,6 +77,7 @@ function entropy(sessionId = 'session-http') {
 
 function runtime(withRoutes = false): AgentRuntimeStaticConfig {
   return {
+    executionTimeoutMs: AGENT_EXECUTION_TIMEOUT_LIMITS.maxMs,
     seller: {
       routes: withRoutes ? [{} as never] : [],
       routeBudgets: [],
