@@ -51,7 +51,7 @@ test('emergency capsule module exposes the fallback boundary', async () => {
   assert.equal(typeof moduleValue?.buildEmergencyContinuationCapsule, 'function');
 });
 
-test('Groq-style emergency switch rebuilds from canonical truth and stays inside the injected emergency budget', async () => {
+test('bounded emergency context rebuilds from canonical truth and stays inside the injected budget', async () => {
   const { buildEmergencyContinuationCapsule } = await import('../../src/ai/context/emergency-capsule.ts');
   const budget = { maxInputTokens: 8000, reservedOutputTokens: 2000, emergencyInputTokens: 1800 } as const;
   const estimateTokens = (value: unknown) => JSON.stringify(value).length;

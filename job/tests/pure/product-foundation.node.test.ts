@@ -44,9 +44,9 @@ test('strict TypeScript and Netlify configuration live under job', async () => {
   assert.match(netlify, /publish\s*=\s*"dist"/);
 });
 
-test('S001 package contains no live AI provider dependency or browser secret contract', async () => {
-  const pkgText = await text('package.json');
-  assert.doesNotMatch(pkgText, /mistral|openai|anthropic/i);
+test('browser build has no client-visible secret contract', async () => {
   const vite = await text('vite.config.ts');
   assert.doesNotMatch(vite, /VITE_.*(?:KEY|TOKEN|SECRET)/i);
+  const source = await text('src/server/netlify/ask-ai-netlify-runtime.ts');
+  assert.doesNotMatch(source, /VITE_/);
 });

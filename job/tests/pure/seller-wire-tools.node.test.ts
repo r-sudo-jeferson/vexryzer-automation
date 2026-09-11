@@ -195,11 +195,7 @@ test('final Seller tool publishes the full closed model-facing contract within t
   const submit = SELLER_LOCAL_TOOLS.find((item) => item.function.name === 'submit_seller_submission');
   assert.ok(submit);
 
-  const route = createVerifiedRouteFixture({
-    family: 'groq',
-    modelId: 'openai/gpt-oss-120b',
-    tier: 'independent_fallback',
-  });
+  const route = createVerifiedRouteFixture();
   assert.doesNotThrow(() => buildProviderChatBody({
     route,
     messages: [{ role: 'system', content: 'contract' }, { role: 'user', content: 'canonical context' }],

@@ -65,6 +65,6 @@ test('provider execution remains fail-closed until exact provider route verifica
     () => runtime.seller.estimateTokens({ attempted: 'provider-dispatch' }),
     /not activated until exact route verification passes/,
   );
-  assert.equal(await runtime.seller.resolveCredential('GROQ_API_KEY'), null);
-  assert.equal(await runtime.critic.resolveCredential('CLOUDFLARE_API_TOKEN'), null);
+  assert.equal(await runtime.seller.resolveCredential('DEEPSEEK_API_KEY'), null);
+  assert.equal(await runtime.critic.resolveCredential('DEEPSEEK_API_KEY'), null);
 });
