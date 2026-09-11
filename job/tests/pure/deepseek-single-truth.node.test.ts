@@ -34,7 +34,7 @@ test('active AI registry has exactly one DeepSeek V4 Pro route and one credentia
   assert.equal(route.enabledByDefault, true);
   assert.equal(route.credentialScope, 'server');
   assert.equal(route.billingAuthorization, 'PASS');
-  assert.equal(route.workshopHarness, 'DeepSeek-Harness@0.1.5-rc.2');
+  assert.equal(route.workshopHarness, 'DeepSeek-Harness@0.1.5-rc.1');
 });
 
 test('unavailable DeepSeek fails closed instead of selecting another LLM', () => {
@@ -69,7 +69,7 @@ test('active AI surfaces expose no second provider identity, model id or LLM cre
   const allowedModels = new Set(['deepseek-v4-pro']);
   const allowedFamilies = new Set(['deepseek']);
   const allowedCredentials = new Set(['DEEPSEEK_API_KEY']);
-  const allowedHarnesses = new Set(['DeepSeek-Harness@0.1.5-rc.2']);
+  const allowedHarnesses = new Set(['DeepSeek-Harness@0.1.5-rc.1']);
 
   for (const root of roots) {
     for (const path of await sourceFiles(root)) {
