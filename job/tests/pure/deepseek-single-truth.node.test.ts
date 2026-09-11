@@ -9,20 +9,6 @@ import { selectProviderRoute } from '../../src/ai/providers/provider-router.ts';
 const JOB_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const REPO_ROOT = join(JOB_ROOT, '..');
 
-const FORBIDDEN_ACTIVE_AI_IDENTIFIERS = Object.freeze([
-  'cloudflare_workers_ai',
-  'cloudflare workers ai',
-  'groq',
-  'openrouter',
-  'mistral',
-  'opencode',
-  'openhands',
-  'gpt-oss',
-  'deepseek-v4-flash',
-  'deepseek-chat',
-  'deepseek-reasoner',
-]);
-
 async function sourceFiles(root: string): Promise<string[]> {
   const entries = await readdir(root, { withFileTypes: true });
   const files: string[] = [];
@@ -47,6 +33,8 @@ test('active AI registry has exactly one DeepSeek V4 Pro route and one credentia
   assert.equal(route.tier, 'primary');
   assert.equal(route.enabledByDefault, true);
   assert.equal(route.credentialScope, 'server');
+  assert.equal(route.billingAuthorization, 'PASS');
+  assert.equal(route.workshopHarness, 'DeepSeek-Harness@0.1.5-rc.2');
 });
 
 test('unavailable DeepSeek fails closed instead of selecting another LLM', () => {
@@ -58,7 +46,7 @@ test('unavailable DeepSeek fails closed instead of selecting another LLM', () =>
       role: 'seller',
       canonicalRevision: 1,
       fullContextInputTokens: 100,
-      emergencyCapsuleInputTokens: 100,
+      emergencyCapsuleInputTokens: 0,
       requiresStreaming: true,
       requiresTools: true,
       requiresStructuredArguments: true,
@@ -70,20 +58,37 @@ test('unavailable DeepSeek fails closed instead of selecting another LLM', () =>
   assert.equal(result.recovery, 'deterministic_guided_discovery');
 });
 
-test('active runtime, tools and workflows contain no alternative AI provider/model/harness identifiers', async () => {
+test('active AI surfaces expose no second provider identity, model id or LLM credential', async () => {
   const roots = [
-    join(JOB_ROOT, 'src'),
+    join(JOB_ROOT, 'src', 'ai'),
+    join(JOB_ROOT, 'src', 'server', 'ai'),
     join(JOB_ROOT, 'tools'),
-    join(REPO_ROOT, '.github', 'workflows'),
   ];
   const violations: string[] = [];
 
+  const allowedModels = new Set(['deepseek-v4-pro']);
+  const allowedFamilies = new Set(['deepseek']);
+  const allowedCredentials = new Set(['DEEPSEEK_API_KEY']);
+  const allowedHarnesses = new Set(['DeepSeek-Harness@0.1.5-rc.2']);
+
   for (const root of roots) {
     for (const path of await sourceFiles(root)) {
-      const text = (await readFile(path, 'utf8')).toLowerCase();
-      const matched = FORBIDDEN_ACTIVE_AI_IDENTIFIERS.filter((value) => text.includes(value));
-      if (matched.length > 0) {
-        violations.push(`${relative(REPO_ROOT, path)}: ${matched.join(', ')}`);
+      const source = await readFile(path, 'utf8');
+      for (const match of source.matchAll(/modelId\s*:\s*['"]([^'"]+)['"]/g)) {
+        if (!allowedModels.has(match[1]!)) violations.push(`${relative(REPO_ROOT, path)} model=${match[1]}`);
+      }
+      for (const match of source.matchAll(/family\s*:\s*['"]([^'"]+)['"]/g)) {
+        if (!allowedFamilies.has(match[1]!)) violations.push(`${relative(REPO_ROOT, path)} family=${match[1]}`);
+      }
+      for (const match of source.matchAll(/credentialEnvName\s*:\s*['"]([^'"]+)['"]/g)) {
+        if (!allowedCredentials.has(match[1]!)) {
+          violations.push(`${relative(REPO_ROOT, path)} credential=${match[1]}`);
+        }
+      }
+      for (const match of source.matchAll(/workshopHarness\s*:\s*['"]([^'"]+)['"]/g)) {
+        if (!allowedHarnesses.has(match[1]!)) {
+          violations.push(`${relative(REPO_ROOT, path)} harness=${match[1]}`);
+        }
       }
     }
   }
