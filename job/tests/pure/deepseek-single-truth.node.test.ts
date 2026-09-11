@@ -46,7 +46,6 @@ test('unavailable DeepSeek fails closed instead of selecting another LLM', () =>
       role: 'seller',
       canonicalRevision: 1,
       fullContextInputTokens: 100,
-      emergencyCapsuleInputTokens: 0,
       requiresStreaming: true,
       requiresTools: true,
       requiresStructuredArguments: true,
