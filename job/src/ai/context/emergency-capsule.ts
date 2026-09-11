@@ -7,12 +7,11 @@ import type {
   VerifiedCalculation,
 } from './canonical-sales-context.ts';
 import type { CurrentExperienceState } from './context-packager.ts';
-import {
-  assertProviderRouteBudget,
-  measureTokens,
-  type ProviderRouteBudget,
-  type TokenEstimator,
-} from './token-budget.ts';
+import { measureTokens, type TokenEstimator } from './token-budget.ts';
+
+export interface EmergencyCapsuleBudget {
+  inputTokenLimit: number;
+}
 
 export interface EmergencyContinuationCapsule {
   schemaVersion: 1;
@@ -126,24 +125,22 @@ function buildPayload(canonical: CanonicalSalesContext, visualState: CurrentExpe
 export function buildEmergencyContinuationCapsule(input: {
   canonical: CanonicalSalesContext;
   visualState: CurrentExperienceState;
-  budget: ProviderRouteBudget;
+  budget: EmergencyCapsuleBudget;
   estimateTokens: TokenEstimator;
 }): EmergencyCapsuleResult {
-  try {
-    assertProviderRouteBudget(input.budget);
-  } catch {
+  if (!Number.isInteger(input.budget.inputTokenLimit) || input.budget.inputTokenLimit <= 0) {
     return { ok: false, code: 'INVALID_CONTEXT_INPUT', estimatedInputTokens: null, limitTokens: null };
   }
   if (!Number.isInteger(input.canonical.revision) || input.canonical.revision < 0) {
-    return { ok: false, code: 'INVALID_CONTEXT_INPUT', estimatedInputTokens: null, limitTokens: input.budget.emergencyInputTokens };
+    return { ok: false, code: 'INVALID_CONTEXT_INPUT', estimatedInputTokens: null, limitTokens: input.budget.inputTokenLimit };
   }
 
   const payload = buildPayload(input.canonical, input.visualState);
   let measurement;
   try {
-    measurement = measureTokens(payload, input.budget.emergencyInputTokens, input.estimateTokens);
+    measurement = measureTokens(payload, input.budget.inputTokenLimit, input.estimateTokens);
   } catch {
-    return { ok: false, code: 'INVALID_CONTEXT_INPUT', estimatedInputTokens: null, limitTokens: input.budget.emergencyInputTokens };
+    return { ok: false, code: 'INVALID_CONTEXT_INPUT', estimatedInputTokens: null, limitTokens: input.budget.inputTokenLimit };
   }
   if (!measurement.fits) {
     return {
