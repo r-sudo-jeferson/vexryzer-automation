@@ -19,7 +19,7 @@ const route: Readonly<ProviderRouteDefinition> = Object.freeze({
   enabledByDefault: true,
   credentialEnvName: 'DEEPSEEK_API_KEY',
   credentialScope: 'server',
-  noPaymentEligibility: 'NOT_VERIFIED',
+  billingAuthorization: 'PASS',
   protocolCompatibility: 'NOT_VERIFIED',
   sellerQuality: 'NOT_VERIFIED',
   criticQuality: 'NOT_VERIFIED',
