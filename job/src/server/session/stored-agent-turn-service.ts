@@ -29,13 +29,21 @@ import type { AgentSessionRepository } from './session-repository.ts';
 
 export type SellerRuntimeStaticConfig = Omit<
   SellerTurnRuntimeInput,
-  'canonical' | 'digest' | 'recentTurns' | 'visualState' | 'revisionRequest'
+  'canonical' | 'digest' | 'recentTurns' | 'visualState' | 'revisionRequest' | 'signal'
 >;
 
+export type CriticRuntimeStaticConfig = Omit<AgentLedCriticRuntimeConfig, 'signal'>;
+
 export interface AgentRuntimeStaticConfig {
+  executionTimeoutMs: number;
   seller: SellerRuntimeStaticConfig;
-  critic: AgentLedCriticRuntimeConfig;
+  critic: CriticRuntimeStaticConfig;
 }
+
+export const AGENT_EXECUTION_TIMEOUT_LIMITS = Object.freeze({
+  minMs: 1_000,
+  maxMs: 45_000,
+});
 
 export interface StoredAgentTurnDependencies {
   applyContextMutation: typeof applyContextMutation;
@@ -66,6 +74,7 @@ export interface StoredAgentTurnInput {
   repository: AgentSessionRepository;
   request: Readonly<StoredAgentTurnRequest>;
   runtime: Readonly<AgentRuntimeStaticConfig>;
+  signal?: AbortSignal;
   dependencies?: Partial<StoredAgentTurnDependencies>;
 }
 
@@ -355,6 +364,20 @@ export async function startStoredAgentSession(
 export async function runStoredAgentTurn(
   input: StoredAgentTurnInput,
 ): Promise<StoredAgentTurnResult> {
+  if (
+    !Number.isInteger(input.runtime.executionTimeoutMs)
+    || input.runtime.executionTimeoutMs < AGENT_EXECUTION_TIMEOUT_LIMITS.minMs
+    || input.runtime.executionTimeoutMs > AGENT_EXECUTION_TIMEOUT_LIMITS.maxMs
+    || input.signal?.aborted === true
+  ) {
+    return { ok: false, code: 'AGENT_EXECUTION_FAILED', currentRevision: null };
+  }
+
+  const executionTimeoutSignal = AbortSignal.timeout(input.runtime.executionTimeoutMs);
+  const executionSignal = input.signal === undefined
+    ? executionTimeoutSignal
+    : AbortSignal.any([input.signal, executionTimeoutSignal]);
+
   if (!validRequest(input.request)) {
     return { ok: false, code: 'INVALID_REQUEST', currentRevision: null };
   }
@@ -475,8 +498,12 @@ export async function runStoredAgentTurn(
         ...claimed.record,
         canonical: canonicalAfterInput,
       }), currentSurface.model),
+      signal: executionSignal,
     },
-    critic: input.runtime.critic,
+    critic: {
+      ...input.runtime.critic,
+      signal: executionSignal,
+    },
     reactiveState: claimed.record.reactiveState,
     surfaceGuard: ({ canonical, reactiveState }) => {
       const surface = projectReactiveCanvas(
