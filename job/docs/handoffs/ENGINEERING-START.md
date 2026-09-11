@@ -31,7 +31,7 @@ The planning/bootstrap tree remains bound to `1ebb32587bded772bbb18b053865bdfee0
 
 ## Stack direction
 
-Vite 8.x stable line, React 19.2, strict TypeScript, `@xyflow/react` 12.11.x, Motion 13.x, XState v5, Netlify Free. S001 contains no live Mistral integration.
+Vite 8.x stable line, React 19.2, strict TypeScript, `@xyflow/react` 12.11.x, Motion 13.x, XState v5, Netlify Free. S001 contains no live LLM integration.
 
 ## Stop conditions
 
