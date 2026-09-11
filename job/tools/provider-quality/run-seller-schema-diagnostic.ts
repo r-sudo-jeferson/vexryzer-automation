@@ -25,6 +25,51 @@ const simpleControlTool: LocalFunctionTool = Object.freeze({
   }),
 });
 
+function syntheticTool(name: string, parameters: Readonly<Record<string, unknown>>): LocalFunctionTool {
+  return Object.freeze({
+    type: 'function' as const,
+    function: Object.freeze({
+      name,
+      description: 'Exercise one synthetic schema dimension.',
+      parameters,
+    }),
+  });
+}
+
+const paddedSimpleControlTool = syntheticTool('capture_padded_signal', Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  properties: Object.freeze({
+    value: Object.freeze({ type: 'string', description: 'x'.repeat(7_000) }),
+  }),
+  required: Object.freeze(['value']),
+}));
+
+function buildDeepSchema(levels: number): Readonly<Record<string, unknown>> {
+  let nested: Readonly<Record<string, unknown>> = Object.freeze({ type: 'string' });
+  for (let index = 0; index < levels; index += 1) {
+    nested = Object.freeze({
+      type: 'object',
+      additionalProperties: false,
+      properties: Object.freeze({ value: nested }),
+      required: Object.freeze(['value']),
+    });
+  }
+  return nested;
+}
+
+const deepSimpleControlTool = syntheticTool('capture_deep_signal', buildDeepSchema(7));
+
+const wideProperties = Object.freeze(Object.fromEntries(
+  Array.from({ length: 125 }, (_, index) => [`value_${String(index).padStart(3, '0')}`, Object.freeze({ type: 'string' })]),
+));
+const wideSimpleControlTool = syntheticTool('capture_wide_signal', Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  properties: wideProperties,
+  required: Object.freeze(Object.keys(wideProperties)),
+}));
+
 export interface SellerSchemaDiagnosticCase {
   id: string;
   tools: readonly LocalFunctionTool[];
@@ -67,6 +112,66 @@ function transformTool(tool: LocalFunctionTool, option: 'without_one_of' | 'with
   });
 }
 
+function schemaObject(value: unknown, path: string): Readonly<Record<string, unknown>> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new TypeError(`${path} must be a schema object`);
+  }
+  return value as Readonly<Record<string, unknown>>;
+}
+
+function selectClosedProperties(
+  schema: Readonly<Record<string, unknown>>,
+  selectedNames: readonly string[],
+): Readonly<Record<string, unknown>> {
+  const properties = schemaObject(schema['properties'], 'properties');
+  const selected = Object.fromEntries(selectedNames.map((name) => {
+    if (!(name in properties)) throw new TypeError(`missing diagnostic property: ${name}`);
+    return [name, properties[name]];
+  }));
+  const required = Array.isArray(schema['required'])
+    ? schema['required'].filter((name): name is string => typeof name === 'string' && selectedNames.includes(name))
+    : [];
+  return Object.freeze({
+    ...schema,
+    properties: Object.freeze(selected),
+    required: Object.freeze(required),
+  });
+}
+
+function buildSubmitSubsetTool(
+  submit: LocalFunctionTool,
+  submissionFields: readonly string[],
+  proposalFields?: readonly string[],
+): LocalFunctionTool {
+  const parameters = schemaObject(submit.function.parameters, 'parameters');
+  const parameterProperties = schemaObject(parameters['properties'], 'parameters.properties');
+  let submission = schemaObject(parameterProperties['submission'], 'submission');
+  if (proposalFields !== undefined) {
+    const submissionProperties = schemaObject(submission['properties'], 'submission.properties');
+    const proposal = selectClosedProperties(
+      schemaObject(submissionProperties['proposal'], 'proposal'),
+      proposalFields,
+    );
+    submission = Object.freeze({
+      ...submission,
+      properties: Object.freeze({ ...submissionProperties, proposal }),
+    });
+  }
+  submission = selectClosedProperties(submission, submissionFields);
+  return Object.freeze({
+    type: 'function' as const,
+    function: Object.freeze({
+      name: submit.function.name,
+      description: submit.function.description,
+      parameters: Object.freeze({
+        ...parameters,
+        properties: Object.freeze({ submission }),
+        required: Object.freeze(['submission']),
+      }),
+    }),
+  });
+}
+
 export function buildSellerSchemaDiagnosticCases(): readonly Readonly<SellerSchemaDiagnosticCase>[] {
   const capture = SELLER_LOCAL_TOOLS.find((item) => item.function.name === 'capture_user_observations');
   const calculation = SELLER_LOCAL_TOOLS.find((item) => item.function.name === 'request_calculations');
@@ -74,9 +179,40 @@ export function buildSellerSchemaDiagnosticCases(): readonly Readonly<SellerSche
   if (capture === undefined || calculation === undefined || submit === undefined) {
     throw new TypeError('complete Seller tool set is required for schema diagnostics');
   }
+  const envelopeOnly = buildSubmitSubsetTool(submit, ['schemaVersion', 'proposalId']);
+  const intentOnly = buildSubmitSubsetTool(
+    submit,
+    ['schemaVersion', 'proposalId', 'proposal'],
+    ['schemaVersion', 'narration', 'intent', 'criticRequired'],
+  );
+  const recordsOnly = buildSubmitSubsetTool(
+    submit,
+    ['schemaVersion', 'proposalId', 'proposal'],
+    [
+      'schemaVersion',
+      'narration',
+      'factProposals',
+      'correctionProposals',
+      'processMutations',
+      'sceneProposal',
+      'artifactProposals',
+      'criticRequired',
+    ],
+  );
+  const materialOnly = buildSubmitSubsetTool(
+    submit,
+    ['schemaVersion', 'proposalId', 'materialClaims', 'calculationRequests'],
+  );
   return Object.freeze([
     Object.freeze({ id: 'simple-control', tools: Object.freeze([simpleControlTool]) }),
+    Object.freeze({ id: 'padded-simple-control', tools: Object.freeze([paddedSimpleControlTool]) }),
+    Object.freeze({ id: 'deep-simple-control', tools: Object.freeze([deepSimpleControlTool]) }),
+    Object.freeze({ id: 'wide-simple-control', tools: Object.freeze([wideSimpleControlTool]) }),
     Object.freeze({ id: 'capture-calculation-only', tools: Object.freeze([capture, calculation]) }),
+    Object.freeze({ id: 'submit-envelope-only', tools: Object.freeze([envelopeOnly]) }),
+    Object.freeze({ id: 'submit-intent-only', tools: Object.freeze([intentOnly]) }),
+    Object.freeze({ id: 'submit-records-only', tools: Object.freeze([recordsOnly]) }),
+    Object.freeze({ id: 'submit-material-only', tools: Object.freeze([materialOnly]) }),
     Object.freeze({ id: 'submit-only-complete', tools: Object.freeze([submit]) }),
     Object.freeze({ id: 'submit-without-one-of', tools: Object.freeze([transformTool(submit, 'without_one_of')]) }),
     Object.freeze({ id: 'submit-without-descriptions', tools: Object.freeze([transformTool(submit, 'without_descriptions')]) }),
@@ -209,6 +345,39 @@ function countSchemaKey(value: unknown, key: string): number {
   );
 }
 
+export function inferSellerSchemaRootCause(
+  results: readonly Readonly<{ id: string; accepted: boolean }>[],
+): string {
+  const byId = new Map(results.map((item) => [item.id, item.accepted] as const));
+  const accepted = (id: string) => byId.get(id) === true;
+  const rejected = (id: string) => byId.get(id) === false;
+  if (!accepted('simple-control')) return 'NOT_ISOLATED';
+  if (accepted('submit-only-complete') && rejected('complete-tools')) {
+    return 'COMPLETE_TOOL_COMPOSITION_REJECTED';
+  }
+  if (!rejected('submit-only-complete')) return 'NOT_ISOLATED';
+  if (accepted('submit-without-one-of')) return 'ONE_OF_UNSUPPORTED_IN_SUBMIT_SCHEMA';
+  if (accepted('submit-without-descriptions')) return 'DESCRIPTION_REJECTED_IN_SUBMIT_SCHEMA';
+
+  const padded = accepted('padded-simple-control');
+  const deep = accepted('deep-simple-control');
+  const wide = accepted('wide-simple-control');
+  const envelope = accepted('submit-envelope-only');
+  const intent = accepted('submit-intent-only');
+  const records = accepted('submit-records-only');
+  const material = accepted('submit-material-only');
+  if (!padded && deep && wide && envelope && intent && records && material) return 'SCHEMA_BYTE_SIZE_LIMIT';
+  if (padded && !deep && wide && envelope && intent && records && material) return 'SCHEMA_DEPTH_LIMIT';
+  if (padded && deep && !wide && envelope && intent && records && material) return 'SCHEMA_PROPERTY_WIDTH_LIMIT';
+  if (padded && deep && wide && envelope && !intent && records && material) return 'INTENT_BRANCH_REJECTED';
+  if (padded && deep && wide && envelope && intent && !records && material) return 'PROPOSAL_RECORD_BRANCH_REJECTED';
+  if (padded && deep && wide && envelope && intent && records && !material) return 'MATERIAL_CLAIMS_BRANCH_REJECTED';
+  if (padded && deep && wide && envelope && intent && records && material) {
+    return 'COMBINED_SUBMIT_SCHEMA_COMPLEXITY_LIMIT';
+  }
+  return 'NOT_ISOLATED';
+}
+
 async function runDiagnostic() {
   const accountId = requiredEnv('CLOUDFLARE_ACCOUNT_ID');
   const token = requiredEnv('CLOUDFLARE_API_TOKEN');
@@ -279,20 +448,7 @@ async function runDiagnostic() {
     }
   }
 
-  const byId = new Map(results.map((item) => [item.id, item] as const));
-  const rootCause = byId.get('simple-control')?.accepted === true
-    && byId.get('capture-calculation-only')?.accepted === true
-    && byId.get('submit-only-complete')?.accepted === false
-    && byId.get('submit-without-one-of')?.accepted === true
-    ? 'ONE_OF_UNSUPPORTED_IN_SUBMIT_SCHEMA'
-    : byId.get('simple-control')?.accepted === true
-      && byId.get('submit-only-complete')?.accepted === false
-      && byId.get('submit-without-descriptions')?.accepted === true
-      ? 'DESCRIPTION_REJECTED_IN_SUBMIT_SCHEMA'
-      : byId.get('submit-only-complete')?.accepted === true
-        && byId.get('complete-tools')?.accepted === false
-        ? 'COMPLETE_TOOL_COMPOSITION_REJECTED'
-        : 'NOT_ISOLATED';
+  const rootCause = inferSellerSchemaRootCause(results);
 
   process.stdout.write(`${JSON.stringify({
     schemaVersion: 1,
