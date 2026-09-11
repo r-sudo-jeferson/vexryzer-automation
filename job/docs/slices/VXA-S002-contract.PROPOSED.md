@@ -40,7 +40,7 @@ When a custom prototype is likely to materially increase clarity or persuasion, 
 
 ### Agentic reasoning
 
-- Mistral-backed Experience Orchestrator behind a provider-neutral server seam;
+- DeepSeek-backed Experience Orchestrator behind a server-owned semantic boundary;
 - bounded specialist responsibilities for process understanding, solution strategy and scene composition;
 - structured model output validated before application;
 - bounded internal tool/specialist loops;
@@ -119,7 +119,7 @@ The system may compare classes and explain missing evidence. It may not claim co
 
 S002 includes the Workshop substrate and compatibility proof:
 
-- prove the selected pinned DeepSeek Harness version with the real selected Mistral route/model;
+- prove the selected pinned DeepSeek Harness version with the exact authorized `deepseek-v4-pro` route/model;
 - prove required tool calling, streaming/event delivery, structured arguments, multi-turn replay, failure mapping and restart/session behavior;
 - isolate the Workshop behind `WorkshopClient`;
 - use a prebuilt prototype kit and prebundled dependencies;
@@ -312,7 +312,7 @@ Release-blocking scenario selection is finalized by the authorized GAUNTLET, but
 15. Material proposal Critic is logically independent and bounded.
 16. `BLOCK` prevents material state mutation/publication; `REVISE` has a bounded retry path.
 17. Solution framing supports automation, micro-SaaS, BI, agentic, training, hybrid and no-fit without false feasibility claims.
-18. DeepSeek Harness + Mistral compatibility is proven on an exact pinned version before production dependency commitment.
+18. DeepSeek Harness + `deepseek-v4-pro` compatibility is proven on an exact pinned version before production dependency commitment.
 19. Visitor Workshop environment does not receive the Vexryzer repository, unrestricted environment, production secrets or arbitrary package/network authority.
 20. Workshop crash/timeout/invalid result preserves conversation and confirmed facts and falls back to the fast path.
 21. Stale Workshop/agent events cannot overwrite newer user state.
