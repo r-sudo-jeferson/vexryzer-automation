@@ -36,7 +36,7 @@ import {
 import type {
   ProviderChatMessage,
   ProviderServerConfig,
-} from '../providers/openai-chat-wire.ts';
+} from '../providers/deepseek-chat-wire.ts';
 import {
   CRITIC_LOCAL_TOOLS,
   parseCriticReviewToolCall,
