@@ -11,7 +11,6 @@ const BASE_REQUEST = Object.freeze({
   role: 'seller' as const,
   canonicalRevision: 9,
   fullContextInputTokens: 900,
-  emergencyCapsuleInputTokens: 0,
   requiresStreaming: true,
   requiresTools: true,
   requiresStructuredArguments: true,
@@ -24,7 +23,6 @@ test('single-route packed token usage binds the exact DeepSeek input measurement
     routeTokenUsage: [{
       routeId: route.routeId,
       fullContextInputTokens: 875,
-      emergencyCapsuleInputTokens: 0,
     }],
   }, [runtime(route.routeId)]);
 
@@ -43,28 +41,23 @@ test('single-route token usage is fail-closed on wrong route or invalid measurem
     ['wrong-route', [{
       routeId: 'other-route',
       fullContextInputTokens: 700,
-      emergencyCapsuleInputTokens: 0,
     }]],
     ['negative', [{
       routeId: route.routeId,
       fullContextInputTokens: -1,
-      emergencyCapsuleInputTokens: 0,
     }]],
     ['nan', [{
       routeId: route.routeId,
       fullContextInputTokens: Number.NaN,
-      emergencyCapsuleInputTokens: 0,
     }]],
     ['plural', [
       {
         routeId: route.routeId,
         fullContextInputTokens: 700,
-        emergencyCapsuleInputTokens: 0,
       },
       {
         routeId: route.routeId,
         fullContextInputTokens: 700,
-        emergencyCapsuleInputTokens: 0,
       },
     ]],
   ] as const;
@@ -90,7 +83,6 @@ test('context overflow never selects a second model', () => {
     routeTokenUsage: [{
       routeId: route.routeId,
       fullContextInputTokens: 1_500,
-      emergencyCapsuleInputTokens: 0,
     }],
   }, [runtime(route.routeId)]);
 
