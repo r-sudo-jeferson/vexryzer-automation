@@ -18,7 +18,7 @@ The only authorized generative route is:
 - provider: DeepSeek;
 - model: `deepseek-v4-pro`;
 - harness: DeepSeek Harness;
-- target Harness version for fresh verification: `0.1.5-rc.2`;
+- target Harness version for fresh verification: `0.1.5-rc.1`;
 - server credential: `DEEPSEEK_API_KEY`;
 - API base: `https://api.deepseek.com`.
 
