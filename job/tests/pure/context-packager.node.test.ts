@@ -62,7 +62,7 @@ const visualState = {
   }],
 } as const;
 
-const generousBudget = { maxInputTokens: 10_000, reservedOutputTokens: 2_000, emergencyInputTokens: 2_000 } as const;
+const generousBudget = { maxInputTokens: 10_000, reservedOutputTokens: 2_000 } as const;
 const charEstimator = (value: unknown) => JSON.stringify(value).length;
 
 function baseInput() {
@@ -92,7 +92,7 @@ test('prioritizes latest intent, confirmed truth, objections and quantitative ev
       ...input.recentTurns,
       { id: 'turn-old', role: 'assistant' as const, text: 'x'.repeat(4000) },
     ],
-    budget: { maxInputTokens: 2800, reservedOutputTokens: 500, emergencyInputTokens: 1500 },
+    budget: { maxInputTokens: 2800, reservedOutputTokens: 500 },
     estimateTokens(value: unknown) {
       calls.push(value);
       return JSON.stringify(value).length;
