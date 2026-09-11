@@ -15,7 +15,7 @@ import {
 } from '../../../experience/artifact-intent.ts';
 import { EXPERIENCE_PROPOSAL_LIMITS } from '../../../experience/experience-validation.ts';
 import type { AssembledToolCall } from '../providers/chat-sse.ts';
-import type { LocalFunctionTool } from '../providers/openai-chat-wire.ts';
+import type { LocalFunctionTool } from '../providers/deepseek-chat-wire.ts';
 
 export const SELLER_TOOL_NAMES = ['capture_user_observations', 'request_calculations', 'submit_seller_submission'] as const;
 export type SellerToolName = (typeof SELLER_TOOL_NAMES)[number];
