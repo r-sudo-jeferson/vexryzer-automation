@@ -52,11 +52,19 @@ function transformSchema(value: unknown, option: 'without_one_of' | 'without_des
 }
 
 function transformTool(tool: LocalFunctionTool, option: 'without_one_of' | 'without_descriptions'): LocalFunctionTool {
-  const transformed = transformSchema(tool, option);
+  const transformed = transformSchema(tool.function.parameters, option);
   if (typeof transformed !== 'object' || transformed === null || Array.isArray(transformed)) {
     throw new TypeError('diagnostic tool transform failed');
   }
-  return transformed as LocalFunctionTool;
+  const parameters = transformed as Readonly<Record<string, unknown>>;
+  return Object.freeze({
+    type: 'function' as const,
+    function: Object.freeze({
+      name: tool.function.name,
+      description: tool.function.description,
+      parameters,
+    }),
+  });
 }
 
 export function buildSellerSchemaDiagnosticCases(): readonly Readonly<SellerSchemaDiagnosticCase>[] {

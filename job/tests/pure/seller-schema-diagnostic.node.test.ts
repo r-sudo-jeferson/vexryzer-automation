@@ -27,7 +27,8 @@ test('schema diagnostic isolates tool count, submit complexity, combinators and 
   assert.deepEqual(cases.map((item) => item.tools.length), [1, 2, 1, 1, 1, 3]);
   assert.ok(countKey(cases[2]!.tools, 'oneOf') > 0);
   assert.equal(countKey(cases[3]!.tools, 'oneOf'), 0);
-  assert.equal(countKey(cases[4]!.tools, 'description'), 0);
+  assert.equal(countKey(cases[4]!.tools, 'description'), 1);
+  assert.equal(countKey(cases[4]!.tools[0]!.function.parameters, 'description'), 0);
 });
 
 test('schema diagnostic classifies only bounded structural signals and never returns provider prose', () => {
