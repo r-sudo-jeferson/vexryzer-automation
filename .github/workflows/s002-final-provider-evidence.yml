@@ -97,6 +97,17 @@ jobs:
           set -euo pipefail
           node tools/provider-quality/run-product-wire-probe.ts             > test-results/s002-product-wire-probe.json
 
+      - name: Diagnose bounded Seller schema compatibility
+        working-directory: job
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          node tools/provider-quality/run-seller-schema-diagnostic.ts \
+            > test-results/s002-seller-schema-diagnostic.json
+
       - name: Run accounting Seller and independent Critic quality battery
         working-directory: job
         shell: bash
@@ -139,6 +150,7 @@ jobs:
             job/test-results/s002-provider-screen.json
             job/test-results/s002-required-provider-protocol.json
             job/test-results/s002-product-wire-probe.json
+            job/test-results/s002-seller-schema-diagnostic.json
             job/test-results/s002-provider-quality.json
             job/test-results/s002-opencode-provider-exact-sha.json
             job/test-results/s002-cloudflare-account-cost.json
