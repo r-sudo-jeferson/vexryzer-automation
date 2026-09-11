@@ -91,7 +91,6 @@ function route(overrides: Partial<ProviderRouteDefinition> = {}): Readonly<Provi
       structuredArguments: 'PASS',
     } as const),
     maxInputTokens: 16_000,
-    emergencyInputTokens: 4_000,
     evidence: Object.freeze({ verifiedSha: 'fixture', runId: 'fixture' }),
     ...overrides,
   });
@@ -99,13 +98,11 @@ function route(overrides: Partial<ProviderRouteDefinition> = {}): Readonly<Provi
 
 function budgetFor(item: Readonly<ProviderRouteDefinition>) {
   assert.notEqual(item.maxInputTokens, null);
-  assert.notEqual(item.emergencyInputTokens, null);
   return Object.freeze({
     routeId: item.routeId,
     budget: Object.freeze({
       maxInputTokens: item.maxInputTokens! + 2_000,
       reservedOutputTokens: 2_000,
-      emergencyInputTokens: item.emergencyInputTokens!,
     }),
   });
 }
@@ -201,8 +198,6 @@ test('builds a revision-bound Critic request without exposing provider conversat
   const messages = buildCriticProviderMessages({
     role: 'critic',
     canonicalRevision: 7,
-    contextMode: 'full',
-    fallbackReason: null,
     context: {
       schemaVersion: 1,
       canonicalRevision: 7,
@@ -229,8 +224,6 @@ test('builds a revision-bound Critic request without exposing provider conversat
   assert.throws(() => buildCriticProviderMessages({
     role: 'critic',
     canonicalRevision: 7,
-    contextMode: 'full',
-    fallbackReason: null,
     context: {
       schemaVersion: 1,
       canonicalRevision: 7,
@@ -270,10 +263,10 @@ test('primary Critic receives role-specific canonical context and only a bound t
 
   const messages = observed[0] as Array<{ role: string; content: string }>;
   const payload = JSON.parse(messages[1]!.content) as {
-    contextMode: string;
     context: { role: string; marker: string };
   };
-  assert.equal(payload.contextMode, 'full');
+  assert.equal('contextMode' in payload, false);
+  assert.equal('fallbackReason' in payload, false);
   assert.equal(payload.context.role, 'critic');
   assert.equal(payload.context.marker, 'critic-full');
 });
