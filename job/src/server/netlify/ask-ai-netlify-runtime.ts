@@ -5,7 +5,10 @@ import {
   type ConditionalBlobWriteOptions,
   type ConditionalJsonBlobStore,
 } from '../session/netlify-blob-session-repository.ts';
-import type { AgentRuntimeStaticConfig } from '../session/stored-agent-turn-service.ts';
+import {
+  AGENT_EXECUTION_TIMEOUT_LIMITS,
+  type AgentRuntimeStaticConfig,
+} from '../session/stored-agent-turn-service.ts';
 
 const DEPLOY_SESSION_STORE = 'vxa-agent-sessions';
 const PRODUCTION_SESSION_STORE = 'vxa-agent-sessions-production';
@@ -39,6 +42,7 @@ export function createFailClosedAgentRuntime(): Readonly<AgentRuntimeStaticConfi
   } as const;
 
   return Object.freeze({
+    executionTimeoutMs: AGENT_EXECUTION_TIMEOUT_LIMITS.maxMs,
     seller: Object.freeze({ ...common }),
     critic: Object.freeze({ ...common }),
   });
