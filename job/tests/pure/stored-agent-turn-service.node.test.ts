@@ -9,6 +9,7 @@ import type {
   VersionedAgentSession,
 } from '../../src/server/session/session-repository.ts';
 import {
+  AGENT_EXECUTION_TIMEOUT_LIMITS,
   runStoredAgentTurn,
   startStoredAgentSession,
   type AgentRuntimeStaticConfig,
@@ -69,6 +70,7 @@ function entropy(sessionId = 'session-service') {
 
 function runtime(withRoutes = false): AgentRuntimeStaticConfig {
   return {
+    executionTimeoutMs: AGENT_EXECUTION_TIMEOUT_LIMITS.maxMs,
     seller: {
       routes: withRoutes ? [{} as never] : [],
       routeBudgets: [],
@@ -350,3 +352,89 @@ test('final CAS conflict discards the local response instead of claiming success
   assert.equal(compareCount, 2);
   assert.equal(repository.snapshot(created.record.sessionId)?.status, 'processing');
 });
+
+test('invalid global agent deadline fails before claiming or mutating the stored session', async () => {
+  const repository = new MemoryRepository();
+  const created = await seeded(repository);
+  const invalidRuntime: AgentRuntimeStaticConfig = {
+    ...runtime(true),
+    executionTimeoutMs: AGENT_EXECUTION_TIMEOUT_LIMITS.maxMs + 1,
+  };
+
+  const result = await runStoredAgentTurn({
+    repository,
+    request: request(created.record.sessionId, created.sessionToken),
+    runtime: invalidRuntime,
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    code: 'AGENT_EXECUTION_FAILED',
+    currentRevision: null,
+  });
+  assert.equal(repository.snapshot(created.record.sessionId)?.status, 'idle');
+  assert.equal(repository.snapshot(created.record.sessionId)?.canonical.revision, 0);
+});
+
+test('request cancellation fails before claiming or spending provider budget', async () => {
+  const repository = new MemoryRepository();
+  const created = await seeded(repository);
+  const controller = new AbortController();
+  controller.abort(new DOMException('client disconnected', 'AbortError'));
+
+  const result = await runStoredAgentTurn({
+    repository,
+    request: request(created.record.sessionId, created.sessionToken),
+    runtime: runtime(true),
+    signal: controller.signal,
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    code: 'AGENT_EXECUTION_FAILED',
+    currentRevision: null,
+  });
+  assert.equal(repository.snapshot(created.record.sessionId)?.status, 'idle');
+  assert.equal(repository.snapshot(created.record.sessionId)?.canonical.revision, 0);
+});
+
+test('Seller and Critic share the same bounded execution signal', async () => {
+  const repository = new MemoryRepository();
+  const created = await seeded(repository);
+  let sellerSignal: AbortSignal | undefined;
+  let criticSignal: AbortSignal | undefined;
+
+  const result = await runStoredAgentTurn({
+    repository,
+    request: request(created.record.sessionId, created.sessionToken),
+    runtime: runtime(true),
+    dependencies: {
+      nowEpochMs: () => 1_000,
+      leaseId: () => 'lease-shared-signal',
+      runAgentLedTurn: (async (input: {
+        seller: { canonical: AgentSessionRecord['canonical']; signal?: AbortSignal };
+        critic: { signal?: AbortSignal };
+        reactiveState: AgentSessionRecord['reactiveState'];
+      }) => {
+        sellerSignal = input.seller.signal;
+        criticSignal = input.critic.signal;
+        return {
+          ok: false,
+          code: 'SELLER_FAILED',
+          canonical: input.seller.canonical,
+          reactiveState: input.reactiveState,
+          detail: 'PROVIDER_FAILED',
+          reviews: [],
+        };
+      }) as never,
+    },
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.mode, 'guided_recovery');
+  assert.ok(sellerSignal);
+  assert.equal(sellerSignal, criticSignal);
+  assert.equal(sellerSignal.aborted, false);
+});
+
