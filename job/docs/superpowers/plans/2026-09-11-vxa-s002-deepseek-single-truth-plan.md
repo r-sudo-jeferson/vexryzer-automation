@@ -70,7 +70,7 @@
 
 **Files:**
 - Delete superseded multi-provider authority/spec/plan/handoff files from the active tree.
-- Delete Mistral/Groq/Cloudflare/OpenRouter/OpenCode-specific workflows, probes, bakeoffs and tests.
+- Delete every superseded alternative-provider/model/harness workflow, probe, bakeoff and test from the active tree.
 - Preserve only generic diagnostics that still directly test DeepSeek behavior; rename them when provider-plural naming would mislead.
 
 - [ ] Audit the repository tree for forbidden runtime/config identifiers.
