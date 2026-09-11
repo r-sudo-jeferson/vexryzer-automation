@@ -3,7 +3,7 @@ import {
   type LocalFunctionTool,
   type ProviderChatMessage,
   type ProviderServerConfig,
-} from './openai-chat-wire.ts';
+} from './deepseek-chat-wire.ts';
 import {
   ChatSseDecodeError,
   ChatStreamChunkError,
