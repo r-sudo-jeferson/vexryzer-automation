@@ -99,16 +99,13 @@ const userObservationSchema = Object.freeze({
     kind: Object.freeze({
       type: 'string',
       enum: Object.freeze([...USER_OBSERVATION_KINDS]),
-      description: 'Choose only the semantic kind literally supported by the copied quote. occurrences_per_month requires occurrence+month markers; minutes_per_occurrence requires minute+occurrence; people_count requires people marker; all other kinds follow their literal unit/period names.',
+      description: 'Literal kind only. occurrences_per_month=occurrence+month; minutes_per_occurrence=minute+occurrence.',
     }),
     quote: Object.freeze({
       type: 'string',
-      description: 'Copy one exact contiguous substring from the current authoritative user turn. Never paraphrase, normalize, translate, combine distant fragments, or invent a number.',
+      description: 'Exact contiguous current-user substring; never paraphrase.',
     }),
-    value: Object.freeze({
-      type: 'number',
-      description: 'Use exactly the numeric value present in quote.',
-    }),
+    value: Object.freeze({ type: 'number' }),
   }),
   required: Object.freeze(['kind', 'quote', 'value']),
 });
@@ -117,7 +114,7 @@ const captureUserObservationsTool: LocalFunctionTool = Object.freeze({
   type: 'function',
   function: Object.freeze({
     name: 'capture_user_observations',
-    description: 'Capture only numeric evidence that is explicitly present as digits/numeric notation in the current authoritative user turn. If the current turn has no explicit numeric token, do not call this tool. quote must be an exact contiguous substring copied verbatim from that turn and must contain the value plus the semantic unit/period markers required by kind; never paraphrase or infer a number. The application binds authority metadata.',
+    description: 'Capture only explicit current-user numeric evidence. With no explicit numeric token, do not call. quote is one exact contiguous verbatim substring containing value and kind-required unit/period; never infer or paraphrase.',
     parameters: Object.freeze({
       type: 'object',
       additionalProperties: false,
@@ -206,7 +203,7 @@ const experienceActionSchema = closedObjectSchema({
 
 const experienceActionSchemaWithContract = Object.freeze({
   ...experienceActionSchema,
-  description: 'Emit only fields allowed by kind: focus/reveal=id+kind+targetId+reason; compare/de_emphasize=id+kind+targetIds+reason; annotate=id+kind+targetId+text+evidenceIds; group=id+kind+groupId+memberIds+label; quantify=id+kind+calculationId+targetId+reason; demonstrate/stage_artifact/request_workshop=id+kind+artifactIntentId+reason; explain_relationship=id+kind+sourceId+targetId+text. Never mix fields from different kinds.',
+  description: 'Always id+kind. Extra fields: focus/reveal targetId+reason; compare/de_emphasize targetIds+reason; annotate targetId+text+evidenceIds; group groupId+memberIds+label; quantify calculationId+targetId+reason; demonstrate/stage_artifact/request_workshop artifactIntentId+reason; explain_relationship sourceId+targetId+text. No cross-kind fields.',
 });
 
 const quantitativeOpportunitySchema = closedObjectSchema({
@@ -317,7 +314,7 @@ const processMutationSchema = closedObjectSchema({
 
 const processMutationSchemaWithContract = Object.freeze({
   ...processMutationSchema,
-  description: 'Emit only fields allowed by kind: upsert_node=id+kind+nodeId+label+summary+evidenceIds; upsert_relationship=id+kind+relationshipId+sourceNodeId+targetNodeId+label+evidenceIds; remove_element=id+kind+targetId+reason; set_node_state=id+kind+nodeId+state+reason. Never mix fields from different kinds.',
+  description: 'Always id+kind. upsert_node nodeId+label+summary+evidenceIds; upsert_relationship relationshipId+sourceNodeId+targetNodeId+label+evidenceIds; remove_element targetId+reason; set_node_state nodeId+state+reason. No cross-kind fields.',
 });
 
 const sceneProposalSchema = Object.freeze({
@@ -401,7 +398,7 @@ const safeMaterialClaimSchema = closedObjectSchema({
 
 const safeMaterialClaimSchemaWithContract = Object.freeze({
   ...safeMaterialClaimSchema,
-  description: 'Required fields by kind: verified_numeric=id+kind+text+calculationId; qualitative=id+kind+text+evidenceIds; feasibility=id+kind+text+state+evidenceIds; artifact_readiness=id+kind+text+artifactId+readiness. Never emit fields from another kind.',
+  description: 'Always id+kind+text. verified_numeric adds calculationId; qualitative evidenceIds; feasibility state+evidenceIds; artifact_readiness artifactId+readiness. No cross-kind fields.',
 });
 
 const submitSellerTool: LocalFunctionTool = Object.freeze({
