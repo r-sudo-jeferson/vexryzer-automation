@@ -4,6 +4,7 @@ import { createCanonicalSalesContext, type CanonicalSalesContext } from '../../s
 import { applyContextMutation } from '../../src/ai/context/context-reducer.ts';
 import {
   captureQuotedUserObservations,
+  hasExplicitUserObservationCandidate,
   type QuotedUserObservationRequest,
 } from '../../src/ai/context/user-evidence-ingestion.ts';
 
@@ -29,6 +30,16 @@ function request(overrides: Partial<QuotedUserObservationRequest> = {}): QuotedU
     ...overrides,
   };
 }
+
+test('pre-screens only user text that can contain a supported literal quantitative observation', () => {
+  assert.equal(hasExplicitUserObservationCandidate('Todo fechamento vira uma correria.'), false);
+  assert.equal(hasExplicitUserObservationCandidate('Informei 80 clientes e depois 120; preciso confirmar.'), false);
+  assert.equal(hasExplicitUserObservationCandidate('Somos 3 pessoas.'), true);
+  assert.equal(hasExplicitUserObservationCandidate('Temos 120 ocorrências por mês.'), true);
+  assert.equal(hasExplicitUserObservationCandidate('Cada ocorrência leva 12 minutos.'), true);
+  assert.equal(hasExplicitUserObservationCandidate('O retrabalho é 7,5%.'), true);
+  assert.equal(hasExplicitUserObservationCandidate('O código interno é 12345.'), false);
+});
 
 test('captures only a numeric observation explicitly quoted from the authoritative current user turn', () => {
   const context = canonical('No fechamento somos 3 pessoas e gastamos 40 minutos por pessoa por dia.');

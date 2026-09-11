@@ -214,6 +214,21 @@ function quoteContainsValue(quote: string, value: number): boolean {
   });
 }
 
+export function hasExplicitUserObservationCandidate(text: string): boolean {
+  if (typeof text !== 'string' || text.trim().length === 0) return false;
+  const numericTokens = text.match(NUMBER_TOKEN) ?? [];
+  const hasNonNegativeNumber = numericTokens.some((token) => {
+    const parsed = parseLocalizedNumber(token);
+    return parsed !== null && parsed >= 0;
+  });
+  if (!hasNonNegativeNumber) return false;
+
+  const normalized = normalizedText(text);
+  return USER_OBSERVATION_KINDS.some((kind) => (
+    SEMANTICS[kind].requiredMarkers.every((pattern) => pattern.test(normalized))
+  ));
+}
+
 function validId(value: string): boolean {
   return value.length >= 1 && value.length <= 96 && SAFE_ID.test(value);
 }

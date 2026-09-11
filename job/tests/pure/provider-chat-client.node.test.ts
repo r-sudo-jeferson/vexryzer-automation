@@ -110,6 +110,24 @@ test('stream chunk structural failure carries only a bounded diagnostic code', a
 });
 
 
+test('proven Groq tool-use failure envelope gets one bounded code without leaking failed generation', async () => {
+  const secret = 'private-tool-generation';
+  const result = await consumeProviderChatSseResponse(new Response(
+    'data: {"error":{"message":"private-provider-detail","type":"invalid_request_error","code":"tool_use_failed","status_code":400,"failed_generation":"' + secret + '"}}\n\ndata: [DONE]\n\n',
+    { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+  ));
+  assert.deepEqual(result, {
+    ok: false,
+    class: 'malformed',
+    status: 200,
+    retryAfterMs: null,
+    malformedDetail: 'stream_chunk',
+    streamChunkDetail: 'provider_tool_use_failed',
+  });
+  assert.equal(JSON.stringify(result).includes(secret), false);
+  assert.equal(JSON.stringify(result).includes('private-provider-detail'), false);
+});
+
 test('provider in-stream error envelopes fail closed with bounded classification and no payload leak', async () => {
   const result = await consumeProviderChatSseResponse(new Response(
     'data: {"error":{"message":"private-provider-detail","code":"rate_limit"}}\n\ndata: [DONE]\n\n',

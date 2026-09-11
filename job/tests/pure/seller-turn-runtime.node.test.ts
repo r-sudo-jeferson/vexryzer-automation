@@ -268,6 +268,7 @@ test('builds every Seller provider message from the revision-bound dispatch cont
   assert.match(messages[0].content, /Action fields must match kind.*focus\/reveal.*targetId\+reason.*compare\/de_emphasize.*targetIds\+reason/i);
   assert.match(messages[0].content, /Material claim fields must match kind.*verified_numeric.*calculationId.*qualitative.*evidenceIds/i);
   assert.match(messages[0].content, /materially supported capabilities.*accounting-native.*semantic UI/i);
+  assert.match(messages[0].content, /repairRequest.*structural correction hint.*never canonical truth/i);
   assert.equal(messages[1]?.role, 'user');
   const userMessage = messages[1];
   if (userMessage === undefined || userMessage.role !== 'user') throw new Error('expected bounded user context message');
@@ -634,6 +635,111 @@ test('duplicate semantic calculation requests across sibling tool calls are reje
   assert.equal(result.detail, 'DUPLICATE_CALCULATION_REQUEST');
   assert.equal(computeCalls, 0);
   assert.equal(commitCalls, 0);
+});
+
+test('state-aware tool exposure hides capture without literal numeric evidence and requires capture first when evidence exists', async () => {
+  const primary = route();
+  const seen: string[][] = [];
+  const noNumber = baseInput([primary], async (providerInput) => {
+    seen.push(providerInput.tools.map((tool) => tool.function.name));
+    return completion([submissionTool(7)]);
+  });
+  const noNumberResult = await runSellerTurn(noNumber);
+  assert.equal(noNumberResult.ok, true);
+  assert.deepEqual(seen[0], ['request_calculations', 'submit_seller_submission']);
+
+  const numericText = 'Temos 120 ocorrências por mês e cada ocorrência leva 12 minutos.';
+  let numericCall = 0;
+  const numeric = baseInput([primary], async (providerInput) => {
+    seen.push(providerInput.tools.map((tool) => tool.function.name));
+    numericCall += 1;
+    if (numericCall === 1) {
+      return completion([observationTool(7, [
+        { id: 'obs-volume', kind: 'occurrences_per_month', turnId: 'turn-1', quote: '120 ocorrências por mês', value: 120 },
+        { id: 'obs-minutes', kind: 'minutes_per_occurrence', turnId: 'turn-1', quote: '12 minutos', value: 12 },
+      ])] as never);
+    }
+    return completion([submissionTool(8)]);
+  }, { applyContextMutation: applyCanonicalContextMutation });
+  numeric.canonical = Object.freeze({
+    ...canonical(7),
+    latestUserIntent: Object.freeze({ turnId: 'turn-1', text: numericText }),
+  });
+  numeric.recentTurns = Object.freeze([{ id: 'turn-1', role: 'user', text: numericText }]);
+  const numericResult = await runSellerTurn(numeric);
+  assert.equal(numericResult.ok, true, JSON.stringify(numericResult));
+  assert.deepEqual(seen[1], ['capture_user_observations']);
+  assert.deepEqual(seen[2], ['request_calculations', 'submit_seller_submission']);
+});
+
+test('one bounded structural repair replays only application-owned failure metadata and can recover', async () => {
+  const primary = route();
+  let calls = 0;
+  let repairPayload: unknown = null;
+  const input = baseInput([primary], async (providerInput) => {
+    calls += 1;
+    if (calls === 1) {
+      return completion([
+        calculationTool(7, 'calc-one', 'tool-calc'),
+        submissionTool(7),
+      ] as never);
+    }
+    repairPayload = JSON.parse((providerInput.messages[1] as { content: string }).content);
+    return completion([submissionTool(7)]);
+  });
+  const result = await runSellerTurn(input);
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(calls, 2);
+  assert.deepEqual((repairPayload as { repairRequest?: unknown }).repairRequest, {
+    code: 'INVALID_PROVIDER_OUTPUT',
+    detail: 'MIXED_TOOL_KINDS',
+  });
+  assert.equal(JSON.stringify(repairPayload).includes('tool-calc'), false);
+});
+
+test('structural repair is bounded to one attempt and a second invalid response fails closed', async () => {
+  const primary = route();
+  let calls = 0;
+  const input = baseInput([primary], async () => {
+    calls += 1;
+    return completion([
+      calculationTool(7, 'calc-one', 'tool-calc'),
+      submissionTool(7),
+    ] as never);
+  });
+  const result = await runSellerTurn(input);
+  if (result.ok || result.code !== 'INVALID_PROVIDER_OUTPUT') throw new Error(JSON.stringify(result));
+  assert.equal(result.detail, 'MIXED_TOOL_KINDS');
+  assert.equal(calls, 2);
+  assert.equal(result.canonical.revision, 7);
+});
+
+test('proven provider tool-use generation failure gets one same-route repair before failure routing', async () => {
+  const primary = route();
+  let calls = 0;
+  let repairPayload: unknown = null;
+  const input = baseInput([primary], async (providerInput) => {
+    calls += 1;
+    if (calls === 1) {
+      return {
+        ok: false,
+        class: 'malformed',
+        status: 200,
+        retryAfterMs: null,
+        malformedDetail: 'stream_chunk',
+        streamChunkDetail: 'provider_tool_use_failed',
+      };
+    }
+    repairPayload = JSON.parse((providerInput.messages[1] as { content: string }).content);
+    return completion([submissionTool(7)]);
+  });
+  const result = await runSellerTurn(input);
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(calls, 2);
+  assert.deepEqual((repairPayload as { repairRequest?: unknown }).repairRequest, {
+    code: 'PROVIDER_TOOL_USE_FAILED',
+    detail: 'EMIT_VALID_ALLOWED_TOOL_CALL',
+  });
 });
 
 test('mixed calculation and final-submission tools are rejected as one invalid provider turn', async () => {

@@ -48,6 +48,7 @@ export type ChatStreamChunkErrorCode =
   | 'chunk_shape'
   | 'chunk_non_object'
   | 'provider_error_event'
+  | 'provider_tool_use_failed'
   | 'choices_missing'
   | 'choices_type'
   | 'choice_shape'
@@ -185,7 +186,18 @@ export function createChatStreamAccumulator(): ChatStreamAccumulator {
   return Object.freeze({
     accept(chunk: unknown): void {
       if (!isRecord(chunk)) rejectChunk('chunk_non_object');
-      if (Object.hasOwn(chunk, 'error')) rejectChunk('provider_error_event');
+      if (Object.hasOwn(chunk, 'error')) {
+        const providerError = chunk['error'];
+        if (
+          isRecord(providerError)
+          && providerError['type'] === 'invalid_request_error'
+          && providerError['code'] === 'tool_use_failed'
+          && Object.hasOwn(providerError, 'failed_generation')
+        ) {
+          rejectChunk('provider_tool_use_failed');
+        }
+        rejectChunk('provider_error_event');
+      }
       if (!Object.hasOwn(chunk, 'choices')) rejectChunk('choices_missing');
       if (!Array.isArray(chunk['choices'])) rejectChunk('choices_type');
       const choices = chunk['choices'];

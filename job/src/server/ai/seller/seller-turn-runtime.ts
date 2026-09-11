@@ -3,6 +3,7 @@ import type { CriticReview } from '../../../ai/critic/critic-contract.ts';
 import { applyContextMutation } from '../../../ai/context/context-reducer.ts';
 import {
   captureQuotedUserObservations,
+  hasExplicitUserObservationCandidate,
   type UserObservationCaptureResult,
 } from '../../../ai/context/user-evidence-ingestion.ts';
 import {
@@ -62,6 +63,17 @@ export interface SellerRouteBudgetConfig {
 }
 
 export interface SellerRevisionRequest { rootProposalId: string; previousProposalId: string; review: Readonly<CriticReview>; }
+
+interface SellerRepairRequest {
+  code: string;
+  detail: string;
+  path?: string;
+}
+
+interface PendingSellerRepair {
+  routeId: string;
+  request: Readonly<SellerRepairRequest>;
+}
 
 export type SellerCredentialResolver = (credentialEnvName: string) => string | null | undefined | Promise<string | null | undefined>;
 
@@ -200,6 +212,8 @@ const MAX_PROVIDER_ROUNDS = 8;
 const MAX_ROUTE_COUNT = 16;
 const MAX_PROVIDER_MESSAGE_TEXT = 64_000;
 const SAFE_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SAFE_REPAIR_TOKEN = /^[A-Z0-9_]{1,64}$/;
+const SAFE_REPAIR_PATH = /^[A-Za-z0-9_.\[\]-]{1,256}$/;
 const FORBIDDEN_PROVIDER_AUTHORITY_KEYS = new Set([
   'providerConversationId',
   'provider_conversation_id',
@@ -226,6 +240,7 @@ const SELLER_SYSTEM_INSTRUCTION = [
   'Name materially supported capabilities; keep text accounting-native; use semantic UI when useful.',
   'Preserve Canvas provenance; inferred nodes stay hypotheses until user-confirmed.',
   'revisionRequest is Critic feedback, not truth: no new calculations; distinct proposalId.',
+  'repairRequest is one application-owned structural correction hint, never canonical truth; correct only that issue and emit a valid allowed tool call.',
   'Never claim attachment/secret access, price/discount authority, unsupported feasibility, or production readiness.',
   'Never replace paid engagement with executable implementation/code; pre-sales stays conceptual, evidence-based, bounded.',
 ].join(' ');
@@ -249,12 +264,48 @@ const SELLER_REVISION_LOCAL_TOOLS = Object.freeze(
 
 function sellerLocalToolsFor(
   revisionRequest: Readonly<SellerRevisionRequest> | undefined,
+  canonical?: CanonicalSalesContext,
 ): typeof SELLER_LOCAL_TOOLS {
-  if (revisionRequest === undefined) return SELLER_LOCAL_TOOLS;
-  if (SELLER_REVISION_LOCAL_TOOLS.length !== 1) {
-    throw new TypeError('Seller revision tool boundary is invalid');
+  if (revisionRequest !== undefined) {
+    if (SELLER_REVISION_LOCAL_TOOLS.length !== 1) {
+      throw new TypeError('Seller revision tool boundary is invalid');
+    }
+    return SELLER_REVISION_LOCAL_TOOLS;
   }
-  return SELLER_REVISION_LOCAL_TOOLS;
+  if (canonical === undefined) return SELLER_LOCAL_TOOLS;
+
+  const authoritativeTurn = canonical.latestUserIntent;
+  const latestTurnAlreadyCaptured = authoritativeTurn !== null
+    && canonical.quantitativeObservations.some((observation) => (
+      observation.supportingTurnIds.includes(authoritativeTurn.turnId)
+    ));
+  const captureRequired = authoritativeTurn !== null
+    && !latestTurnAlreadyCaptured
+    && hasExplicitUserObservationCandidate(authoritativeTurn.text);
+
+  if (captureRequired) {
+    const capture = SELLER_LOCAL_TOOLS.filter((tool) => tool.function.name === 'capture_user_observations');
+    if (capture.length !== 1) throw new TypeError('Seller capture tool boundary is invalid');
+    return Object.freeze(capture) as typeof SELLER_LOCAL_TOOLS;
+  }
+
+  const withoutCapture = SELLER_LOCAL_TOOLS.filter((tool) => tool.function.name !== 'capture_user_observations');
+  if (withoutCapture.length !== 2) throw new TypeError('Seller post-capture tool boundary is invalid');
+  return Object.freeze(withoutCapture) as typeof SELLER_LOCAL_TOOLS;
+}
+
+function createSellerRepairRequest(
+  code: string,
+  detail: string,
+  path?: string,
+): Readonly<SellerRepairRequest> | null {
+  if (!SAFE_REPAIR_TOKEN.test(code) || !SAFE_REPAIR_TOKEN.test(detail)) return null;
+  if (path !== undefined && !SAFE_REPAIR_PATH.test(path)) return null;
+  return Object.freeze({
+    code,
+    detail,
+    ...(path === undefined ? {} : { path }),
+  });
 }
 
 interface PreparedRouteContext {
@@ -344,6 +395,8 @@ function prepareRouteContexts(
   input: SellerTurnRuntimeInput,
   canonical: CanonicalSalesContext,
   dependencies: SellerTurnRuntimeDependencies,
+  activeTools: typeof SELLER_LOCAL_TOOLS,
+  repairRequest?: Readonly<SellerRepairRequest>,
 ): PreparationResult {
   const budgetByRoute = new Map(input.routeBudgets.map((item) => [item.routeId, item.budget] as const));
   const prepared = new Map<string, Readonly<PreparedRouteContext>>();
@@ -370,7 +423,7 @@ function prepareRouteContexts(
           contextMode: 'full',
           fallbackReason: null,
           context: contextPayload as CanonicalDispatchContext,
-        }, input.estimateTokens, input.revisionRequest),
+        }, input.estimateTokens, activeTools, input.revisionRequest, repairRequest),
       });
       if (packaged.ok) {
         fullContext = packaged.pack;
@@ -381,7 +434,7 @@ function prepareRouteContexts(
             contextMode: 'full',
             fallbackReason: null,
             context: fullContext,
-          }, input.estimateTokens);
+          }, input.estimateTokens, activeTools, input.revisionRequest, repairRequest);
         } catch {
           return { ok: false, routeId: route.routeId, detail: 'INVALID_TOKEN_ESTIMATOR' };
         }
@@ -469,6 +522,7 @@ function containsForbiddenProviderAuthorityKey(value: unknown, seen = new Set<ob
 export function buildSellerProviderMessages<TContext extends CanonicalDispatchContext>(
   envelope: Readonly<SellerProviderMessageSource<TContext>>,
   revisionRequest?: Readonly<SellerRevisionRequest>,
+  repairRequest?: Readonly<SellerRepairRequest>,
 ): readonly ProviderChatMessage[] {
   if (envelope.role !== 'seller') throw new TypeError('Seller messages require a seller dispatch envelope');
   if (envelope.context.canonicalRevision !== envelope.canonicalRevision) {
@@ -483,6 +537,13 @@ export function buildSellerProviderMessages<TContext extends CanonicalDispatchCo
     || revisionRequest.review.basedOnRevision !== envelope.canonicalRevision)) {
     throw new TypeError('Seller revision request is not bound to the canonical revision');
   }
+  if (repairRequest !== undefined && createSellerRepairRequest(
+    repairRequest.code,
+    repairRequest.detail,
+    repairRequest.path,
+  ) === null) {
+    throw new TypeError('Seller repair request is invalid');
+  }
   const payload = Object.freeze({
     schemaVersion: 1 as const,
     canonicalRevision: envelope.canonicalRevision,
@@ -490,6 +551,7 @@ export function buildSellerProviderMessages<TContext extends CanonicalDispatchCo
     fallbackReason: envelope.fallbackReason,
     context: envelope.context,
     ...(revisionRequest === undefined ? {} : { revisionRequest }),
+    ...(repairRequest === undefined ? {} : { repairRequest }),
   });
   let content: string;
   try {
@@ -510,10 +572,12 @@ export function buildSellerProviderMessages<TContext extends CanonicalDispatchCo
 function estimateSellerProviderInputTokens(
   source: Readonly<SellerProviderMessageSource>,
   estimateTokens: TokenEstimator,
+  tools: typeof SELLER_LOCAL_TOOLS,
   revisionRequest?: Readonly<SellerRevisionRequest>,
+  repairRequest?: Readonly<SellerRepairRequest>,
 ): number {
-  const messages = buildSellerProviderMessages(source, revisionRequest);
-  const measured = estimateTokens(Object.freeze({ messages, tools: sellerLocalToolsFor(revisionRequest) }));
+  const messages = buildSellerProviderMessages(source, revisionRequest, repairRequest);
+  const measured = estimateTokens(Object.freeze({ messages, tools }));
   if (!Number.isInteger(measured) || measured < 0) {
     throw new TypeError('token estimator must return a non-negative integer');
   }
@@ -577,6 +641,7 @@ function parseProviderTools(
   completion: Extract<ProviderChatClientResult, { ok: true }>['completion'],
   canonicalRevision: number,
   dependencies: SellerTurnRuntimeDependencies,
+  allowedToolNames: ReadonlySet<string>,
 ):
   | { ok: true; parsed: readonly Extract<SellerWireToolResult, { ok: true }>[] }
   | { ok: false; detail: string } {
@@ -588,6 +653,9 @@ function parseProviderTools(
 
   const parsed: Extract<SellerWireToolResult, { ok: true }>[] = [];
   for (const call of completion.toolCalls) {
+    if (!allowedToolNames.has(call.function.name)) {
+      return { ok: false, detail: 'TOOL_NOT_AVAILABLE_FOR_STATE' };
+    }
     const result = dependencies.parseSellerToolCall(call, canonicalRevision);
     if (!result.ok) return { ok: false, detail: result.code };
     parsed.push(result);
@@ -606,13 +674,37 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
 
   const dependencies: SellerTurnRuntimeDependencies = Object.freeze({ ...DEFAULT_DEPENDENCIES, ...input.dependencies });
   const maxProviderRounds = input.maxProviderRounds ?? DEFAULT_MAX_PROVIDER_ROUNDS;
-  const activeTools = sellerLocalToolsFor(input.revisionRequest);
   let canonical = input.canonical;
   let runtimeStates: readonly Readonly<ProviderRuntimeState>[] = Object.freeze([...input.runtimeStates]);
   let providerCalls = 0;
+  let repairUsed = false;
+  let pendingRepair: PendingSellerRepair | null = null;
 
-  for (let providerRound = 1; providerRound <= maxProviderRounds; providerRound += 1) {
-    const preparation = prepareRouteContexts(input, canonical, dependencies);
+  const scheduleRepair = (
+    routeId: string,
+    code: string,
+    detail: string,
+    path?: string,
+  ): boolean => {
+    if (repairUsed) return false;
+    const request = createSellerRepairRequest(code, detail, path);
+    if (request === null) return false;
+    repairUsed = true;
+    pendingRepair = Object.freeze({ routeId, request });
+    return true;
+  };
+
+  providerRounds: for (let providerRound = 1; providerRound <= maxProviderRounds; providerRound += 1) {
+    const repairForRound = pendingRepair;
+    pendingRepair = null;
+    const activeTools = sellerLocalToolsFor(input.revisionRequest, canonical);
+    const preparation = prepareRouteContexts(
+      input,
+      canonical,
+      dependencies,
+      activeTools,
+      repairForRound?.request,
+    );
     if (!preparation.ok) {
       return { ok: false, code: 'CONTEXT_PREPARATION_FAILED', canonical, routeId: preparation.routeId, detail: preparation.detail };
     }
@@ -622,8 +714,15 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
     let measurementAdjustments = 0;
     let successful: { decision: Readonly<ProviderRouteDecision>; completion: Extract<ProviderChatClientResult, { ok: true }>['completion'] } | null = null;
 
-    while (attemptedRoutes.size < input.routes.length) {
-      const decision = dependencies.selectProviderRoute(input.routes, selectionRequest, runtimeStates);
+    const selectableRoutes = repairForRound === null
+      ? input.routes
+      : input.routes.filter((route) => route.routeId === repairForRound.routeId);
+    if (selectableRoutes.length < 1) {
+      return { ok: false, code: 'NO_ELIGIBLE_ROUTE', canonical };
+    }
+
+    while (attemptedRoutes.size < selectableRoutes.length) {
+      const decision = dependencies.selectProviderRoute(selectableRoutes, selectionRequest, runtimeStates);
       if (!decision.ok) return { ok: false, code: 'NO_ELIGIBLE_ROUTE', canonical };
       if (decision.canonicalRevision !== canonical.revision || attemptedRoutes.has(decision.route.routeId)) {
         return { ok: false, code: 'INVALID_RUNTIME_CONFIG', canonical, detail: 'ROUTE_BUDGET_MISMATCH' };
@@ -640,7 +739,11 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
 
       let messages: readonly ProviderChatMessage[];
       try {
-        messages = buildSellerProviderMessages(dispatch.envelope, input.revisionRequest);
+        messages = buildSellerProviderMessages(
+          dispatch.envelope,
+          input.revisionRequest,
+          repairForRound?.request,
+        );
       } catch {
         return { ok: false, code: 'DISPATCH_REJECTED', canonical, routeId: decision.route.routeId, detail: 'MESSAGE_BUILD_FAILED' };
       }
@@ -692,11 +795,25 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
       providerCalls += 1;
 
       if (!providerResult.ok) {
+        if (
+          providerResult.class === 'malformed'
+          && providerResult.streamChunkDetail === 'provider_tool_use_failed'
+          && scheduleRepair(
+            decision.route.routeId,
+            'PROVIDER_TOOL_USE_FAILED',
+            'EMIT_VALID_ALLOWED_TOOL_CALL',
+          )
+        ) {
+          continue providerRounds;
+        }
         if (!canFallbackAfterProviderFailure(providerResult.class)) {
           return providerFailure(canonical, decision.route.routeId, providerResult);
         }
         runtimeStates = markRouteUnavailable(runtimeStates, decision.route.routeId, providerResult.class);
-        if (attemptedRoutes.size >= input.routes.length) {
+        if (repairForRound !== null) {
+          continue providerRounds;
+        }
+        if (attemptedRoutes.size >= selectableRoutes.length) {
           return providerFailure(canonical, decision.route.routeId, providerResult);
         }
         continue;
@@ -708,21 +825,57 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
 
     if (successful === null) return { ok: false, code: 'NO_ELIGIBLE_ROUTE', canonical };
 
-    const tools = parseProviderTools(successful.completion, canonical.revision, dependencies);
+    const tools = parseProviderTools(
+      successful.completion,
+      canonical.revision,
+      dependencies,
+      new Set(activeTools.map((tool) => tool.function.name)),
+    );
     if (!tools.ok) {
+      if (scheduleRepair(
+        successful.decision.route.routeId,
+        'INVALID_PROVIDER_OUTPUT',
+        tools.detail,
+      )) {
+        continue providerRounds;
+      }
       return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: tools.detail };
     }
 
     const first = tools.parsed[0]!;
     if (input.revisionRequest !== undefined && first.kind !== 'seller_submission') {
+      if (scheduleRepair(
+        successful.decision.route.routeId,
+        'INVALID_PROVIDER_OUTPUT',
+        'NON_SUBMISSION_TOOL_FORBIDDEN_DURING_CRITIC_REVISION',
+      )) {
+        continue providerRounds;
+      }
       return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'NON_SUBMISSION_TOOL_FORBIDDEN_DURING_CRITIC_REVISION' };
     }
     if (first.kind === 'seller_submission') {
       if (input.revisionRequest !== undefined && first.submission['proposalId'] === input.revisionRequest.previousProposalId) {
+        if (scheduleRepair(
+          successful.decision.route.routeId,
+          'INVALID_PROVIDER_OUTPUT',
+          'REVISED_PROPOSAL_ID_REUSED',
+        )) {
+          continue providerRounds;
+        }
         return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'REVISED_PROPOSAL_ID_REUSED' };
       }
       const validation = dependencies.validateSellerSubmission(first.submission, { canonical });
-      if (!validation.ok) return { ok: false, code: 'SELLER_SUBMISSION_REJECTED', canonical, validation };
+      if (!validation.ok) {
+        if (scheduleRepair(
+          successful.decision.route.routeId,
+          'SELLER_SUBMISSION_REJECTED',
+          validation.code,
+          validation.path,
+        )) {
+          continue providerRounds;
+        }
+        return { ok: false, code: 'SELLER_SUBMISSION_REJECTED', canonical, validation };
+      }
       return {
         ok: true,
         canonical,
@@ -737,10 +890,16 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
       const requests = tools.parsed.flatMap((item) =>
         item.kind === 'user_observation_requests' ? item.requests : []);
       if (requests.length < 1 || requests.length > 8) {
+        if (scheduleRepair(successful.decision.route.routeId, 'INVALID_PROVIDER_OUTPUT', 'OBSERVATION_REQUEST_LIMIT')) {
+          continue providerRounds;
+        }
         return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'OBSERVATION_REQUEST_LIMIT' };
       }
       const signatures = requests.map((request) => JSON.stringify(request));
       if (new Set(signatures).size !== signatures.length) {
+        if (scheduleRepair(successful.decision.route.routeId, 'INVALID_PROVIDER_OUTPUT', 'DUPLICATE_OBSERVATION_REQUEST')) {
+          continue providerRounds;
+        }
         return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'DUPLICATE_OBSERVATION_REQUEST' };
       }
       const authoritativeTurn = canonical.latestUserIntent;
@@ -755,10 +914,20 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
         turnId: authoritativeTurn.turnId,
       }));
       if (boundRequests.some((request) => observationIds.has(request.id))) {
+        if (scheduleRepair(successful.decision.route.routeId, 'INVALID_PROVIDER_OUTPUT', 'SERVER_OBSERVATION_ID_COLLISION')) {
+          continue providerRounds;
+        }
         return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'SERVER_OBSERVATION_ID_COLLISION' };
       }
       const captured = dependencies.captureQuotedUserObservations(canonical, boundRequests);
       if (!captured.ok) {
+        if (scheduleRepair(
+          successful.decision.route.routeId,
+          'OBSERVATION_CAPTURE_REJECTED',
+          captured.code,
+        )) {
+          continue providerRounds;
+        }
         return {
           ok: false,
           code: 'OBSERVATION_CAPTURE_REJECTED',
@@ -781,10 +950,16 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
 
     const requests = tools.parsed.flatMap((item) => item.kind === 'calculation_requests' ? item.requests : []);
     if (requests.length < 1 || requests.length > 8) {
+      if (scheduleRepair(successful.decision.route.routeId, 'INVALID_PROVIDER_OUTPUT', 'CALCULATION_REQUEST_LIMIT')) {
+        continue providerRounds;
+      }
       return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'CALCULATION_REQUEST_LIMIT' };
     }
     const signatures = requests.map((request) => JSON.stringify(request));
     if (new Set(signatures).size !== signatures.length) {
+      if (scheduleRepair(successful.decision.route.routeId, 'INVALID_PROVIDER_OUTPUT', 'DUPLICATE_CALCULATION_REQUEST')) {
+        continue providerRounds;
+      }
       return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'DUPLICATE_CALCULATION_REQUEST' };
     }
     const calculationIds = new Set(canonical.verifiedCalculations.map((item) => item.id));
@@ -794,6 +969,9 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
       baseRevision: canonical.revision,
     }));
     if (boundRequests.some((request) => calculationIds.has(request.id))) {
+      if (scheduleRepair(successful.decision.route.routeId, 'INVALID_PROVIDER_OUTPUT', 'SERVER_CALCULATION_ID_COLLISION')) {
+        continue providerRounds;
+      }
       return { ok: false, code: 'INVALID_PROVIDER_OUTPUT', canonical, routeId: successful.decision.route.routeId, detail: 'SERVER_CALCULATION_ID_COLLISION' };
     }
 
@@ -801,6 +979,13 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
     for (const request of boundRequests) {
       const result = dependencies.computeVerifiedCalculation(canonical, request);
       if (!result.ok) {
+        if (scheduleRepair(
+          successful.decision.route.routeId,
+          'CALCULATION_REJECTED',
+          result.code,
+        )) {
+          continue providerRounds;
+        }
         return { ok: false, code: 'CALCULATION_REJECTED', canonical, requestId: request.id, detail: result.code };
       }
       calculations.push(result.calculation);
