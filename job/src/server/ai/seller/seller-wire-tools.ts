@@ -6,6 +6,7 @@ import {
 } from '../../../ai/context/user-evidence-ingestion.ts';
 import {
   AGENT_INTENT_LIMITS,
+  EXPERIENCE_ACTION_KINDS,
   QUANTITATIVE_OPPORTUNITY_KINDS,
 } from '../../../experience/agent-intent.ts';
 import {
@@ -70,47 +71,25 @@ const MAX_TOOL_ARGUMENT_BYTES = 1_000_000;
 
 const idSchema = Object.freeze({
   type: 'string',
-  pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$',
-  minLength: 1,
-  maxLength: 96,
 });
 
-function calculationSchema(
-  kind: CalculationRequest['kind'],
-  requiredIds: readonly string[],
-): Readonly<Record<string, unknown>> {
-  const properties: Record<string, unknown> = {
-    kind: Object.freeze({ type: 'string', enum: Object.freeze([kind]) }),
-  };
-  for (const id of requiredIds) properties[id] = idSchema;
-  return Object.freeze({
-    type: 'object',
-    additionalProperties: false,
-    properties: Object.freeze(properties),
-    required: Object.freeze(['kind', ...requiredIds]),
-  });
-}
-
 const calculationRequestSchema = Object.freeze({
-  oneOf: Object.freeze([
-    calculationSchema('monthly_capacity', [
-      'peopleObservationId',
-      'minutesPerPersonPerDayObservationId',
-      'workingDaysPerMonthObservationId',
-    ]),
-    calculationSchema('monthly_workload', [
-      'occurrencesPerMonthObservationId',
-      'minutesPerOccurrenceObservationId',
-    ]),
-    calculationSchema('monthly_cost', [
-      'monthlyHoursObservationId',
-      'hourlyCostObservationId',
-    ]),
-    calculationSchema('rework_volume', [
-      'volumeObservationId',
-      'reworkRateObservationId',
-    ]),
-  ]),
+  type: 'object',
+  additionalProperties: false,
+  description: 'Required by kind: monthly_capacity=peopleObservationId+minutesPerPersonPerDayObservationId+workingDaysPerMonthObservationId; monthly_workload=occurrencesPerMonthObservationId+minutesPerOccurrenceObservationId; monthly_cost=monthlyHoursObservationId+hourlyCostObservationId; rework_volume=volumeObservationId+reworkRateObservationId.',
+  properties: Object.freeze({
+    kind: Object.freeze({ type: 'string', enum: Object.freeze(['monthly_capacity', 'monthly_workload', 'monthly_cost', 'rework_volume']) }),
+    peopleObservationId: idSchema,
+    minutesPerPersonPerDayObservationId: idSchema,
+    workingDaysPerMonthObservationId: idSchema,
+    occurrencesPerMonthObservationId: idSchema,
+    minutesPerOccurrenceObservationId: idSchema,
+    monthlyHoursObservationId: idSchema,
+    hourlyCostObservationId: idSchema,
+    volumeObservationId: idSchema,
+    reworkRateObservationId: idSchema,
+  }),
+  required: Object.freeze(['kind']),
 });
 
 const userObservationSchema = Object.freeze({
@@ -118,8 +97,8 @@ const userObservationSchema = Object.freeze({
   additionalProperties: false,
   properties: Object.freeze({
     kind: Object.freeze({ type: 'string', enum: Object.freeze([...USER_OBSERVATION_KINDS]) }),
-    quote: Object.freeze({ type: 'string', minLength: 1, maxLength: 500, description: 'A verbatim contiguous substring copied from the current authoritative user turn. Never paraphrase, normalize, translate, add words, or omit the numeric token and semantic markers needed by kind.' }),
-    value: Object.freeze({ type: 'number', minimum: 0, description: 'The exact numeric value visibly present inside quote, using the same magnitude rather than a derived or converted value.' }),
+    quote: Object.freeze({ type: 'string' }),
+    value: Object.freeze({ type: 'number' }),
   }),
   required: Object.freeze(['kind', 'quote', 'value']),
 });
@@ -128,7 +107,7 @@ const captureUserObservationsTool: LocalFunctionTool = Object.freeze({
   type: 'function',
   function: Object.freeze({
     name: 'capture_user_observations',
-    description: 'Select numeric evidence explicitly present in the current authoritative user turn. quote MUST be copied verbatim as one contiguous substring of that turn and MUST visibly contain value plus the semantic unit/period markers required by kind. Never paraphrase the quote or derive/convert the value. The application binds request id, canonical revision, authoritative turn, provenance, unit and period.',
+    description: 'Capture explicit current-user numeric evidence. quote must be exact and contain value plus its semantic unit/period; the application binds authority metadata.',
     parameters: Object.freeze({
       type: 'object',
       additionalProperties: false,
@@ -149,7 +128,7 @@ const requestCalculationsTool: LocalFunctionTool = Object.freeze({
   type: 'function',
   function: Object.freeze({
     name: 'request_calculations',
-    description: 'Request application-owned deterministic arithmetic using canonical observation ids. Supply only calculation kind and observation references. The application binds calculation id and canonical revision and never accepts a model-authored result.',
+    description: 'Request deterministic arithmetic from canonical observation ids; the application owns the result and authority metadata.',
     parameters: Object.freeze({
       type: 'object',
       additionalProperties: false,
@@ -166,27 +145,22 @@ const requestCalculationsTool: LocalFunctionTool = Object.freeze({
   }),
 });
 
-const nonEmptyTextSchema = (maxLength: number, description?: string): Readonly<Record<string, unknown>> => Object.freeze({
+const nonEmptyTextSchema = (_maxLength: number, description?: string): Readonly<Record<string, unknown>> => Object.freeze({
   type: 'string',
-  minLength: 1,
-  maxLength,
   ...(description === undefined ? {} : { description }),
 });
 
 const idArraySchema = (
-  maxItems: number,
-  minItems = 0,
+  _maxItems: number,
+  _minItems = 0,
 ): Readonly<Record<string, unknown>> => Object.freeze({
   type: 'array',
-  minItems,
-  maxItems,
-  uniqueItems: true,
   items: idSchema,
 });
 
 const primitiveSchema = Object.freeze({
   oneOf: Object.freeze([
-    Object.freeze({ type: 'string', minLength: 1, maxLength: 1000 }),
+    Object.freeze({ type: 'string' }),
     Object.freeze({ type: 'number' }),
     Object.freeze({ type: 'boolean' }),
   ]),
@@ -204,70 +178,21 @@ function closedObjectSchema(
   });
 }
 
-function discriminatedSchema(
-  kind: string,
-  properties: Readonly<Record<string, unknown>>,
-  required: readonly string[],
-): Readonly<Record<string, unknown>> {
-  return closedObjectSchema({
-    id: idSchema,
-    kind: Object.freeze({ type: 'string', enum: Object.freeze([kind]) }),
-    ...properties,
-  }, ['id', 'kind', ...required]);
-}
-
-const experienceActionSchema = Object.freeze({
-  oneOf: Object.freeze([
-    discriminatedSchema('focus', {
-      targetId: idSchema,
-      reason: nonEmptyTextSchema(600),
-    }, ['targetId', 'reason']),
-    discriminatedSchema('compare', {
-      targetIds: idArraySchema(AGENT_INTENT_LIMITS.actionTargetIds, 2),
-      reason: nonEmptyTextSchema(600),
-    }, ['targetIds', 'reason']),
-    discriminatedSchema('annotate', {
-      targetId: idSchema,
-      text: nonEmptyTextSchema(1000),
-      evidenceIds: idArraySchema(AGENT_INTENT_LIMITS.evidenceIds),
-    }, ['targetId', 'text', 'evidenceIds']),
-    discriminatedSchema('reveal', {
-      targetId: idSchema,
-      reason: nonEmptyTextSchema(600),
-    }, ['targetId', 'reason']),
-    discriminatedSchema('group', {
-      groupId: idSchema,
-      memberIds: idArraySchema(AGENT_INTENT_LIMITS.actionTargetIds, 2),
-      label: nonEmptyTextSchema(200),
-    }, ['groupId', 'memberIds', 'label']),
-    discriminatedSchema('de_emphasize', {
-      targetIds: idArraySchema(AGENT_INTENT_LIMITS.actionTargetIds, 1),
-      reason: nonEmptyTextSchema(600),
-    }, ['targetIds', 'reason']),
-    discriminatedSchema('quantify', {
-      calculationId: idSchema,
-      targetId: Object.freeze({ oneOf: Object.freeze([idSchema, Object.freeze({ type: 'null' })]) }),
-      reason: nonEmptyTextSchema(600),
-    }, ['calculationId', 'targetId', 'reason']),
-    discriminatedSchema('demonstrate', {
-      artifactIntentId: idSchema,
-      reason: nonEmptyTextSchema(600),
-    }, ['artifactIntentId', 'reason']),
-    discriminatedSchema('explain_relationship', {
-      sourceId: idSchema,
-      targetId: idSchema,
-      text: nonEmptyTextSchema(1000),
-    }, ['sourceId', 'targetId', 'text']),
-    discriminatedSchema('stage_artifact', {
-      artifactIntentId: idSchema,
-      reason: nonEmptyTextSchema(600),
-    }, ['artifactIntentId', 'reason']),
-    discriminatedSchema('request_workshop', {
-      artifactIntentId: idSchema,
-      reason: nonEmptyTextSchema(600),
-    }, ['artifactIntentId', 'reason']),
-  ]),
-});
+const experienceActionSchema = closedObjectSchema({
+  kind: Object.freeze({ type: 'string', enum: Object.freeze([...EXPERIENCE_ACTION_KINDS]) }),
+  id: idSchema,
+  targetId: Object.freeze({ oneOf: Object.freeze([idSchema, Object.freeze({ type: 'null' })]) }),
+  targetIds: idArraySchema(AGENT_INTENT_LIMITS.actionTargetIds),
+  reason: nonEmptyTextSchema(600),
+  text: nonEmptyTextSchema(1000),
+  evidenceIds: idArraySchema(AGENT_INTENT_LIMITS.evidenceIds),
+  groupId: idSchema,
+  memberIds: idArraySchema(AGENT_INTENT_LIMITS.actionTargetIds),
+  label: nonEmptyTextSchema(200),
+  calculationId: idSchema,
+  artifactIntentId: idSchema,
+  sourceId: idSchema,
+}, ['id', 'kind']);
 
 const quantitativeOpportunitySchema = closedObjectSchema({
   id: idSchema,
@@ -347,7 +272,7 @@ const factProposalSchema = closedObjectSchema({
   source: Object.freeze({
     type: 'string',
     enum: Object.freeze(['inference']),
-    description: 'Model-authored facts are hypotheses only. User/system provenance is application-owned.',
+    description: 'Only inference; provenance is application-owned.',
   }),
   supportingTurnIds: idArraySchema(EXPERIENCE_PROPOSAL_LIMITS.evidenceIds),
 }, ['id', 'subject', 'predicate', 'value', 'source', 'supportingTurnIds']);
@@ -360,35 +285,20 @@ const correctionProposalSchema = closedObjectSchema({
   supportingTurnIds: idArraySchema(EXPERIENCE_PROPOSAL_LIMITS.evidenceIds),
 }, ['id', 'targetEvidenceId', 'reason', 'replacementValue', 'supportingTurnIds']);
 
-const processMutationSchema = Object.freeze({
-  oneOf: Object.freeze([
-    discriminatedSchema('upsert_node', {
-      nodeId: idSchema,
-      label: nonEmptyTextSchema(EXPERIENCE_PROPOSAL_LIMITS.processNodeLabel),
-      summary: nonEmptyTextSchema(EXPERIENCE_PROPOSAL_LIMITS.processNodeSummary),
-      evidenceIds: idArraySchema(EXPERIENCE_PROPOSAL_LIMITS.evidenceIds),
-    }, ['nodeId', 'label', 'summary', 'evidenceIds']),
-    discriminatedSchema('upsert_relationship', {
-      relationshipId: idSchema,
-      sourceNodeId: idSchema,
-      targetNodeId: idSchema,
-      label: nonEmptyTextSchema(EXPERIENCE_PROPOSAL_LIMITS.processRelationshipLabel),
-      evidenceIds: idArraySchema(EXPERIENCE_PROPOSAL_LIMITS.evidenceIds),
-    }, ['relationshipId', 'sourceNodeId', 'targetNodeId', 'label', 'evidenceIds']),
-    discriminatedSchema('remove_element', {
-      targetId: idSchema,
-      reason: nonEmptyTextSchema(600),
-    }, ['targetId', 'reason']),
-    discriminatedSchema('set_node_state', {
-      nodeId: idSchema,
-      state: Object.freeze({
-        type: 'string',
-        enum: Object.freeze(['active', 'hypothesis', 'invalidated']),
-      }),
-      reason: nonEmptyTextSchema(600),
-    }, ['nodeId', 'state', 'reason']),
-  ]),
-});
+const processMutationSchema = closedObjectSchema({
+  id: idSchema,
+  kind: Object.freeze({ type: 'string', enum: Object.freeze(['upsert_node', 'upsert_relationship', 'remove_element', 'set_node_state']) }),
+  nodeId: idSchema,
+  label: nonEmptyTextSchema(EXPERIENCE_PROPOSAL_LIMITS.processNodeLabel),
+  summary: nonEmptyTextSchema(EXPERIENCE_PROPOSAL_LIMITS.processNodeSummary),
+  evidenceIds: idArraySchema(EXPERIENCE_PROPOSAL_LIMITS.evidenceIds),
+  relationshipId: idSchema,
+  sourceNodeId: idSchema,
+  targetNodeId: idSchema,
+  targetId: idSchema,
+  reason: nonEmptyTextSchema(600),
+  state: Object.freeze({ type: 'string', enum: Object.freeze(['active', 'hypothesis', 'invalidated']) }),
+}, ['id', 'kind']);
 
 const sceneProposalSchema = Object.freeze({
   oneOf: Object.freeze([
@@ -458,34 +368,22 @@ const modelFacingProposalSchema = closedObjectSchema({
   'criticRequired',
 ]);
 
-const safeMaterialClaimSchema = Object.freeze({
-  oneOf: Object.freeze([
-    discriminatedSchema('verified_numeric', {
-      text: nonEmptyTextSchema(1200),
-      calculationId: idSchema,
-    }, ['text', 'calculationId']),
-    discriminatedSchema('qualitative', {
-      text: nonEmptyTextSchema(1200),
-      evidenceIds: idArraySchema(32),
-    }, ['text', 'evidenceIds']),
-    discriminatedSchema('feasibility', {
-      text: nonEmptyTextSchema(1200),
-      state: Object.freeze({ type: 'string', enum: Object.freeze(['unknown', 'conditional']) }),
-      evidenceIds: idArraySchema(32),
-    }, ['text', 'state', 'evidenceIds']),
-    discriminatedSchema('artifact_readiness', {
-      text: nonEmptyTextSchema(1200),
-      artifactId: idSchema,
-      readiness: Object.freeze({ type: 'string', enum: Object.freeze(['conceptual', 'prototype']) }),
-    }, ['text', 'artifactId', 'readiness']),
-  ]),
-});
+const safeMaterialClaimSchema = closedObjectSchema({
+  id: idSchema,
+  kind: Object.freeze({ type: 'string', enum: Object.freeze(['verified_numeric', 'qualitative', 'feasibility', 'artifact_readiness']) }),
+  text: nonEmptyTextSchema(1200),
+  calculationId: idSchema,
+  evidenceIds: idArraySchema(32),
+  state: Object.freeze({ type: 'string', enum: Object.freeze(['unknown', 'conditional']) }),
+  artifactId: idSchema,
+  readiness: Object.freeze({ type: 'string', enum: Object.freeze(['conceptual', 'prototype']) }),
+}, ['id', 'kind', 'text']);
 
 const submitSellerTool: LocalFunctionTool = Object.freeze({
   type: 'function',
   function: Object.freeze({
     name: 'submit_seller_submission',
-    description: 'Submit the final fully structured SellerSubmission after deterministic calculations are committed. proposal.baseRevision is server-owned and must be omitted. Only non-authoritative safe material-claim kinds are exposed here; every field is independently revalidated server-side.',
+    description: 'Submit the complete structured SellerSubmission. Omit server-owned proposal.baseRevision; only exposed non-authoritative claim kinds are allowed.',
     parameters: closedObjectSchema({
       submission: closedObjectSchema({
         schemaVersion: Object.freeze({ type: 'integer', enum: Object.freeze([1]) }),

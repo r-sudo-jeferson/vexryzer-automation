@@ -132,6 +132,39 @@ test('defense-in-depth blocks an attachment-read assertion hidden only in narrat
   assert.equal(result.finding.code, 'ATTACHMENT_ACCESS_CLAIM');
 });
 
+test('hard-blocks a complete executable implementation that substitutes for the paid engagement', () => {
+  const result = validateSellerSubmission(submission({
+    proposal: proposal({
+      narration: 'Aqui está a implementação completa: replique a arquitetura, configure a integração, implemente a rotina e publique a automação em produção.',
+    }),
+  }), options);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  if (result.code !== 'HARD_BLOCK') assert.fail(`expected HARD_BLOCK, got ${result.code}`);
+  assert.equal(result.finding.code, 'FREE_IMPLEMENTATION_SUBSTITUTION');
+});
+
+test('hard-blocks production-ready code even when it is not labeled a complete implementation', () => {
+  const result = validateSellerSubmission(submission({
+    proposal: proposal({
+      narration: 'Segue o código pronto para produção: instale as dependências, configure as credenciais e publique o serviço.',
+    }),
+  }), options);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  if (result.code !== 'HARD_BLOCK') assert.fail(`expected HARD_BLOCK, got ${result.code}`);
+  assert.equal(result.finding.code, 'FREE_IMPLEMENTATION_SUBSTITUTION');
+});
+
+test('allows bounded conceptual guidance that does not deliver an executable production substitute', () => {
+  const result = validateSellerSubmission(submission({
+    proposal: proposal({
+      narration: 'Posso mapear conceitualmente os componentes e preparar um protótipo para validar a hipótese antes de qualquer implementação.',
+    }),
+  }), options);
+  assert.equal(result.ok, true);
+});
+
 test('defense-in-depth scans semantic text nested inside actions, not only top-level narration', () => {
   const base = proposal();
   const result = validateSellerSubmission(submission({

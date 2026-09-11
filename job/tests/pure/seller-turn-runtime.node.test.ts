@@ -743,6 +743,34 @@ test('fallback wire tokens are rebound after the router determines fallback reas
   assert.equal(providerCalls, 0);
 });
 
+test('the complete Seller contract fits the real Groq emergency wire budget', async () => {
+  const fallback = route({
+    routeId: 'groq-fallback',
+    family: 'groq',
+    modelId: 'openai/gpt-oss-120b',
+    tier: 'independent_fallback',
+    maxInputTokens: 16_000,
+    emergencyInputTokens: 4_000,
+    credentialEnvName: 'GROQ_TEST_TOKEN',
+  });
+  let providerCalls = 0;
+  let maxMeasuredTokens = 0;
+  const input = baseInput([fallback], async () => {
+    providerCalls += 1;
+    return completion([submissionTool(7)]);
+  });
+  input.estimateTokens = (value: unknown) => {
+    const measured = Math.ceil(new TextEncoder().encode(JSON.stringify(value)).byteLength / 3);
+    maxMeasuredTokens = Math.max(maxMeasuredTokens, measured);
+    return measured;
+  };
+
+  const result = await runSellerTurn(input);
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(providerCalls, 1);
+  assert.ok(maxMeasuredTokens <= 4_000, `measured ${maxMeasuredTokens} fallback-wire tokens`);
+});
+
 test('non-deterministic token measurement is bounded and fails closed instead of looping or dispatching', async () => {
   const primary = route();
   let providerCalls = 0;

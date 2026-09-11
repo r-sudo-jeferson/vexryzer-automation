@@ -288,6 +288,37 @@ test('stream accumulator treats null optional tool-call deltas as absence but st
   }]);
 });
 
+test('stream accumulator treats a null tool_calls delta as absent provider metadata', () => {
+  const accumulator = createChatStreamAccumulator();
+  accumulator.accept({
+    choices: [{
+      index: 0,
+      delta: { content: null, tool_calls: null },
+      finish_reason: null,
+    }],
+  });
+  accumulator.accept({
+    choices: [{
+      index: 0,
+      delta: {
+        tool_calls: [{
+          index: 0,
+          id: 'call-1',
+          type: 'function',
+          function: { name: 'capture_signal', arguments: '{"value":"ok"}' },
+        }],
+      },
+      finish_reason: 'tool_calls',
+    }],
+  });
+
+  assert.deepEqual(accumulator.finish().toolCalls, [{
+    id: 'call-1',
+    type: 'function',
+    function: { name: 'capture_signal', arguments: '{"value":"ok"}' },
+  }]);
+});
+
 test('stream accumulator still rejects conflicting non-null tool ids after allowing null deltas', () => {
   const accumulator = createChatStreamAccumulator();
   accumulator.accept({

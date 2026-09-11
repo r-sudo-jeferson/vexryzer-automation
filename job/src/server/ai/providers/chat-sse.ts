@@ -199,7 +199,7 @@ export function createChatStreamAccumulator(): ChatStreamAccumulator {
       }
 
       const rawToolCalls = delta['tool_calls'];
-      if (rawToolCalls !== undefined) {
+      if (rawToolCalls !== undefined && rawToolCalls !== null) {
         if (!Array.isArray(rawToolCalls) || rawToolCalls.length > MAX_TOOL_CALLS) rejectChunk('tool_calls');
         for (const raw of rawToolCalls) {
           if (!isRecord(raw) || !Number.isInteger(raw['index']) || (raw['index'] as number) < 0 || (raw['index'] as number) >= MAX_TOOL_CALLS) {
