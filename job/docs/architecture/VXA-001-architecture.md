@@ -14,7 +14,7 @@ Frontend:
 - XState v5 stable.
 
 AI:
-- Mistral Medium 3.5;
+- DeepSeek `deepseek-v4-pro` through the authorized DeepSeek Harness;
 - Structured Outputs / Function Calling;
 - model output validated before state mutation.
 
@@ -41,7 +41,7 @@ The product has one public experience and small server-side authority boundaries
 
 ## Runtime topology
 
-Browser -> Vite SPA -> Netlify Functions -> Mistral / Netlify Blobs / email provider.
+Browser -> Vite SPA -> Netlify Functions -> DeepSeek / Netlify Blobs / email provider.
 
 No browser request receives provider secrets. No AI response directly mutates durable state.
 
@@ -60,7 +60,7 @@ No browser request receives provider secrets. No AI response directly mutates du
 
 ### Backend Functions own
 - request validation;
-- Mistral secret and invocation;
+- DeepSeek secret and invocation;
 - schema validation;
 - rate enforcement hooks;
 - authoritative pricing;
@@ -70,7 +70,7 @@ No browser request receives provider secrets. No AI response directly mutates du
 - idempotent sealing;
 - notification attempt.
 
-### Mistral owns only
+### DeepSeek owns only
 - language understanding;
 - concise conversational response;
 - proposed structured facts/mutations;
