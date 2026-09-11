@@ -25,6 +25,12 @@ test('schema diagnostic isolates tool count, submit complexity, combinators and 
     'capture-calculation-only',
     'submit-envelope-only',
     'submit-intent-only',
+    'submit-intent-scalars-only',
+    'submit-intent-capabilities-only',
+    'submit-intent-actions-only',
+    'submit-intent-quantitative-only',
+    'submit-intent-artifacts-only',
+    'submit-intent-question-only',
     'submit-records-only',
     'submit-material-only',
     'submit-only-complete',
@@ -32,12 +38,12 @@ test('schema diagnostic isolates tool count, submit complexity, combinators and 
     'submit-without-descriptions',
     'complete-tools',
   ]);
-  assert.deepEqual(cases.map((item) => item.tools.length), [1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 3]);
-  assert.ok(countKey(cases[9]!.tools, 'oneOf') > 0);
-  assert.equal(countKey(cases[10]!.tools, 'oneOf'), 0);
-  assert.equal(countKey(cases[11]!.tools, 'description'), 1);
-  assert.equal(countKey(cases[11]!.tools[0]!.function.parameters, 'description'), 0);
-  assert.ok(JSON.stringify(cases[1]!.tools).length >= JSON.stringify(cases[9]!.tools).length);
+  assert.deepEqual(cases.map((item) => item.tools.length), [1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3]);
+  assert.ok(countKey(cases[15]!.tools, 'oneOf') > 0);
+  assert.equal(countKey(cases[16]!.tools, 'oneOf'), 0);
+  assert.equal(countKey(cases[17]!.tools, 'description'), 1);
+  assert.equal(countKey(cases[17]!.tools[0]!.function.parameters, 'description'), 0);
+  assert.ok(JSON.stringify(cases[1]!.tools).length >= JSON.stringify(cases[15]!.tools).length);
   assert.equal(countKey(cases[2]!.tools, 'properties'), 7);
   assert.ok(countKey(cases[3]!.tools, 'type') >= 125);
 });
@@ -84,4 +90,15 @@ test('schema diagnostic infers only a uniquely isolated structural dimension', (
     { id: 'submit-only-complete', accepted: true },
     { id: 'complete-tools', accepted: false },
   ]), 'COMPLETE_TOOL_COMPOSITION_REJECTED');
+  assert.equal(inferSellerSchemaRootCause([
+    ...passing,
+    { id: 'submit-intent-only', accepted: false },
+    { id: 'submit-intent-scalars-only', accepted: true },
+    { id: 'submit-intent-capabilities-only', accepted: true },
+    { id: 'submit-intent-actions-only', accepted: false },
+    { id: 'submit-intent-quantitative-only', accepted: true },
+    { id: 'submit-intent-artifacts-only', accepted: true },
+    { id: 'submit-intent-question-only', accepted: true },
+    { id: 'submit-only-complete', accepted: false },
+  ]), 'INTENT_ACTIONS_BRANCH_REJECTED');
 });

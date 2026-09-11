@@ -142,16 +142,26 @@ function buildSubmitSubsetTool(
   submit: LocalFunctionTool,
   submissionFields: readonly string[],
   proposalFields?: readonly string[],
+  intentFields?: readonly string[],
 ): LocalFunctionTool {
   const parameters = schemaObject(submit.function.parameters, 'parameters');
   const parameterProperties = schemaObject(parameters['properties'], 'parameters.properties');
   let submission = schemaObject(parameterProperties['submission'], 'submission');
   if (proposalFields !== undefined) {
     const submissionProperties = schemaObject(submission['properties'], 'submission.properties');
-    const proposal = selectClosedProperties(
-      schemaObject(submissionProperties['proposal'], 'proposal'),
-      proposalFields,
-    );
+    let proposal = schemaObject(submissionProperties['proposal'], 'proposal');
+    if (intentFields !== undefined) {
+      const proposalProperties = schemaObject(proposal['properties'], 'proposal.properties');
+      const intent = selectClosedProperties(
+        schemaObject(proposalProperties['intent'], 'intent'),
+        intentFields,
+      );
+      proposal = Object.freeze({
+        ...proposal,
+        properties: Object.freeze({ ...proposalProperties, intent }),
+      });
+    }
+    proposal = selectClosedProperties(proposal, proposalFields);
     submission = Object.freeze({
       ...submission,
       properties: Object.freeze({ ...submissionProperties, proposal }),
@@ -185,6 +195,12 @@ export function buildSellerSchemaDiagnosticCases(): readonly Readonly<SellerSche
     ['schemaVersion', 'proposalId', 'proposal'],
     ['schemaVersion', 'narration', 'intent', 'criticRequired'],
   );
+  const intentSubset = (intentFields: readonly string[]) => buildSubmitSubsetTool(
+    submit,
+    ['schemaVersion', 'proposalId', 'proposal'],
+    ['schemaVersion', 'narration', 'intent', 'criticRequired'],
+    intentFields,
+  );
   const recordsOnly = buildSubmitSubsetTool(
     submit,
     ['schemaVersion', 'proposalId', 'proposal'],
@@ -211,6 +227,12 @@ export function buildSellerSchemaDiagnosticCases(): readonly Readonly<SellerSche
     Object.freeze({ id: 'capture-calculation-only', tools: Object.freeze([capture, calculation]) }),
     Object.freeze({ id: 'submit-envelope-only', tools: Object.freeze([envelopeOnly]) }),
     Object.freeze({ id: 'submit-intent-only', tools: Object.freeze([intentOnly]) }),
+    Object.freeze({ id: 'submit-intent-scalars-only', tools: Object.freeze([intentSubset(['schemaVersion', 'objective', 'rationale'])]) }),
+    Object.freeze({ id: 'submit-intent-capabilities-only', tools: Object.freeze([intentSubset(['schemaVersion', 'capabilities'])]) }),
+    Object.freeze({ id: 'submit-intent-actions-only', tools: Object.freeze([intentSubset(['schemaVersion', 'actions'])]) }),
+    Object.freeze({ id: 'submit-intent-quantitative-only', tools: Object.freeze([intentSubset(['schemaVersion', 'quantitativeOpportunities'])]) }),
+    Object.freeze({ id: 'submit-intent-artifacts-only', tools: Object.freeze([intentSubset(['schemaVersion', 'artifactIntents'])]) }),
+    Object.freeze({ id: 'submit-intent-question-only', tools: Object.freeze([intentSubset(['schemaVersion', 'nextQuestion'])]) }),
     Object.freeze({ id: 'submit-records-only', tools: Object.freeze([recordsOnly]) }),
     Object.freeze({ id: 'submit-material-only', tools: Object.freeze([materialOnly]) }),
     Object.freeze({ id: 'submit-only-complete', tools: Object.freeze([submit]) }),
@@ -369,7 +391,22 @@ export function inferSellerSchemaRootCause(
   if (!padded && deep && wide && envelope && intent && records && material) return 'SCHEMA_BYTE_SIZE_LIMIT';
   if (padded && !deep && wide && envelope && intent && records && material) return 'SCHEMA_DEPTH_LIMIT';
   if (padded && deep && !wide && envelope && intent && records && material) return 'SCHEMA_PROPERTY_WIDTH_LIMIT';
-  if (padded && deep && wide && envelope && !intent && records && material) return 'INTENT_BRANCH_REJECTED';
+  if (padded && deep && wide && envelope && !intent && records && material) {
+    const intentBranches = [
+      ['submit-intent-scalars-only', 'INTENT_SCALARS_BRANCH_REJECTED'],
+      ['submit-intent-capabilities-only', 'INTENT_CAPABILITIES_BRANCH_REJECTED'],
+      ['submit-intent-actions-only', 'INTENT_ACTIONS_BRANCH_REJECTED'],
+      ['submit-intent-quantitative-only', 'INTENT_QUANTITATIVE_BRANCH_REJECTED'],
+      ['submit-intent-artifacts-only', 'INTENT_ARTIFACTS_BRANCH_REJECTED'],
+      ['submit-intent-question-only', 'INTENT_QUESTION_BRANCH_REJECTED'],
+    ] as const;
+    const observed = intentBranches.filter(([id]) => byId.has(id));
+    const failures = observed.filter(([id]) => rejected(id));
+    if (observed.length === intentBranches.length && failures.length === 1 && observed.every(([id]) => (
+      accepted(id) || rejected(id)
+    ))) return failures[0]![1];
+    return 'INTENT_BRANCH_REJECTED';
+  }
   if (padded && deep && wide && envelope && intent && !records && material) return 'PROPOSAL_RECORD_BRANCH_REJECTED';
   if (padded && deep && wide && envelope && intent && records && !material) return 'MATERIAL_CLAIMS_BRANCH_REJECTED';
   if (padded && deep && wide && envelope && intent && records && material) {
