@@ -32,7 +32,7 @@ export interface ProviderRouteDefinition {
   enabledByDefault: boolean;
   credentialEnvName: string;
   credentialScope: CredentialScope;
-  noPaymentEligibility: Exclude<VerificationVerdict, 'NOT_APPLICABLE'>;
+  billingAuthorization: Exclude<VerificationVerdict, 'NOT_APPLICABLE'>;
   protocolCompatibility: Exclude<VerificationVerdict, 'NOT_APPLICABLE'>;
   sellerQuality: VerificationVerdict;
   criticQuality: VerificationVerdict;
@@ -65,13 +65,10 @@ const UNKNOWN_CAPABILITIES = Object.freeze({
 /**
  * Founder-authorized single AI route.
  *
- * Every compatibility/quality field remains fail-closed until the exact
- * DeepSeek Harness 0.1.5-rc.2 + deepseek-v4-pro + Founder account tuple is
- * reverified. Authorization never manufactures a technical PASS.
- *
- * noPaymentEligibility is retained temporarily as a legacy runtime gate while
- * the prepaid-billing gate is migrated. It deliberately remains NOT_VERIFIED
- * so production cannot activate under obsolete free-route semantics.
+ * Billing authorization records only the explicit Founder authorization to use
+ * the existing prepaid DeepSeek balance. It is not protocol, quality, Harness
+ * or runtime evidence. Every technical field remains fail-closed until the
+ * exact candidate tuple is verified.
  */
 export const AUTHORIZED_PROVIDER_CANDIDATES: readonly Readonly<ProviderRouteDefinition>[] = Object.freeze([
   freezeRoute({
@@ -84,7 +81,7 @@ export const AUTHORIZED_PROVIDER_CANDIDATES: readonly Readonly<ProviderRouteDefi
     enabledByDefault: true,
     credentialEnvName: 'DEEPSEEK_API_KEY',
     credentialScope: 'server',
-    noPaymentEligibility: 'NOT_VERIFIED',
+    billingAuthorization: 'PASS',
     protocolCompatibility: 'NOT_VERIFIED',
     sellerQuality: 'NOT_VERIFIED',
     criticQuality: 'NOT_VERIFIED',
