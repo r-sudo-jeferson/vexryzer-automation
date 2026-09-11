@@ -110,6 +110,42 @@ test('stream chunk structural failure carries only a bounded diagnostic code', a
 });
 
 
+test('provider in-stream error envelopes fail closed with bounded classification and no payload leak', async () => {
+  const result = await consumeProviderChatSseResponse(new Response(
+    'data: {"error":{"message":"private-provider-detail","code":"rate_limit"}}\n\ndata: [DONE]\n\n',
+    { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+  ));
+  assert.deepEqual(result, {
+    ok: false,
+    class: 'malformed',
+    status: 200,
+    retryAfterMs: null,
+    malformedDetail: 'stream_chunk',
+    streamChunkDetail: 'provider_error_event',
+  });
+  assert.equal(JSON.stringify(result).includes('private-provider-detail'), false);
+  assert.equal(JSON.stringify(result).includes('rate_limit'), false);
+});
+
+test('missing, mistyped and non-object choices are distinguished without exposing event content', async () => {
+  const cases = [
+    ['data: {"usage":{"private":"x"}}\n\n', 'choices_missing'],
+    ['data: {"choices":"private"}\n\n', 'choices_type'],
+    ['data: ["private"]\n\n', 'chunk_non_object'],
+  ] as const;
+  for (const [frame, expected] of cases) {
+    const result = await consumeProviderChatSseResponse(new Response(
+      frame + 'data: [DONE]\n\n',
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+    ));
+    assert.equal(result.ok, false);
+    if (result.ok) continue;
+    assert.equal(result.malformedDetail, 'stream_chunk');
+    assert.equal(result.streamChunkDetail, expected);
+    assert.equal(JSON.stringify(result).includes('private'), false);
+  }
+});
+
 test('standard SSE metadata fields are accepted but never become application authority', async () => {
   const result = await consumeProviderChatSseResponse(new Response(
     'event: private-event-name\nid: provider-event-42\nretry: 5000\ndata: {"choices":[]}\n\ndata: [DONE]\n\n',

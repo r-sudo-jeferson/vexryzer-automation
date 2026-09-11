@@ -191,6 +191,69 @@ function collectEnumStrings(value: unknown, output = new Set<string>()): Readonl
   return output;
 }
 
+function findClosedBranchesByKind(value: unknown, kind: string, output: Record<string, unknown>[] = []): readonly Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    for (const item of value) findClosedBranchesByKind(item, kind, output);
+    return output;
+  }
+  if (!isRecord(value)) return output;
+  const properties = value['properties'];
+  if (value['additionalProperties'] === false && isRecord(properties)) {
+    const kindSchema = properties['kind'];
+    if (isRecord(kindSchema) && Array.isArray(kindSchema['enum']) && kindSchema['enum'].length === 1 && kindSchema['enum'][0] === kind) {
+      output.push(value);
+    }
+  }
+  for (const nested of Object.values(value)) findClosedBranchesByKind(nested, kind, output);
+  return output;
+}
+
+test('model-facing action/process/material unions expose the same kind-specific required fields as runtime validators', () => {
+  const submit = SELLER_LOCAL_TOOLS.find((item) => item.function.name === 'submit_seller_submission');
+  assert.ok(submit);
+
+  const expected: Readonly<Record<string, readonly string[]>> = {
+    focus: ['id', 'kind', 'targetId', 'reason'],
+    reveal: ['id', 'kind', 'targetId', 'reason'],
+    compare: ['id', 'kind', 'targetIds', 'reason'],
+    de_emphasize: ['id', 'kind', 'targetIds', 'reason'],
+    annotate: ['id', 'kind', 'targetId', 'text', 'evidenceIds'],
+    group: ['id', 'kind', 'groupId', 'memberIds', 'label'],
+    quantify: ['id', 'kind', 'calculationId', 'targetId', 'reason'],
+    demonstrate: ['id', 'kind', 'artifactIntentId', 'reason'],
+    stage_artifact: ['id', 'kind', 'artifactIntentId', 'reason'],
+    request_workshop: ['id', 'kind', 'artifactIntentId', 'reason'],
+    explain_relationship: ['id', 'kind', 'sourceId', 'targetId', 'text'],
+    upsert_node: ['id', 'kind', 'nodeId', 'label', 'summary', 'evidenceIds'],
+    upsert_relationship: ['id', 'kind', 'relationshipId', 'sourceNodeId', 'targetNodeId', 'label', 'evidenceIds'],
+    remove_element: ['id', 'kind', 'targetId', 'reason'],
+    set_node_state: ['id', 'kind', 'nodeId', 'state', 'reason'],
+    verified_numeric: ['id', 'kind', 'text', 'calculationId'],
+    qualitative: ['id', 'kind', 'text', 'evidenceIds'],
+    feasibility: ['id', 'kind', 'text', 'state', 'evidenceIds'],
+    artifact_readiness: ['id', 'kind', 'text', 'artifactId', 'readiness'],
+  };
+
+  for (const [kind, required] of Object.entries(expected)) {
+    const matches = findClosedBranchesByKind(submit.function.parameters, kind);
+    assert.equal(matches.length, 1, `expected exactly one closed branch for ${kind}`);
+    assert.deepEqual(matches[0]!['required'], required, kind);
+    const properties = matches[0]!['properties'];
+    assert.ok(isRecord(properties));
+    assert.deepEqual(Object.keys(properties), required, kind);
+  }
+});
+
+test('observation contract tells the model not to invent numeric evidence or paraphrase the authoritative quote', () => {
+  const observation = SELLER_LOCAL_TOOLS.find((item) => item.function.name === 'capture_user_observations');
+  assert.ok(observation);
+  assert.match(observation.function.description, /no explicit numeric token, do not call/i);
+  assert.match(observation.function.description, /exact contiguous substring copied verbatim/i);
+  const serialized = JSON.stringify(observation.function.parameters);
+  assert.match(serialized, /never paraphrase/i);
+  assert.match(serialized, /occurrences_per_month requires occurrence\+month/i);
+});
+
 test('final Seller tool publishes the full closed model-facing contract within the provider wire budget', () => {
   const submit = SELLER_LOCAL_TOOLS.find((item) => item.function.name === 'submit_seller_submission');
   assert.ok(submit);

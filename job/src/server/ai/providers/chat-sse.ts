@@ -46,6 +46,10 @@ export interface ChatStreamAccumulator {
 
 export type ChatStreamChunkErrorCode =
   | 'chunk_shape'
+  | 'chunk_non_object'
+  | 'provider_error_event'
+  | 'choices_missing'
+  | 'choices_type'
   | 'choice_shape'
   | 'content'
   | 'content_limit'
@@ -180,7 +184,10 @@ export function createChatStreamAccumulator(): ChatStreamAccumulator {
 
   return Object.freeze({
     accept(chunk: unknown): void {
-      if (!isRecord(chunk) || !Array.isArray(chunk['choices'])) rejectChunk('chunk_shape');
+      if (!isRecord(chunk)) rejectChunk('chunk_non_object');
+      if (Object.hasOwn(chunk, 'error')) rejectChunk('provider_error_event');
+      if (!Object.hasOwn(chunk, 'choices')) rejectChunk('choices_missing');
+      if (!Array.isArray(chunk['choices'])) rejectChunk('choices_type');
       const choices = chunk['choices'];
       if (choices.length === 0) return;
       if (choices.length !== 1 || !isRecord(choices[0])) {
