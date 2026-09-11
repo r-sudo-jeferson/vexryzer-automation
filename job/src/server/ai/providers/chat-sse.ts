@@ -35,6 +35,7 @@ export interface AssembledToolCall {
 
 export interface AssembledChatStream {
   content: string;
+  reasoningContent?: string;
   toolCalls: readonly Readonly<AssembledToolCall>[];
   finishReason: string | null;
 }
@@ -54,6 +55,8 @@ export type ChatStreamChunkErrorCode =
   | 'choice_shape'
   | 'content'
   | 'content_limit'
+  | 'reasoning_content'
+  | 'reasoning_content_limit'
   | 'tool_calls'
   | 'tool_index'
   | 'tool_id'
@@ -81,6 +84,7 @@ function rejectChunk(code: ChatStreamChunkErrorCode): never {
 
 const DEFAULT_MAX_BUFFERED_BYTES = 2_000_000;
 const MAX_CONTENT_BYTES = 512_000;
+const MAX_REASONING_CONTENT_BYTES = 1_000_000;
 const MAX_TOOL_ARGUMENT_BYTES = 1_000_000;
 const MAX_TOOL_CALLS = 16;
 const SAFE_TOOL_NAME = /^[a-z][a-z0-9_]{0,63}$/;
@@ -180,6 +184,7 @@ type MutableTool = { id: string; type: 'function'; name: string; arguments: stri
 
 export function createChatStreamAccumulator(): ChatStreamAccumulator {
   let content = '';
+  let reasoningContent = '';
   let finishReason: string | null = null;
   const tools = new Map<number, MutableTool>();
 
@@ -215,6 +220,15 @@ export function createChatStreamAccumulator(): ChatStreamAccumulator {
         if (typeof rawContent !== 'string') rejectChunk('content');
         content += rawContent;
         if (utf8Bytes(content) > MAX_CONTENT_BYTES) rejectChunk('content_limit');
+      }
+
+      const rawReasoningContent = delta['reasoning_content'];
+      if (rawReasoningContent !== undefined && rawReasoningContent !== null) {
+        if (typeof rawReasoningContent !== 'string') rejectChunk('reasoning_content');
+        reasoningContent += rawReasoningContent;
+        if (utf8Bytes(reasoningContent) > MAX_REASONING_CONTENT_BYTES) {
+          rejectChunk('reasoning_content_limit');
+        }
       }
 
       const rawToolCalls = delta['tool_calls'];
@@ -279,6 +293,7 @@ export function createChatStreamAccumulator(): ChatStreamAccumulator {
         });
       return Object.freeze({
         content,
+        ...(reasoningContent.length === 0 ? {} : { reasoningContent }),
         toolCalls: Object.freeze(toolCalls),
         finishReason,
       });

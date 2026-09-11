@@ -19,34 +19,37 @@ export type ChatToolCall = {
 
 export type ProviderChatMessage =
   | { role: 'system' | 'user'; content: string }
-  | { role: 'assistant'; content: string | null; tool_calls?: readonly ChatToolCall[] }
+  | {
+      role: 'assistant';
+      content: string | null;
+      reasoning_content?: string | null;
+      tool_calls?: readonly ChatToolCall[];
+    }
   | { role: 'tool'; tool_call_id: string; content: string };
 
-export interface ProviderServerConfig {
-  cloudflareAccountId?: string;
-}
+export type ProviderServerConfig = Readonly<Record<string, never>>;
 
 export interface ProviderChatBody {
-  model: string;
+  model: 'deepseek-v4-pro';
   messages: readonly ProviderChatMessage[];
   stream: true;
   tools: readonly LocalFunctionTool[];
-  tool_choice: 'required';
-  include_reasoning?: false;
+  thinking: Readonly<{ type: 'enabled' }>;
+  reasoning_effort: 'high';
 }
 
 export interface ServerChatHttpRequest {
-  url: string;
+  url: 'https://api.deepseek.com/chat/completions';
   method: 'POST';
   headers: Headers;
   body: string;
 }
 
-const SAFE_ACCOUNT_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const SAFE_TOOL_NAME = /^[a-z][a-z0-9_]{0,63}$/;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
 const MAX_MESSAGES = 64;
 const MAX_MESSAGE_TEXT = 64_000;
+const MAX_REASONING_TEXT = 1_000_000;
 const MAX_TOOLS = 16;
 const MAX_TOOL_DESCRIPTION = 1_000;
 const MAX_SCHEMA_BYTES = 64_000;
@@ -62,12 +65,22 @@ function assertText(name: string, value: unknown, maxLength: number): asserts va
   ) throw new TypeError(`${name} is invalid`);
 }
 
+function assertOptionalReasoning(value: unknown, path: string): void {
+  if (value === undefined || value === null) return;
+  if (typeof value !== 'string' || value.length > MAX_REASONING_TEXT || CONTROL_CHARACTER_PATTERN.test(value)) {
+    throw new TypeError(`${path}.reasoning_content is invalid`);
+  }
+}
+
 function assertToolCall(call: ChatToolCall, path: string): void {
   if (!call || typeof call !== 'object') throw new TypeError(`${path} is invalid`);
   assertText(`${path}.id`, call.id, 256);
   if (call.type !== 'function') throw new TypeError(`${path} must be a local function tool`);
   if (!SAFE_TOOL_NAME.test(call.function?.name ?? '')) throw new TypeError(`${path}.function tool name is invalid`);
-  if (typeof call.function?.arguments !== 'string' || new TextEncoder().encode(call.function.arguments).byteLength > MAX_TOOL_ARGUMENT_BYTES) {
+  if (
+    typeof call.function?.arguments !== 'string'
+    || new TextEncoder().encode(call.function.arguments).byteLength > MAX_TOOL_ARGUMENT_BYTES
+  ) {
     throw new TypeError(`${path}.function.arguments is invalid`);
   }
 }
@@ -85,13 +98,22 @@ function assertMessages(messages: readonly ProviderChatMessage[]): void {
     }
     if (message.role === 'assistant') {
       if (message.content !== null) assertText(`messages[${i}].content`, message.content, MAX_MESSAGE_TEXT);
+      assertOptionalReasoning(message.reasoning_content, `messages[${i}]`);
       if (message.tool_calls !== undefined) {
         if (!Array.isArray(message.tool_calls) || message.tool_calls.length === 0 || message.tool_calls.length > MAX_TOOLS) {
           throw new TypeError(`messages[${i}].tool_calls is invalid`);
         }
-        for (let j = 0; j < message.tool_calls.length; j += 1) assertToolCall(message.tool_calls[j]!, `messages[${i}].tool_calls[${j}]`);
+        for (let j = 0; j < message.tool_calls.length; j += 1) {
+          assertToolCall(message.tool_calls[j]!, `messages[${i}].tool_calls[${j}]`);
+        }
       }
-      if (message.content === null && message.tool_calls === undefined) throw new TypeError(`messages[${i}] assistant message is empty`);
+      if (
+        message.content === null
+        && message.tool_calls === undefined
+        && (message.reasoning_content === undefined || message.reasoning_content === null || message.reasoning_content.length === 0)
+      ) {
+        throw new TypeError(`messages[${i}] assistant message is empty`);
+      }
       continue;
     }
     if (message.role === 'tool') {
@@ -124,51 +146,26 @@ function validateJsonValue(value: unknown, depth = 0): void {
   throw new TypeError('tool schema must be JSON data');
 }
 
-function adaptCloudflareJsonSchema(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return Object.freeze(value.map((item) => adaptCloudflareJsonSchema(item)));
-  }
-  if (value === null || typeof value !== 'object') return value;
-
-  const record = value as Readonly<Record<string, unknown>>;
-  const output: Record<string, unknown> = {};
-  const isArraySchema = record['type'] === 'array';
-  for (const [key, nested] of Object.entries(record)) {
-    // Exact live Cloudflare evidence rejects the JSON Schema uniqueItems keyword.
-    // Uniqueness remains enforced by the application validators after tool output.
-    if (isArraySchema && key === 'uniqueItems') continue;
-    output[key] = adaptCloudflareJsonSchema(nested);
-  }
-  return Object.freeze(output);
-}
-
-function toolsForProvider(
-  route: Readonly<ProviderRouteDefinition>,
-  tools: readonly LocalFunctionTool[],
-): readonly LocalFunctionTool[] {
-  if (route.family !== 'cloudflare_workers_ai') return Object.freeze([...tools]);
-  return Object.freeze(tools.map((tool): LocalFunctionTool => Object.freeze({
-    type: 'function',
-    function: Object.freeze({
-      name: tool.function.name,
-      description: tool.function.description,
-      parameters: adaptCloudflareJsonSchema(tool.function.parameters) as JsonSchema,
-    }),
-  })));
-}
-
 function assertLocalTools(tools: readonly LocalFunctionTool[]): void {
-  if (!Array.isArray(tools) || tools.length === 0 || tools.length > MAX_TOOLS) throw new TypeError('local function tools are invalid');
+  if (!Array.isArray(tools) || tools.length === 0 || tools.length > MAX_TOOLS) {
+    throw new TypeError('local function tools are invalid');
+  }
   const names = new Set<string>();
   for (let i = 0; i < tools.length; i += 1) {
     const tool = tools[i];
-    if (!tool || typeof tool !== 'object' || tool.type !== 'function') throw new TypeError(`tools[${i}] must be a local function tool`);
+    if (!tool || typeof tool !== 'object' || tool.type !== 'function') {
+      throw new TypeError(`tools[${i}] must be a local function tool`);
+    }
     const fn = tool.function;
-    if (!fn || typeof fn !== 'object' || !SAFE_TOOL_NAME.test(fn.name ?? '')) throw new TypeError(`tools[${i}] tool name is invalid`);
+    if (!fn || typeof fn !== 'object' || !SAFE_TOOL_NAME.test(fn.name ?? '')) {
+      throw new TypeError(`tools[${i}] tool name is invalid`);
+    }
     if (names.has(fn.name)) throw new TypeError(`tools[${i}] tool name is duplicated`);
     names.add(fn.name);
     assertText(`tools[${i}].description`, fn.description, MAX_TOOL_DESCRIPTION);
-    if (!fn.parameters || typeof fn.parameters !== 'object' || Array.isArray(fn.parameters)) throw new TypeError(`tools[${i}].parameters is invalid`);
+    if (!fn.parameters || typeof fn.parameters !== 'object' || Array.isArray(fn.parameters)) {
+      throw new TypeError(`tools[${i}].parameters is invalid`);
+    }
     if (fn.parameters['type'] !== 'object' || fn.parameters['additionalProperties'] !== false) {
       throw new TypeError(`tools[${i}].parameters must be a closed object schema`);
     }
@@ -178,19 +175,20 @@ function assertLocalTools(tools: readonly LocalFunctionTool[]): void {
   }
 }
 
+function assertDeepSeekRoute(route: Readonly<ProviderRouteDefinition>): void {
+  if (route.family !== 'deepseek') throw new TypeError('only DeepSeek provider family is authorized');
+  if (route.modelId !== 'deepseek-v4-pro') throw new TypeError('only deepseek-v4-pro is authorized');
+  if (route.credentialEnvName !== 'DEEPSEEK_API_KEY') {
+    throw new TypeError('DeepSeek route must use DEEPSEEK_API_KEY');
+  }
+}
+
 export function buildProviderChatEndpoint(
   route: Readonly<ProviderRouteDefinition>,
-  serverConfig: Readonly<ProviderServerConfig>,
-): string {
-  if (route.family === 'groq') return 'https://api.groq.com/openai/v1/chat/completions';
-  if (route.family === 'cloudflare_workers_ai') {
-    const accountId = serverConfig.cloudflareAccountId;
-    if (typeof accountId !== 'string' || !SAFE_ACCOUNT_ID.test(accountId)) {
-      throw new TypeError('cloudflareAccountId is required and must be a safe account identifier');
-    }
-    return `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/v1/chat/completions`;
-  }
-  throw new TypeError(`unsupported provider family: ${route.family}`);
+  _serverConfig: Readonly<ProviderServerConfig>,
+): 'https://api.deepseek.com/chat/completions' {
+  assertDeepSeekRoute(route);
+  return 'https://api.deepseek.com/chat/completions';
 }
 
 export function buildProviderChatBody(input: {
@@ -198,16 +196,16 @@ export function buildProviderChatBody(input: {
   messages: readonly ProviderChatMessage[];
   tools: readonly LocalFunctionTool[];
 }): Readonly<ProviderChatBody> {
+  assertDeepSeekRoute(input.route);
   assertMessages(input.messages);
   assertLocalTools(input.tools);
-  assertText('route.modelId', input.route.modelId, 256);
   return Object.freeze({
-    model: input.route.modelId,
+    model: 'deepseek-v4-pro' as const,
     messages: Object.freeze([...input.messages]),
-    stream: true,
-    tools: toolsForProvider(input.route, input.tools),
-    tool_choice: 'required',
-    ...(input.route.family === 'groq' ? { include_reasoning: false as const } : {}),
+    stream: true as const,
+    tools: Object.freeze([...input.tools]),
+    thinking: Object.freeze({ type: 'enabled' as const }),
+    reasoning_effort: 'high' as const,
   });
 }
 
