@@ -5,7 +5,7 @@ import {
   type CriticReviewValidation,
 } from '../../../ai/critic/critic-contract.ts';
 import type { AssembledToolCall } from '../providers/chat-sse.ts';
-import type { LocalFunctionTool } from '../providers/openai-chat-wire.ts';
+import type { LocalFunctionTool } from '../providers/deepseek-chat-wire.ts';
 
 export const CRITIC_TOOL_NAME = 'submit_critic_review' as const;
 
