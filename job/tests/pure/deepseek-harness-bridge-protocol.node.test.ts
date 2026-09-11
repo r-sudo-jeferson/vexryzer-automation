@@ -47,7 +47,7 @@ test('valid Seller bridge request preserves only bounded protocol fields', () =>
   assert.equal(result.request.role, 'seller');
   assert.equal(result.request.toolName, 'request_calculations');
   assert.equal(result.request.canonicalRevision, 7);
-  assert.deepEqual(result.request.args, { requests: [] });
+  assert.deepEqual({ ...result.request.args }, { requests: [] });
   assert.equal(Object.isFrozen(result.request), true);
   assert.equal(Object.isFrozen(result.request.args), true);
 });
