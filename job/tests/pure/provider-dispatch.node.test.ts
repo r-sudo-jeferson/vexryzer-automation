@@ -70,7 +70,6 @@ test('router decision and dispatch never create an emergency model context', () 
     role: 'seller',
     canonicalRevision: 31,
     fullContextInputTokens: 100,
-    emergencyCapsuleInputTokens: 0,
     requiresStreaming: true,
     requiresTools: true,
     requiresStructuredArguments: true,
