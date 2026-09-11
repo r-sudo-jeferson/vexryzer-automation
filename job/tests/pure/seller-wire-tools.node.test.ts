@@ -191,45 +191,6 @@ function collectEnumStrings(value: unknown, output = new Set<string>()): Readonl
   return output;
 }
 
-test('model-facing action, process and material schemas communicate exact kind-specific field contracts without inflating the wire', () => {
-  const submit = SELLER_LOCAL_TOOLS.find((item) => item.function.name === 'submit_seller_submission');
-  assert.ok(submit);
-
-  const actionSchemas = collectPropertySchemas(submit.function.parameters, 'actions');
-  assert.equal(actionSchemas.length, 1);
-  const action = actionSchemas[0];
-  assert.ok(isRecord(action));
-  assert.ok(isRecord(action['items']));
-  assert.match(String(action['items']['description']), /focus\/reveal=id\+kind\+targetId\+reason/i);
-  assert.match(String(action['items']['description']), /explain_relationship=id\+kind\+sourceId\+targetId\+text/i);
-
-  const processSchemas = collectPropertySchemas(submit.function.parameters, 'processMutations');
-  assert.equal(processSchemas.length, 1);
-  const process = processSchemas[0];
-  assert.ok(isRecord(process));
-  assert.ok(isRecord(process['items']));
-  assert.match(String(process['items']['description']), /upsert_node=id\+kind\+nodeId\+label\+summary\+evidenceIds/i);
-  assert.match(String(process['items']['description']), /set_node_state=id\+kind\+nodeId\+state\+reason/i);
-
-  const claimSchemas = collectPropertySchemas(submit.function.parameters, 'materialClaims');
-  assert.equal(claimSchemas.length, 1);
-  const claims = claimSchemas[0];
-  assert.ok(isRecord(claims));
-  assert.ok(isRecord(claims['items']));
-  assert.match(String(claims['items']['description']), /verified_numeric=id\+kind\+text\+calculationId/i);
-  assert.match(String(claims['items']['description']), /artifact_readiness=id\+kind\+text\+artifactId\+readiness/i);
-});
-
-test('observation contract tells the model not to invent numeric evidence or paraphrase the authoritative quote', () => {
-  const observation = SELLER_LOCAL_TOOLS.find((item) => item.function.name === 'capture_user_observations');
-  assert.ok(observation);
-  assert.match(observation.function.description, /no explicit numeric token, do not call/i);
-  assert.match(observation.function.description, /exact contiguous substring copied verbatim/i);
-  const serialized = JSON.stringify(observation.function.parameters);
-  assert.match(serialized, /never paraphrase/i);
-  assert.match(serialized, /occurrences_per_month requires occurrence\+month/i);
-});
-
 test('final Seller tool publishes the full closed model-facing contract within the provider wire budget', () => {
   const submit = SELLER_LOCAL_TOOLS.find((item) => item.function.name === 'submit_seller_submission');
   assert.ok(submit);

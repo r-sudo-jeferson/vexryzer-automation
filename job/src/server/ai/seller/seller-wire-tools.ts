@@ -96,15 +96,8 @@ const userObservationSchema = Object.freeze({
   type: 'object',
   additionalProperties: false,
   properties: Object.freeze({
-    kind: Object.freeze({
-      type: 'string',
-      enum: Object.freeze([...USER_OBSERVATION_KINDS]),
-      description: 'Literal kind only. occurrences_per_month=occurrence+month; minutes_per_occurrence=minute+occurrence.',
-    }),
-    quote: Object.freeze({
-      type: 'string',
-      description: 'Exact contiguous current-user substring; never paraphrase.',
-    }),
+    kind: Object.freeze({ type: 'string', enum: Object.freeze([...USER_OBSERVATION_KINDS]) }),
+    quote: Object.freeze({ type: 'string' }),
     value: Object.freeze({ type: 'number' }),
   }),
   required: Object.freeze(['kind', 'quote', 'value']),
@@ -114,7 +107,7 @@ const captureUserObservationsTool: LocalFunctionTool = Object.freeze({
   type: 'function',
   function: Object.freeze({
     name: 'capture_user_observations',
-    description: 'Capture only explicit current-user numeric evidence. With no explicit numeric token, do not call. quote is one exact contiguous verbatim substring containing value and kind-required unit/period; never infer or paraphrase.',
+    description: 'Capture explicit current-user numeric evidence. quote must be exact and contain value plus its semantic unit/period; the application binds authority metadata.',
     parameters: Object.freeze({
       type: 'object',
       additionalProperties: false,
@@ -201,11 +194,6 @@ const experienceActionSchema = closedObjectSchema({
   sourceId: idSchema,
 }, ['id', 'kind']);
 
-const experienceActionSchemaWithContract = Object.freeze({
-  ...experienceActionSchema,
-  description: 'Always id+kind. Extra fields: focus/reveal targetId+reason; compare/de_emphasize targetIds+reason; annotate targetId+text+evidenceIds; group groupId+memberIds+label; quantify calculationId+targetId+reason; demonstrate/stage_artifact/request_workshop artifactIntentId+reason; explain_relationship sourceId+targetId+text. No cross-kind fields.',
-});
-
 const quantitativeOpportunitySchema = closedObjectSchema({
   id: idSchema,
   kind: Object.freeze({ type: 'string', enum: Object.freeze([...QUANTITATIVE_OPPORTUNITY_KINDS]) }),
@@ -252,7 +240,7 @@ const agentIntentSchema = closedObjectSchema({
   actions: Object.freeze({
     type: 'array',
     maxItems: AGENT_INTENT_LIMITS.actions,
-    items: experienceActionSchemaWithContract,
+    items: experienceActionSchema,
   }),
   quantitativeOpportunities: Object.freeze({
     type: 'array',
@@ -312,11 +300,6 @@ const processMutationSchema = closedObjectSchema({
   state: Object.freeze({ type: 'string', enum: Object.freeze(['active', 'hypothesis', 'invalidated']) }),
 }, ['id', 'kind']);
 
-const processMutationSchemaWithContract = Object.freeze({
-  ...processMutationSchema,
-  description: 'Always id+kind. upsert_node nodeId+label+summary+evidenceIds; upsert_relationship relationshipId+sourceNodeId+targetNodeId+label+evidenceIds; remove_element targetId+reason; set_node_state nodeId+state+reason. No cross-kind fields.',
-});
-
 const sceneProposalSchema = Object.freeze({
   oneOf: Object.freeze([
     closedObjectSchema({
@@ -360,7 +343,7 @@ const modelFacingProposalSchema = closedObjectSchema({
   processMutations: Object.freeze({
     type: 'array',
     maxItems: EXPERIENCE_PROPOSAL_LIMITS.processMutations,
-    items: processMutationSchemaWithContract,
+    items: processMutationSchema,
   }),
   sceneProposal: sceneProposalSchema,
   artifactProposals: Object.freeze({
@@ -396,11 +379,6 @@ const safeMaterialClaimSchema = closedObjectSchema({
   readiness: Object.freeze({ type: 'string', enum: Object.freeze(['conceptual', 'prototype']) }),
 }, ['id', 'kind', 'text']);
 
-const safeMaterialClaimSchemaWithContract = Object.freeze({
-  ...safeMaterialClaimSchema,
-  description: 'Always id+kind+text. verified_numeric adds calculationId; qualitative evidenceIds; feasibility state+evidenceIds; artifact_readiness artifactId+readiness. No cross-kind fields.',
-});
-
 const submitSellerTool: LocalFunctionTool = Object.freeze({
   type: 'function',
   function: Object.freeze({
@@ -414,7 +392,7 @@ const submitSellerTool: LocalFunctionTool = Object.freeze({
         materialClaims: Object.freeze({
           type: 'array',
           maxItems: 20,
-          items: safeMaterialClaimSchemaWithContract,
+          items: safeMaterialClaimSchema,
         }),
         calculationRequests: Object.freeze({
           type: 'array',

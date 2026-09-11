@@ -264,6 +264,10 @@ test('builds every Seller provider message from the revision-bound dispatch cont
   if (messages[0] === undefined || messages[0].role !== 'system') throw new Error('expected Seller system instruction');
   assert.match(messages[0].content, /application binds canonical revision.*request identifiers/i);
   assert.match(messages[0].content, /semantic kind.*exact quote.*unit.*period/i);
+  assert.match(messages[0].content, /no explicit numeric token.*do not call capture_user_observations/i);
+  assert.match(messages[0].content, /Action fields must match kind.*focus\/reveal.*targetId\+reason.*compare\/de_emphasize.*targetIds\+reason/i);
+  assert.match(messages[0].content, /Material claim fields must match kind.*verified_numeric.*calculationId.*qualitative.*evidenceIds/i);
+  assert.match(messages[0].content, /materially supported capabilities.*accounting-native.*semantic UI/i);
   assert.equal(messages[1]?.role, 'user');
   const userMessage = messages[1];
   if (userMessage === undefined || userMessage.role !== 'user') throw new Error('expected bounded user context message');
