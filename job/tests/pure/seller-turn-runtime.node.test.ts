@@ -160,18 +160,6 @@ function packageOk(input: Parameters<SellerTurnRuntimeDependencies['packageConte
   };
 }
 
-function capsuleOk(input: Parameters<SellerTurnRuntimeDependencies['buildEmergencyContinuationCapsule']>[0]) {
-  return {
-    ok: true as const,
-    capsule: Object.freeze({
-      schemaVersion: 1 as const,
-      canonicalRevision: input.canonical.revision,
-      marker: `emergency-${input.canonical.revision}`,
-      estimatedInputTokens: 150,
-    }),
-  };
-}
-
 function calculationOk(context: CanonicalSalesContext, request: { id: string }) {
   return {
     ok: true as const,
@@ -235,7 +223,6 @@ function baseInput(
     timeoutMs: 10_000,
     dependencies: {
       packageContext: packageOk as unknown as SellerTurnRuntimeDependencies['packageContext'],
-      buildEmergencyContinuationCapsule: capsuleOk as unknown as SellerTurnRuntimeDependencies['buildEmergencyContinuationCapsule'],
       computeVerifiedCalculation: calculationOk as SellerTurnRuntimeDependencies['computeVerifiedCalculation'],
       applyContextMutation: commitCalculations as SellerTurnRuntimeDependencies['applyContextMutation'],
       validateSellerSubmission: validateSubmission as unknown as SellerTurnRuntimeDependencies['validateSellerSubmission'],
@@ -300,14 +287,12 @@ test('rejects route and token-budget divergence before packaging or provider exe
 
 test('primary Seller call requires only full context and final submission is accepted only through Seller validator', async () => {
   const primary = route();
-  let emergencyCalls = 0;
   let validatorCalls = 0;
   const observedMessages: unknown[] = [];
   const input = baseInput([primary], async (providerInput) => {
     observedMessages.push(providerInput.messages);
     return completion([submissionTool(7)]);
   }, {
-    buildEmergencyContinuationCapsule: (() => { emergencyCalls += 1; throw new Error('primary must not require capsule'); }) as never,
     validateSellerSubmission: ((value: unknown) => { validatorCalls += 1; return validateSubmission(value); }) as never,
   });
   const result = await runSellerTurn(input);
@@ -315,7 +300,6 @@ test('primary Seller call requires only full context and final submission is acc
   if (!result.ok) return;
   assert.equal(result.routeId, primary.routeId);
   assert.equal(result.canonical.revision, 7);
-  assert.equal(emergencyCalls, 0);
   assert.equal(validatorCalls, 1);
   const messages = observedMessages[0] as Array<{ role: string; content: string }>;
   const payload = JSON.parse(messages[1]!.content) as { contextMode: string; canonicalRevision: number; context: { marker: string } };
