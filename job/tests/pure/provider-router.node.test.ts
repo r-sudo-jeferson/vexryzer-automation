@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { AUTHORIZED_PROVIDER_CANDIDATES } from '../../src/ai/providers/provider-registry.ts';
+import { AUTHORIZED_PROVIDER_CANDIDATES, PROVIDER_ROUTE_TIERS } from '../../src/ai/providers/provider-registry.ts';
 import { evaluateRouteEligibility } from '../../src/ai/providers/route-eligibility.ts';
 import { selectProviderRoute } from '../../src/ai/providers/provider-router.ts';
 import { createVerifiedRouteFixture } from './provider-test-fixtures.ts';
@@ -13,13 +13,13 @@ const REQUEST = Object.freeze({
   role: 'seller' as const,
   canonicalRevision: 7,
   fullContextInputTokens: 500,
-  emergencyCapsuleInputTokens: 0,
   requiresStreaming: true,
   requiresTools: true,
   requiresStructuredArguments: true,
 });
 
-test('authorized registry exposes exactly one fail-closed DeepSeek V4 Pro route', () => {
+test('route taxonomy exposes only primary and the authorized registry has exactly one fail-closed DeepSeek V4 Pro route', () => {
+  assert.deepEqual(PROVIDER_ROUTE_TIERS, ['primary']);
   assert.equal(AUTHORIZED_PROVIDER_CANDIDATES.length, 1);
   const route = AUTHORIZED_PROVIDER_CANDIDATES[0]!;
   assert.equal(route.family, 'deepseek');
