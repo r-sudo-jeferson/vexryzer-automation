@@ -6,10 +6,6 @@ import {
   type RecentContextTurn,
 } from '../../../ai/context/context-packager.ts';
 import {
-  buildEmergencyContinuationCapsule,
-  type EmergencyContinuationCapsule,
-} from '../../../ai/context/emergency-capsule.ts';
-import {
   assertProviderRouteBudget,
   availableInputTokens,
   type ProviderRouteBudget,
@@ -20,8 +16,6 @@ import type { ProviderRouteDefinition } from '../../../ai/providers/provider-reg
 import type { ProviderRuntimeState } from '../../../ai/providers/route-eligibility.ts';
 import {
   selectProviderRoute,
-  type ProviderContextMode,
-  type ProviderFallbackReason,
   type ProviderRouteDecision,
   type ProviderRouteTokenUsage,
   type ProviderSelectionRequest,
@@ -59,7 +53,6 @@ export type CriticCredentialResolver = (credentialEnvName: string) =>
 
 export interface CriticTurnRuntimeDependencies {
   packageContext: typeof packageContext;
-  buildEmergencyContinuationCapsule: typeof buildEmergencyContinuationCapsule;
   selectProviderRoute: typeof selectProviderRoute;
   createProviderDispatchEnvelope: typeof createProviderDispatchEnvelope;
   validateSellerSubmission: typeof validateSellerSubmission;
@@ -151,7 +144,6 @@ export type CriticTurnRuntimeResult =
       detail: string;
     };
 
-const MAX_ROUTE_COUNT = 16;
 const MAX_PROVIDER_MESSAGE_TEXT = 96_000;
 const FORBIDDEN_PROVIDER_AUTHORITY_KEYS = new Set([
   'providerConversationId',
@@ -177,7 +169,6 @@ const CRITIC_SYSTEM_INSTRUCTION = [
 
 const DEFAULT_DEPENDENCIES: CriticTurnRuntimeDependencies = Object.freeze({
   packageContext,
-  buildEmergencyContinuationCapsule,
   selectProviderRoute,
   createProviderDispatchEnvelope,
   validateSellerSubmission,
@@ -189,7 +180,6 @@ interface PreparedRouteContext {
   routeId: string;
   tokenUsage: Readonly<ProviderRouteTokenUsage>;
   fullContext?: ContextPack;
-  emergencyCapsule?: EmergencyContinuationCapsule;
 }
 
 interface PreparedRouteContexts {
@@ -200,8 +190,8 @@ interface PreparedRouteContexts {
 interface CriticProviderMessageSource<TContext extends CanonicalDispatchContext = CanonicalDispatchContext> {
   role: ProviderRouteDecision['role'];
   canonicalRevision: number;
-  contextMode: ProviderContextMode;
-  fallbackReason: ProviderFallbackReason | null;
+  contextMode: 'full';
+  fallbackReason: null;
   context: TContext;
 }
 
@@ -292,14 +282,10 @@ function validateRuntimeConfiguration(
   if (!Number.isInteger(input.timeoutMs) || input.timeoutMs < 1 || input.timeoutMs > 120_000) {
     return { ok: false, code: 'INVALID_RUNTIME_CONFIG', detail: 'INVALID_TIMEOUT' };
   }
-  if (
-    input.routes.length < 1
-    || input.routes.length > MAX_ROUTE_COUNT
-    || new Set(input.routes.map((route) => route.routeId)).size !== input.routes.length
-  ) {
+  if (input.routes.length !== 1) {
     return { ok: false, code: 'INVALID_RUNTIME_CONFIG', detail: 'DUPLICATE_ROUTE' };
   }
-  if (new Set(input.runtimeStates.map((state) => state.routeId)).size !== input.runtimeStates.length) {
+  if (input.runtimeStates.length !== 1 || input.runtimeStates[0]?.routeId !== input.routes[0]?.routeId) {
     return { ok: false, code: 'INVALID_RUNTIME_CONFIG', detail: 'DUPLICATE_RUNTIME_STATE' };
   }
   if (
@@ -342,107 +328,71 @@ function prepareRouteContexts(
   submission: Readonly<SellerSubmission>,
   dependencies: CriticTurnRuntimeDependencies,
 ): PreparationResult {
-  const budgetByRoute = new Map(input.routeBudgets.map((item) => [item.routeId, item.budget] as const));
-  const prepared = new Map<string, Readonly<PreparedRouteContext>>();
-  const tokenUsage: ProviderRouteTokenUsage[] = [];
+  const route = input.routes[0]!;
+  const budget = input.routeBudgets[0]!.budget;
+  let fullContext: ContextPack | undefined;
+  let fullContextInputTokens = 0;
 
-  for (const route of input.routes) {
-    const budget = budgetByRoute.get(route.routeId)!;
-    let fullContext: ContextPack | undefined;
-    let emergencyCapsule: EmergencyContinuationCapsule | undefined;
-    let fullContextInputTokens = 0;
-    let emergencyCapsuleInputTokens = 0;
+  const packaged = dependencies.packageContext({
+    role: 'critic',
+    canonical: input.canonical,
+    digest: input.digest,
+    recentTurns: input.recentTurns,
+    visualState: input.visualState,
+    budget,
+    estimateTokens: (contextPayload) => estimateCriticProviderInputTokens({
+      role: 'critic',
+      canonicalRevision: input.canonical.revision,
+      contextMode: 'full',
+      fallbackReason: null,
+      context: contextPayload as CanonicalDispatchContext,
+    }, submission, input.estimateTokens),
+  });
 
-    if (route.tier === 'primary') {
-      const packaged = dependencies.packageContext({
+  if (packaged.ok) {
+    fullContext = packaged.pack;
+    try {
+      fullContextInputTokens = estimateCriticProviderInputTokens({
         role: 'critic',
-        canonical: input.canonical,
-        digest: input.digest,
-        recentTurns: input.recentTurns,
-        visualState: input.visualState,
-        budget,
-        estimateTokens: (contextPayload) => estimateCriticProviderInputTokens({
-          role: 'critic',
-          canonicalRevision: input.canonical.revision,
-          contextMode: 'full',
-          fallbackReason: null,
-          context: contextPayload as CanonicalDispatchContext,
-        }, submission, input.estimateTokens),
-      });
-      if (packaged.ok) {
-        fullContext = packaged.pack;
-        try {
-          fullContextInputTokens = estimateCriticProviderInputTokens({
-            role: 'critic',
-            canonicalRevision: input.canonical.revision,
-            contextMode: 'full',
-            fallbackReason: null,
-            context: fullContext,
-          }, submission, input.estimateTokens);
-        } catch {
-          return { ok: false, routeId: route.routeId, detail: 'INVALID_TOKEN_ESTIMATOR' };
-        }
-      } else if (packaged.code === 'CONTEXT_BUDGET_EXCEEDED') {
-        fullContextInputTokens = overflowTokenCount(
-          packaged.estimatedInputTokens,
-          availableInputTokens(budget),
-        );
-      } else {
-        return { ok: false, routeId: route.routeId, detail: packaged.code };
-      }
-    } else if (route.tier !== 'standby' && route.enabledByDefault) {
-      const capsule = dependencies.buildEmergencyContinuationCapsule({
-        canonical: input.canonical,
-        visualState: input.visualState,
-        budget,
-        estimateTokens: input.estimateTokens,
-      });
-      if (capsule.ok) {
-        emergencyCapsule = capsule.capsule;
-        emergencyCapsuleInputTokens = capsule.capsule.estimatedInputTokens;
-      } else if (capsule.code === 'EMERGENCY_BUDGET_EXCEEDED') {
-        emergencyCapsuleInputTokens = overflowTokenCount(
-          capsule.estimatedInputTokens,
-          budget.emergencyInputTokens,
-        );
-      } else {
-        return { ok: false, routeId: route.routeId, detail: capsule.code };
-      }
+        canonicalRevision: input.canonical.revision,
+        contextMode: 'full',
+        fallbackReason: null,
+        context: fullContext,
+      }, submission, input.estimateTokens);
+    } catch {
+      return { ok: false, routeId: route.routeId, detail: 'INVALID_TOKEN_ESTIMATOR' };
     }
-
-    const usage = Object.freeze({
-      routeId: route.routeId,
-      fullContextInputTokens,
-      emergencyCapsuleInputTokens,
-    });
-    tokenUsage.push(usage);
-    prepared.set(route.routeId, Object.freeze({
-      routeId: route.routeId,
-      tokenUsage: usage,
-      ...(fullContext === undefined ? {} : { fullContext }),
-      ...(emergencyCapsule === undefined ? {} : { emergencyCapsule }),
-    }));
+  } else if (packaged.code === 'CONTEXT_BUDGET_EXCEEDED') {
+    fullContextInputTokens = overflowTokenCount(
+      packaged.estimatedInputTokens,
+      availableInputTokens(budget),
+    );
+  } else {
+    return { ok: false, routeId: route.routeId, detail: packaged.code };
   }
 
+  const usage = Object.freeze({
+    routeId: route.routeId,
+    fullContextInputTokens,
+    emergencyCapsuleInputTokens: 0,
+  });
   return {
     ok: true,
     prepared: {
-      byRoute: prepared,
+      byRoute: new Map([[route.routeId, Object.freeze({
+        routeId: route.routeId,
+        tokenUsage: usage,
+        ...(fullContext === undefined ? {} : { fullContext }),
+      })]]),
       selectionRequest: Object.freeze({
         role: 'critic',
         canonicalRevision: input.canonical.revision,
-        fullContextInputTokens: tokenUsage.reduce(
-          (max, item) => Math.max(max, item.fullContextInputTokens),
-          0,
-        ),
-        emergencyCapsuleInputTokens: tokenUsage.reduce(
-          (max, item) => Math.max(max, item.emergencyCapsuleInputTokens),
-          0,
-        ),
+        fullContextInputTokens,
+        emergencyCapsuleInputTokens: 0,
         requiresStreaming: true,
         requiresTools: true,
         requiresStructuredArguments: true,
-        routeTokenUsage: Object.freeze(tokenUsage),
+        routeTokenUsage: Object.freeze([usage]),
       }),
     },
   };
@@ -453,53 +403,23 @@ function selectedDispatch(
   context: Readonly<PreparedRouteContext>,
   dependencies: CriticTurnRuntimeDependencies,
 ) {
-  if (decision.contextMode === 'full') {
-    return context.fullContext === undefined
-      ? dependencies.createProviderDispatchEnvelope({ decision })
-      : dependencies.createProviderDispatchEnvelope({ decision, fullContext: context.fullContext });
-  }
-  return context.emergencyCapsule === undefined
+  return context.fullContext === undefined
     ? dependencies.createProviderDispatchEnvelope({ decision })
-    : dependencies.createProviderDispatchEnvelope({
-        decision,
-        emergencyCapsule: context.emergencyCapsule,
-      });
+    : dependencies.createProviderDispatchEnvelope({ decision, fullContext: context.fullContext });
 }
 
 function withRouteTokenUsage(
   request: Readonly<ProviderSelectionRequest>,
   routeId: string,
-  contextMode: ProviderContextMode,
   measuredInputTokens: number,
 ): Readonly<ProviderSelectionRequest> {
   if (request.routeTokenUsage === undefined) return request;
-  const routeTokenUsage = request.routeTokenUsage.map((usage) => {
-    if (usage.routeId !== routeId) return usage;
-    return Object.freeze(contextMode === 'full'
-      ? { ...usage, fullContextInputTokens: measuredInputTokens }
-      : { ...usage, emergencyCapsuleInputTokens: measuredInputTokens });
-  });
+  const routeTokenUsage = request.routeTokenUsage.map((usage) => (
+    usage.routeId === routeId
+      ? Object.freeze({ ...usage, fullContextInputTokens: measuredInputTokens })
+      : usage
+  ));
   return Object.freeze({ ...request, routeTokenUsage: Object.freeze(routeTokenUsage) });
-}
-
-function canFallbackAfterProviderFailure(
-  failureClass: Exclude<ProviderChatClientResult, { ok: true }>['class'],
-): boolean {
-  return failureClass !== 'cancelled' && failureClass !== 'client';
-}
-
-function markRouteUnavailable(
-  states: readonly Readonly<ProviderRuntimeState>[],
-  routeId: string,
-  failureClass: Exclude<ProviderChatClientResult, { ok: true }>['class'],
-): readonly Readonly<ProviderRuntimeState>[] {
-  return Object.freeze(states.map((state) => {
-    if (state.routeId !== routeId) return state;
-    if (failureClass === 'rate_limit' || failureClass === 'capacity') {
-      return Object.freeze({ ...state, quota: 'exhausted' as const });
-    }
-    return Object.freeze({ ...state, circuit: 'open' as const });
-  }));
 }
 
 function providerFailure(
@@ -574,7 +494,7 @@ export async function runCriticTurn(input: CriticTurnRuntimeInput): Promise<Crit
     };
   }
 
-  let runtimeStates: readonly Readonly<ProviderRuntimeState>[] = Object.freeze([
+  const runtimeStates: readonly Readonly<ProviderRuntimeState>[] = Object.freeze([
     ...input.runtimeStates,
   ]);
   let selectionRequest = preparation.prepared.selectionRequest;
@@ -666,7 +586,6 @@ export async function runCriticTurn(input: CriticTurnRuntimeInput): Promise<Crit
       selectionRequest = withRouteTokenUsage(
         selectionRequest,
         decision.route.routeId,
-        decision.contextMode,
         exactInputTokens,
       );
       continue;
@@ -716,18 +635,7 @@ export async function runCriticTurn(input: CriticTurnRuntimeInput): Promise<Crit
     providerCalls += 1;
 
     if (!providerResult.ok) {
-      if (!canFallbackAfterProviderFailure(providerResult.class)) {
-        return providerFailure(decision.route.routeId, providerResult);
-      }
-      runtimeStates = markRouteUnavailable(
-        runtimeStates,
-        decision.route.routeId,
-        providerResult.class,
-      );
-      if (attemptedRoutes.size >= input.routes.length) {
-        return providerFailure(decision.route.routeId, providerResult);
-      }
-      continue;
+      return providerFailure(decision.route.routeId, providerResult);
     }
 
     const review = parseProviderReview(
