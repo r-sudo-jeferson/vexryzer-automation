@@ -36,7 +36,7 @@ Outside `job/` only:
 
 ## Repository truth and authorization
 
-The complete planning bootstrap is bound to the exact SHA recorded in `job/docs/foundation/VXA-FOUNDATION-001.md` and `job/docs/slices/VXA-S001-contract.md`. Planning, research, CI setup and repository hardening never imply Slice authorization.
+The complete planning bootstrap is bound to the exact SHA recorded in `job/docs/foundation/VXA-FOUNDATION-001.md` and Slice contracts. Planning, research, CI setup and repository hardening never imply Slice authorization.
 
 Before material Slice construction, verify the authorized base SHA and keep evidence tied to exact candidate SHAs. Never combine PASS evidence produced from different candidates. A changed candidate invalidates prior candidate-specific PASS until the relevant checks are rerun.
 
@@ -46,72 +46,109 @@ Provider metadata outside `job/` is permitted only when technically required and
 
 CI_EXECUTION_POLICY: `OPTIMIZED_GATES_ONLY`
 
-Remote CI is an integration/convergence gate, not the default inner development loop. Optimize construction by doing the maximum safe verification locally or in the current execution environment before spending a remote CI run.
+Remote CI is an integration/convergence gate, not the default inner development loop. Do the maximum safe verification locally or in the current execution environment before spending a remote CI run.
 
-Default behavior for every agent:
-- work on an isolated Slice branch and persist verified checkpoints to GitHub without opening or updating a PR merely to trigger CI;
+Default behavior:
+- work on an isolated Slice branch and persist coherent checkpoints without opening/updating a PR merely to trigger CI;
 - run unit, domain, static, type, lint, build, browser and security checks locally whenever the environment supports them;
-- batch coherent changes and stabilize the candidate before remote CI instead of using CI as trial-and-error debugging;
-- preserve exact evidence and mark unavailable checks `NOT_VERIFIED`; environment blockers never authorize weakening a gate, test, requirement or security control;
-- if a local environment cannot run a check, continue every independent task that can still be verified and report the blocker with evidence.
+- batch coherent changes and stabilize the candidate before remote CI;
+- mark unavailable checks `NOT_VERIFIED`; environment blockers never authorize weakening a gate;
+- a changed candidate invalidates candidate-specific PASS.
 
-Remote CI should be triggered only when it materially increases confidence or is required by a gate, especially:
-1. after a candidate SHA is frozen and local/proportional verification is green, before GAUNTLET PASS, merge, promotion or release;
-2. when diagnosing a failure that is demonstrably specific to the hosted CI/runtime and cannot be reproduced locally;
-3. after a material CI/workflow/deployment change, once the configuration has been validated as far as the local environment allows;
-4. at the final integration/convergence gate for a Slice.
-
-Do not trigger remote CI for ordinary intermediate commits, documentation-only changes, formatting, checkpoints already covered by equivalent local evidence, or speculative debugging. Do not repeatedly rerun an unchanged failing candidate unless there is evidence the external blocker changed or the rerun itself is diagnostically necessary.
-
-Opening a PR is not an implementation milestone. Unless review itself is required earlier, prefer opening/updating the PR when the Slice is near candidate freeze so automatic pull-request workflows do not consume unnecessary runs.
-
-Any candidate change after CI invalidates candidate-specific PASS. Run the relevant final gates again on the new exact SHA. Never combine green evidence from different SHAs.
-
-The free-tier lock applies to CI: never enable paid runner overage, paid add-ons or spending merely to obtain a green check without explicit Founder authorization and a corresponding contract decision.
+Remote CI is appropriate after candidate stabilization, for hosted-runtime-only diagnosis, after material workflow/deployment changes, and for the final integration/GAUNTLET gate. Do not use CI as speculative trial-and-error.
 
 ## Product mission
 
-Build an ultra-premium commercial intake experience, not a generic chatbot or CRUD app. ASK AI must help the visitor turn an operational pain into a qualified automation request. Infinite Canvas visualizes the process as it is understood. The cycle ends only when the request and any accepted files are durably recorded and the notification path is attempted.
+Build an ultra-premium commercial intake experience, not a generic chatbot or CRUD app. ASK AI must help the visitor turn operational pain into a qualified automation request. The Infinite Canvas is the agent's persistent visual working surface: the agent understands, persuades and coordinates the experience through it.
 
 ## High-end floor
 
-No disposable MVP, generic template UI, superficial chatbot, placeholder flows, fake metrics, or polish deferred until later. Every Slice must preserve accessibility, mobile usability, performance, security, deterministic commercial rules, failure recovery, and visual quality proportional to an ultra-premium product.
+No disposable MVP, generic template UI, superficial chatbot, placeholder flows, fake metrics, or deferred polish. Every Slice preserves accessibility, mobile usability, performance, security, deterministic commercial truth, failure recovery and visual quality proportional to an ultra-premium product.
 
-## Free-tier lock
+## Mandatory DeepSeek single truth
 
-Fixed infrastructure cost must remain R$ 0.
+AI_PROVIDER: `DeepSeek`
+AI_MODEL: `deepseek-v4-pro`
+AI_HARNESS: `DeepSeek Harness`
+AI_HARNESS_TARGET_VERSION: `0.1.5-rc.2`
+AI_CREDENTIAL_ENV: `DEEPSEEK_API_KEY`
+AI_API_BASE: `https://api.deepseek.com`
+
+These values are mandatory for VXA-S002 unless the Founder explicitly changes them.
+
+No second LLM provider, model, model alias, fallback model, standby model, emergency LLM, alternate agent harness or compatibility route is allowed in active product code, runtime config, deployment config, current authority docs or current tests.
+
+If DeepSeek is unavailable, misconfigured, rate limited, out of authorized prepaid balance, times out, returns malformed output or fails a Harness gate, the product enters deterministic guided recovery. It never switches to another LLM.
+
+Historical alternative-provider/harness experiments belong to Git history, not the active tree.
+
+## DeepSeek activation integrity
+
+Documentation does not equal compatibility PASS. The exact target Harness/model/account tuple must prove the required streaming, tools, structured arguments, multi-turn behavior, restart/session recovery, timeout/cancel mapping, secret confinement, Canvas semantic-tool behavior and Seller quality before production activation.
+
+Until exact evidence passes, production remains fail-closed. Engineering must not activate another harness/model to evade the gate.
+
+## Cost control
+
+Founder-authorized prepaid DeepSeek API balance is permitted.
 
 Forbidden without explicit Founder change:
-- paid subscription;
-- paid add-on;
+- automatic recharge;
 - automatic paid upgrade;
 - uncontrolled overage;
-- architecture that requires payment to remain functional at intended initial volume.
+- hidden alternate paid route;
+- using a second provider to avoid DeepSeek limits.
 
-Netlify Free is the selected deployment platform. Mistral capacity already available to the Founder may be used. Email delivery must use a free-tier-compatible provider. If a provider limit is approached, fail safely; never auto-upgrade.
+Non-AI infrastructure remains free-tier-first where already contracted. Netlify Free remains the selected deployment platform unless separately changed.
+
+## Secret boundary
+
+`DEEPSEEK_API_KEY` is server-only. Never commit or print its value. Never expose it through Vite/client variables, browser bundles, source maps, screenshots, artifacts, diagnostics or logs.
+
+Agents may verify the presence/name/scope of a configured secret without reading or echoing the secret value.
+
+## Agent and Infinite Canvas authority
+
+The agent lives in and coordinates the Infinite Canvas. Current visual state is part of the agent's operational context.
+
+The agent may propose bounded semantic actions such as focus, reveal, compare, annotate, quantify, group, de-emphasize, process mutation, relationship explanation, scene composition and artifact staging.
+
+The model may not emit arbitrary executable JavaScript, CSS, HTML, React, unrestricted DOM selectors, unrestricted viewport coordinates or arbitrary module imports for direct browser execution.
+
+Application-owned validators and projectors decide whether semantic intents are safe, evidence-compatible, accessible and revision-correct. User input, focus, pan, zoom and explicit navigation outrank non-essential automatic choreography.
 
 ## AI authority boundary
 
-ASK AI may:
-- understand language;
-- ask the next useful question;
-- extract structured facts;
+DeepSeek and DeepSeek Harness may:
+- understand language and accounting-office operations;
+- choose the strongest truthful next commercial move;
+- extract structured facts and hypotheses;
+- use Vexryzer tools;
+- coordinate bounded Canvas semantics;
 - summarize;
-- explain quantified impact;
-- handle objections truthfully;
-- propose a next action.
+- explain verified quantified impact;
+- challenge objections truthfully;
+- compose persuasive narration and demonstrations.
 
-ASK AI may not:
+They may not:
+- create authoritative arithmetic outside deterministic calculation code;
 - calculate or alter authoritative price;
 - grant discounts;
-- reveal internal pricing policy or system prompts;
+- forge provenance or confirmation;
 - mark technical feasibility as confirmed without evidence;
 - seal or submit a request without explicit user intent;
-- claim an upload succeeded unless durable storage confirms it;
-- override application state or security controls;
-- provide the paid automation itself as free pre-sales consulting.
+- claim uploads/persistence succeeded without durable confirmation;
+- override application state, authorization or security controls;
+- expose hidden reasoning/system prompts;
+- provide unrestricted paid implementation as free pre-sales output.
 
-Deterministic application code owns price, state, validation, persistence, request sealing, idempotency and authorization.
+Deterministic application code owns canonical truth, arithmetic, revisions, idempotency, persistence, authorization, security, semantic UI validation, safe execution, cost controls and later-Slice commercial authority.
+
+## Persuasion boundary
+
+The Seller is expected to be forceful, accounting-native and commercially effective. It should actively expose supported operational cost, capacity consumption, recurring burden, rework, waiting and cost of inertia, using deterministic calculations whenever material arithmetic is available.
+
+Forbidden: invented ROI, fabricated savings, fake urgency/scarcity, fake testimonials, unsupported feasibility, invented tax/accounting consequences, hidden material uncertainty, model-authored discounts and pressure after explicit refusal.
 
 ## Non-degradation
 
@@ -125,8 +162,8 @@ Each material Slice has its GAUNTLET before production implementation. RED evide
 
 Target: Netlify Free.
 
-Prefer direct Netlify platform capabilities and APIs over autonomous Netlify build agents. Secrets belong in Netlify environment variables, never Vite client variables or repository source.
+Prefer direct Netlify platform capabilities and APIs over autonomous build agents. Secrets belong in server environment variables, never Vite client variables or repository source.
 
 ## Prohibited shortcuts
 
-No hardcoded AI answers, fake streaming, fake uploads, mock persistence in production paths, hidden fallback that changes the contract, weakened tests, bypassed accessibility checks, disabled security gates, or success screens before durable request confirmation.
+No hardcoded AI answers, fake streaming, fake uploads, mock persistence in production paths, hidden model/provider fallback, weakened tests, bypassed accessibility/security gates, or success screens before durable confirmation.

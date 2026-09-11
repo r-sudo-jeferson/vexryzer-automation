@@ -8,101 +8,118 @@ status: `AUTHORIZED / IN_PROGRESS`
 predecessors: `VXA-S001@1.0.0`
 repository: `r-sudo-jeferson/vexryzer-automation`
 product_root: `job`
-base_sha: `6244a246d8faf73e772fc944a398a71a02fb97e0`
+base_sha: `6244a246d8faf73e772fc944a398a71a02fb97e0a`
 gauntlet_id: `GNT-VXA-S002-001`
 product_amendment: `job/docs/product/VXA-001-product-contract-amendment-001.md`
 agent_led_product_amendment: `job/docs/product/VXA-001-product-contract-amendment-002.md`
 architecture_amendment: `job/docs/architecture/VXA-001-architecture-amendment-001.md`
-provider_architecture_amendment: `job/docs/architecture/VXA-001-architecture-amendment-002.md`
 agent_led_architecture_amendment: `job/docs/architecture/VXA-001-architecture-amendment-003.md`
-provider_strategy_authorization: `job/docs/authorizations/VXA-S002-PROVIDER-STRATEGY-AUTHORIZATION.md`
+deepseek_architecture_amendment: `job/docs/architecture/VXA-001-architecture-amendment-004.md`
+authorization: `job/docs/authorizations/VXA-S002-AUTHORIZATION.md`
 agent_led_authorization: `job/docs/authorizations/VXA-S002-AGENT-LED-ACCOUNTING-SELLER-AUTHORIZATION.md`
+deepseek_authorization: `job/docs/authorizations/VXA-S002-DEEPSEEK-SINGLE-TRUTH-AUTHORIZATION.md`
 design_spec: `job/docs/superpowers/specs/2026-09-10-ask-ai-adaptive-experience-design.md`
-provider_design_amendment: `job/docs/superpowers/specs/2026-09-10-vxa-s002-multiprovider-free-tier-design.md`
-agent_led_design_amendment: `job/docs/superpowers/specs/2026-09-10-vxa-s002-agent-led-accounting-seller-design.md`
+agent_led_design: `job/docs/superpowers/specs/2026-09-10-vxa-s002-agent-led-accounting-seller-design.md`
+deepseek_design: `job/docs/superpowers/specs/2026-09-11-vxa-s002-deepseek-single-truth-design.md`
 implementation_plan: `job/docs/superpowers/plans/2026-09-10-vxa-ask-ai-adaptive-experience-plan.md`
-provider_implementation_plan: `job/docs/superpowers/plans/2026-09-10-vxa-s002-multiprovider-free-tier-plan.md`
-agent_led_implementation_plan: `job/docs/superpowers/plans/2026-09-10-vxa-s002-agent-led-accounting-seller-plan.md`
-source_proposal_path: `job/docs/slices/VXA-S002-contract.PROPOSED.md`
-source_proposal_blob_sha: `9b57331f1202897521a68a62e92e32c8997afd28`
+agent_led_plan: `job/docs/superpowers/plans/2026-09-10-vxa-s002-agent-led-accounting-seller-plan.md`
+deepseek_plan: `job/docs/superpowers/plans/2026-09-11-vxa-s002-deepseek-single-truth-plan.md`
 
 ## Authorization state
 
-This Slice became authorized by Founder explicit continuation after the complete proposed authority package was presented for approval. The exact base SHA was reverified before materialization.
+The Slice remains `VXA-S002@1.0.0` on the same authorized base and GAUNTLET.
 
-On `2026-09-10`, after provider diagnostics and architecture review, the Founder explicitly authorized `VXA-ARCH-A002`: a multi-provider Free Tier strategy with Cloudflare Workers AI as primary provider family, Groq as independent external fallback, OpenRouter optional emergency-only, Mistral standby, fixed cost `R$ 0`, and no registered payment method required for any active route.
+On 2026-09-10 the Founder authorized the Agent-Led Accounting Seller and Deterministic Trust Kernel.
 
-On `2026-09-10`, the Founder then explicitly approved the Agent-Led Accounting Seller design and directed Engineering to execute it. `VXA-PC-A002`, `VXA-ARCH-A003` and `VXA-S002-AGENT-LED-ACCOUNTING-SELLER-AUTHORIZATION.md` therefore strengthen the same Slice without changing its id, version, base SHA or GAUNTLET.
+On 2026-09-11 the Founder issued a stronger provider/harness directive: DeepSeek is the single mandatory AI truth. `VXA-ARCH-A004` and `VXA-S002-DEEPSEEK-SINGLE-TRUTH-AUTHORIZATION.md` revoke every prior active multi-provider, alternate-model and alternate-harness assumption.
 
-These amendments do not reset prior exact-tuple evidence. They supersede only conflicting provider assumptions or product/orchestration assumptions that would force a deterministic sales funnel.
+Historical experiments do not remain eligible merely because their evidence exists in Git history.
 
-## Normative incorporation
+## Active AI truth
 
-The complete UTF-8 proposal identified by blob SHA `9b57331f1202897521a68a62e92e32c8997afd28` remains incorporated into this contract in its entirety. All objective, observable-result, ASK AI, agentic reasoning, VXA Critic, Infinite Canvas, provenance, solution framing, strict generative UI, Workshop, prototype, recovery, observability, exclusion, performance, accessibility, security, scenario, invariant and acceptance-criteria sections remain authoritative except where a newer authorized amendment explicitly strengthens or supersedes a narrower assumption.
+The only authorized generative route is:
+- provider: DeepSeek;
+- model id: `deepseek-v4-pro`;
+- harness: DeepSeek Harness;
+- Harness target version for fresh exact-tuple verification: `0.1.5-rc.2`;
+- API base: `https://api.deepseek.com`;
+- server credential name: `DEEPSEEK_API_KEY`.
 
-For authority resolution:
+No other provider, model, alias, standby route, emergency LLM, compatibility route or agent harness is authorized.
 
-- `proposed_slice_version: 1.0.0` remains `slice_version: 1.0.0`;
-- `status: PROPOSED / NOT_AUTHORIZED` remains superseded by the authorized/in-progress state;
-- `planning_base_sha` remains the exact `base_sha` above;
-- `proposed_gauntlet_id` remains `gauntlet_id`;
-- proposed Product/Architecture amendment paths resolve to the authorized materialized documents listed above;
-- language stating that the proposal does not authorize implementation remains superseded by `job/docs/authorizations/VXA-S002-AUTHORIZATION.md`;
-- language that fixes Mistral as the active primary provider is superseded by `job/docs/authorizations/VXA-S002-PROVIDER-STRATEGY-AUTHORIZATION.md` and `VXA-ARCH-A002`;
-- language that implies a required single solution classifier, next-question-centric funnel or fixed scene progression is superseded by `VXA-PC-A002`, `VXA-ARCH-A003` and the Founder-approved agent-led design;
-- DeepSeek Harness preference does not override exact compatibility evidence: the currently selected proven Workshop tuple is OpenCode `1.18.30` + Groq `openai/gpt-oss-120b` as recorded in `job/docs/handoffs/VXA-S002-HARNESS-SELECTION-NOTE.md`.
-
-No substantive security boundary, performance target, accessibility requirement, Workshop isolation constraint, quantitative-truth requirement or non-regression rule is removed or weakened.
+If this route is unavailable, Vexryzer uses deterministic guided recovery and preserves the user's canonical/session state. It never switches to another LLM.
 
 ## Execution objective
 
-Transform the completed S001 Infinite Canvas into the central agent-led ASK AI experience for accounting firms. The visitor should see their operation become visibly understood, economically quantified and commercially reframed while the UI reacts causally to accepted intelligence.
+Transform the completed S001 Infinite Canvas into the central agent-led ASK AI experience for accounting firms. The agent persistently coordinates the Canvas rather than treating it as a passive chat illustration.
 
-The Seller must optimize for the strongest truthful next move rather than completion of a predetermined discovery flow. It may ask a question, challenge a premise, expose an insight, request deterministic arithmetic, combine capabilities, change the visual composition, stage an artifact, handle an objection, request an optional Workshop demonstration or deliberately make no visual change when that is stronger.
+The Seller chooses the strongest truthful next move from current canonical evidence plus visual state. A move may ask, challenge, calculate, compare, focus, reveal, annotate, restructure a process representation, stage an artifact, demonstrate, handle an objection or deliberately leave the Canvas unchanged.
 
-Operational/digital artifacts, data import/transform, presentations, BI/decision intelligence, training/enablement, automation/integration, internal tools, AI/agentic systems and process/data improvement are composable capabilities, not a mutually exclusive classifier that constrains reasoning. A no-new-software disposition remains valid.
+The system must not reconstruct a fixed sales funnel inside state machines, validators, scene enums, prompts, routing or Critic policy.
 
-ASK AI is expected to be highly persuasive and accounting-native. When canonical evidence permits, it should turn manual effort, volume, rework, waiting, deadline pressure and capacity consumption into concrete numbers. Material arithmetic is computed deterministically from provenance-bound inputs; the model may use the verified result rhetorically but may not invent ROI, savings, labor cost, payback, unsupported percentages or feasibility.
+## Persuasion objective
 
-Customer attachment contents are not model inputs.
+ASK AI must be highly persuasive and accounting-native. It should convert supported manual effort, volume, rework, waiting, closing pressure and capacity consumption into concrete operational/economic visibility.
 
-Cloudflare Workers AI is the primary provider family. Groq is the independent external fallback. OpenRouter is optional emergency-only after separate no-payment and compatibility verification. Mistral is standby. The application must retain deterministic guided recovery when no LLM route is available.
+Material arithmetic remains deterministic and provenance-bound. The model may use verified results rhetorically but may not invent ROI, savings, payback, labor cost, percentages, feasibility, urgency or accounting consequences.
 
-The currently selected proven Workshop harness tuple is OpenCode `1.18.30` + Groq `openai/gpt-oss-120b`, based on run `34483101166` at exact evidence SHA `e8f627947dd0223dbf7237aa64d54687aab86c72`. This Workshop remains optional, isolated, non-authoritative and cannot block normal ASK AI discovery.
+## Infinite Canvas agent contract
 
-## Mandatory provider and quality gate
+The agent may emit bounded semantic UI intents. Application code validates and projects them.
 
-No active provider/model route may be treated as compatible merely because documentation lists the model or provider.
+Allowed semantics include focus, reveal, compare, annotate, quantify, group, de-emphasize, process mutation, relationship explanation, scene composition and artifact staging.
 
-Before an active route is accepted, Engineering must prove on the exact account/route/model:
+Arbitrary executable JavaScript, CSS, HTML, React, unrestricted DOM selectors, unrestricted coordinates and arbitrary imports remain forbidden.
 
-- usable access without registering a payment method or enabling billing;
-- required streaming behavior;
-- required tool/function calling and structured arguments for the role;
-- multi-turn continuation using Vexryzer canonical context;
-- bounded timeout/cancel/error mapping;
-- no secret leakage;
-- tested context/rate behavior;
-- Seller persuasion-quality PASS for any model used as primary/fallback Seller;
-- accounting-native language quality and quantitative reasoning opportunity detection for Seller roles;
-- improvisational quality sufficient to avoid reconstructing a fixed question funnel.
+Current visual state must feed the next agent turn. User interaction takes priority over non-essential automatic choreography.
 
-Any model used through a Workshop harness must additionally prove the required agent properties for its exact harness/provider/model tuple, including streaming/events, real tool use, structured arguments, multi-turn tool-result replay, timeout/error mapping and restart/session behavior.
+## Canonical truth and Harness memory
 
-Historical Mistral and DeepSeek evidence remains preserved and does not need to be repeated unchanged unless a material hypothesis or exact tuple changes.
+DeepSeek Harness session state is operational agent memory, not canonical business truth.
 
-## Fixed-cost and provider boundary
+Canonical Vexryzer context remains authoritative for facts, provenance, corrections, verified calculations, uncertainty and commercial state. On divergence, canonical state wins.
 
-The active architecture must remain fixed-cost `R$ 0` at the intended initial volume. A provider/model route becomes ineligible if it requires a payment method, paid subscription, prepaid credits, billing activation, automatic overage or paid failover.
+## Mandatory DeepSeek and Harness gate
 
-No code may automatically upgrade service, purchase capacity or switch to a paid route. When free capacity is exhausted, the system falls back to another verified free route or deterministic guided discovery.
+No compatibility or quality PASS is inferred from documentation, a prior Harness version or a different provider/model tuple.
+
+Before activation, Engineering must prove on the exact Founder account and exact candidate:
+- access through `DEEPSEEK_API_KEY` without exposing the value;
+- exact model `deepseek-v4-pro`;
+- streaming;
+- structured tool calling;
+- multi-tool and multi-turn continuation;
+- correct tool-result replay;
+- durable session identity;
+- process restart/session recovery;
+- timeout/cancellation/error mapping;
+- bounded diagnostics and no secret leakage;
+- context/token behavior;
+- accounting-native Seller quality;
+- persuasive use of deterministic calculations;
+- semantic Canvas tool execution;
+- deterministic recovery on route failure.
+
+The old restart/session failure from an older DeepSeek Harness release remains historical evidence. It is not silently waived and must be re-tested against the pinned current target.
+
+## Credential and cost boundary
+
+The sole LLM credential name is `DEEPSEEK_API_KEY` and it is server-only.
+
+Founder-authorized prepaid DeepSeek API balance is allowed. Automatic recharge, automatic upgrade, uncontrolled spend and alternate-provider paid fallback are forbidden.
+
+Non-AI infrastructure remains free-tier-first where separately contracted.
 
 ## Attachment boundary
 
-The model does not receive customer attachment contents. S002 does not authorize file bytes, OCR output, extracted document text, attachment embeddings, screenshot-derived attachment content or attachment summaries to be sent to Cloudflare, Groq, OpenRouter, Mistral or any other LLM provider.
+The model does not receive customer attachment contents. S002 does not authorize file bytes, OCR output, extracted document text, attachment embeddings, screenshot-derived attachment content or attachment summaries to be sent to DeepSeek.
 
 Future document submission remains a human delivery/request workflow under later Slice authority.
 
+## Non-regression
+
+S002 preserves S001 Canvas behavior, accessibility, mobile support and performance requirements; deterministic arithmetic; canonical provenance; correction invalidation; idempotency; security; Critic hard blocks; attachment isolation and GAUNTLET strength.
+
 ## Slice boundary
 
-S002 does not authorize S003 pricing implementation, real evidence uploads, durable request sealing, notification delivery, payment, account/portal functionality, arbitrary same-origin generated JavaScript, unrestricted visitor code execution, LLM ingestion of customer attachments, or production hosting that violates the fixed-cost R$0 rule.
+S002 does not authorize S003 pricing implementation, real evidence uploads, durable request sealing, notification delivery, payment, account/portal functionality, unrestricted visitor code execution or LLM ingestion of customer attachments.
