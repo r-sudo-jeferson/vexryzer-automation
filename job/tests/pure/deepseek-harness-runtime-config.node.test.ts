@@ -30,7 +30,7 @@ test('Harness launch rejects identity drift and deadline overcommit', () => {
   assert.throws(
     () => assertDeepSeekHarnessRuntimeConfig({
       ...DEEPSEEK_HARNESS_RUNTIME_CONFIG,
-      model: 'deepseek-v4-flash',
+      model: 'forbidden-model-id',
     } as never),
     /DEEPSEEK_HARNESS_RUNTIME_IDENTITY_INVALID/,
   );
