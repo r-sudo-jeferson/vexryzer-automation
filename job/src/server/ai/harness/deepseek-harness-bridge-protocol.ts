@@ -254,9 +254,14 @@ export function validateDeepSeekHarnessBridgeRequest(
   }
   if (value['schemaVersion'] !== 1) return { ok: false, code: 'INVALID_SHAPE', path: 'request.schemaVersion' };
 
-  for (const field of ['bridgeRequestId', 'sessionId', 'leaseId', 'requestId'] as const) {
-    if (!safeId(value[field])) return { ok: false, code: 'INVALID_ID', path: `request.${field}` };
-  }
+  const bridgeRequestId = value['bridgeRequestId'];
+  const sessionId = value['sessionId'];
+  const leaseId = value['leaseId'];
+  const requestId = value['requestId'];
+  if (!safeId(bridgeRequestId)) return { ok: false, code: 'INVALID_ID', path: 'request.bridgeRequestId' };
+  if (!safeId(sessionId)) return { ok: false, code: 'INVALID_ID', path: 'request.sessionId' };
+  if (!safeId(leaseId)) return { ok: false, code: 'INVALID_ID', path: 'request.leaseId' };
+  if (!safeId(requestId)) return { ok: false, code: 'INVALID_ID', path: 'request.requestId' };
 
   const role = value['role'];
   if (role !== 'seller' && role !== 'critic') {
@@ -267,12 +272,12 @@ export function validateDeepSeekHarnessBridgeRequest(
   if (!safeId(harnessSessionId)) {
     return { ok: false, code: 'INVALID_ID', path: 'request.harnessSessionId' };
   }
-  if (harnessSessionId !== deriveDeepSeekHarnessSessionId(value['sessionId'], role)) {
+  if (harnessSessionId !== deriveDeepSeekHarnessSessionId(sessionId, role)) {
     return { ok: false, code: 'INVALID_HARNESS_SESSION', path: 'request.harnessSessionId' };
   }
 
   const canonicalRevision = value['canonicalRevision'];
-  if (!Number.isInteger(canonicalRevision) || canonicalRevision < 0) {
+  if (typeof canonicalRevision !== 'number' || !Number.isInteger(canonicalRevision) || canonicalRevision < 0) {
     return { ok: false, code: 'INVALID_REVISION', path: 'request.canonicalRevision' };
   }
 
@@ -290,9 +295,10 @@ export function validateDeepSeekHarnessBridgeRequest(
   const args = validateJson(value['args'], 'request.args', 0, { nodes: 0 });
   if (!args.ok) return args;
   if (!isRecord(args.value)) return { ok: false, code: 'INVALID_JSON', path: 'request.args' };
+  const normalizedArgs = args.value as Readonly<Record<string, DeepSeekHarnessBridgeJson>>;
 
   const argumentKeys = TOOL_ARGUMENT_KEYS[role][toolName];
-  if (argumentKeys === undefined || !hasExactKeys(args.value, argumentKeys)) {
+  if (argumentKeys === undefined || !hasExactKeys(normalizedArgs, argumentKeys)) {
     return { ok: false, code: 'INVALID_SHAPE', path: 'request.args' };
   }
 
@@ -300,15 +306,15 @@ export function validateDeepSeekHarnessBridgeRequest(
     ok: true,
     request: Object.freeze({
       schemaVersion: 1,
-      bridgeRequestId: value['bridgeRequestId'],
-      sessionId: value['sessionId'],
+      bridgeRequestId,
+      sessionId,
       harnessSessionId,
-      leaseId: value['leaseId'],
-      requestId: value['requestId'],
+      leaseId,
+      requestId,
       canonicalRevision,
       role,
       toolName,
-      args: args.value,
+      args: normalizedArgs,
     }),
   };
 }
@@ -329,7 +335,8 @@ export function validateDeepSeekHarnessBridgeResponse(
   if (typeof value['toolName'] !== 'string' || !SAFE_TOOL_NAME.test(value['toolName'])) {
     return { ok: false, code: 'INVALID_SHAPE', path: 'response.toolName' };
   }
-  if (!Number.isInteger(value['canonicalRevision']) || value['canonicalRevision'] < 0) {
+  const canonicalRevision = value['canonicalRevision'];
+  if (typeof canonicalRevision !== 'number' || !Number.isInteger(canonicalRevision) || canonicalRevision < 0) {
     return { ok: false, code: 'INVALID_REVISION', path: 'response.canonicalRevision' };
   }
 
@@ -355,7 +362,7 @@ export function validateDeepSeekHarnessBridgeResponse(
       bridgeRequestId: value['bridgeRequestId'],
       toolName: value['toolName'],
       ok: true,
-      canonicalRevision: value['canonicalRevision'],
+      canonicalRevision,
       result: result.value,
     }),
   };
