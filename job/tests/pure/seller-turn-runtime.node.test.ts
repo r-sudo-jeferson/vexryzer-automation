@@ -35,16 +35,16 @@ function canonical(revision = 7): CanonicalSalesContext {
 
 function route(overrides: Partial<ProviderRouteDefinition> = {}): Readonly<ProviderRouteDefinition> {
   return Object.freeze({
-    routeId: 'cloudflare-primary',
-    family: 'cloudflare_workers_ai',
-    modelId: '@cf/example/seller',
+    routeId: 'deepseek-v4-pro-seller',
+    family: 'deepseek',
+    modelId: 'deepseek-v4-pro',
     roles: Object.freeze(['seller'] as const),
     tier: 'primary',
     priority: 10,
     enabledByDefault: true,
-    credentialEnvName: 'TEST_TOKEN',
+    credentialEnvName: 'DEEPSEEK_API_KEY',
     credentialScope: 'server',
-    noPaymentEligibility: 'PASS',
+    billingAuthorization: 'PASS',
     protocolCompatibility: 'PASS',
     sellerQuality: 'PASS',
     criticQuality: 'NOT_APPLICABLE',
@@ -231,7 +231,7 @@ function baseInput(
     runtimeStates: Object.freeze(routes.map((item) => Object.freeze({ routeId: item.routeId, circuit: 'closed' as const, quota: 'available' as const }))),
     estimateTokens: () => 100,
     resolveCredential: () => 'server-secret',
-    serverConfig: Object.freeze({ cloudflareAccountId: 'account-1' }),
+    serverConfig: Object.freeze({}),
     timeoutMs: 10_000,
     dependencies: {
       packageContext: packageOk as unknown as SellerTurnRuntimeDependencies['packageContext'],
@@ -248,14 +248,14 @@ function baseInput(
 test('builds every Seller provider message from the revision-bound dispatch context and rejects provider conversation authority keys', () => {
   const envelope = Object.freeze({
     schemaVersion: 1 as const,
-    routeId: 'cloudflare-primary',
-    providerFamily: 'cloudflare_workers_ai' as const,
-    modelId: '@cf/example/seller',
+    routeId: 'deepseek-v4-pro-seller',
+    providerFamily: 'deepseek' as const,
+    modelId: 'deepseek-v4-pro',
     role: 'seller' as const,
     canonicalRevision: 7,
     contextMode: 'full' as const,
     fallbackReason: null,
-    credentialEnvName: 'TEST_TOKEN',
+    credentialEnvName: 'DEEPSEEK_API_KEY',
     context: Object.freeze({ schemaVersion: 1 as const, canonicalRevision: 7, marker: 'canon-derived' }),
   });
   const messages = buildSellerProviderMessages(envelope);
@@ -396,75 +396,38 @@ test('Critic revision request is same-revision, calculation-free, and requires a
   });
 });
 
-test('provider-side capacity failure reselects independent Groq fallback at the same canonical revision with a freshly built emergency message', async () => {
+test('provider-side capacity failure stays on the single DeepSeek route and fails bounded', async () => {
   const primary = route();
-  const fallback = route({
-    routeId: 'groq-fallback',
-    family: 'groq',
-    modelId: 'openai/gpt-oss-120b',
-    tier: 'independent_fallback',
-    priority: 10,
-    maxInputTokens: 12_000,
-    emergencyInputTokens: 3_000,
-    credentialEnvName: 'GROQ_TEST_TOKEN',
-  });
-  const seen: Array<{ routeId: string; messages: readonly unknown[] }> = [];
-  const input = baseInput([primary, fallback], async (providerInput) => {
-    seen.push({ routeId: providerInput.route.routeId, messages: providerInput.messages });
-    if (providerInput.route.routeId === primary.routeId) return { ok: false, class: 'capacity', status: 503, retryAfterMs: 1000 };
-    return completion([submissionTool(7)]);
+  let calls = 0;
+  const input = baseInput([primary], async () => {
+    calls += 1;
+    return { ok: false, class: 'capacity', status: 503, retryAfterMs: 1000 };
   });
   const result = await runSellerTurn(input);
-  assert.equal(result.ok, true);
-  if (!result.ok) return;
-  assert.equal(result.routeId, fallback.routeId);
-  assert.equal(result.canonical.revision, 7);
-  assert.equal(result.providerCalls, 2);
-  assert.deepEqual(seen.map((item) => item.routeId), [primary.routeId, fallback.routeId]);
-  const firstPayload = JSON.parse((seen[0]!.messages[1] as { content: string }).content) as { canonicalRevision: number; contextMode: string };
-  const secondPayload = JSON.parse((seen[1]!.messages[1] as { content: string }).content) as { canonicalRevision: number; contextMode: string; fallbackReason: string; context: { marker: string } };
-  assert.equal(firstPayload.canonicalRevision, 7);
-  assert.equal(secondPayload.canonicalRevision, 7);
-  assert.equal(secondPayload.contextMode, 'emergency_capsule');
-  assert.equal(secondPayload.fallbackReason, 'PRIMARY_UNAVAILABLE');
-  assert.equal(secondPayload.context.marker, 'emergency-7');
-});
-
-test('primary context overflow can select fallback only from its same-revision emergency capsule', async () => {
-  const primary = route();
-  const fallback = route({ routeId: 'groq-fallback', family: 'groq', tier: 'independent_fallback', maxInputTokens: 12_000, emergencyInputTokens: 3_000 });
-  const seen: string[] = [];
-  const input = baseInput([primary, fallback], async (providerInput) => {
-    seen.push(providerInput.route.routeId);
-    return completion([submissionTool(7)]);
-  }, {
-    packageContext: ((packInput: Parameters<SellerTurnRuntimeDependencies['packageContext']>[0]) => ({
-      ok: false,
-      code: 'CONTEXT_BUDGET_EXCEEDED',
-      attempts: 2,
-      estimatedInputTokens: 16_001,
-      availableInputTokens: 16_000,
-    })) as never,
-  });
-  const result = await runSellerTurn(input);
-  assert.equal(result.ok, true);
-  if (!result.ok) return;
-  assert.deepEqual(seen, [fallback.routeId]);
-  assert.equal(result.routeId, fallback.routeId);
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.code, 'PROVIDER_FAILED');
+    if (result.code === 'PROVIDER_FAILED') assert.equal(result.failureClass, 'capacity');
+  }
+  assert.equal(calls, 1);
 });
 
 for (const failureClass of ['cancelled', 'client'] as const) {
-  test(`${failureClass} provider failure never triggers blind fallback`, async () => {
+  test(`${failureClass} provider failure stays on the single DeepSeek route`, async () => {
     const primary = route();
-    const fallback = route({ routeId: 'groq-fallback', family: 'groq', tier: 'independent_fallback', maxInputTokens: 12_000, emergencyInputTokens: 3_000 });
     let calls = 0;
-    const input = baseInput([primary, fallback], async () => {
+    const input = baseInput([primary], async () => {
       calls += 1;
-      return { ok: false, class: failureClass, status: failureClass === 'client' ? 400 : null, retryAfterMs: null };
+      return {
+        ok: false,
+        class: failureClass,
+        status: failureClass === 'client' ? 400 : null,
+        retryAfterMs: null,
+      };
     });
     const result = await runSellerTurn(input);
-    if (result.ok || result.code !== 'PROVIDER_FAILED') throw new Error(`unexpected result: ${JSON.stringify(result)}`);
-    assert.equal(result.failureClass, failureClass);
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.code, 'PROVIDER_FAILED');
     assert.equal(calls, 1);
   });
 }
@@ -821,24 +784,14 @@ test('primary context packaging accounts for Seller system and tool-schema wire 
   assert.equal(providerCalls, 0);
 });
 
-test('fallback wire tokens are rebound after the router determines fallback reason and overflow never reaches the provider', async () => {
+test('primary context overflow fails closed before DeepSeek dispatch', async () => {
   const primary = route();
-  const fallback = route({
-    routeId: 'groq-fallback',
-    family: 'groq',
-    modelId: 'openai/gpt-oss-120b',
-    tier: 'independent_fallback',
-    priority: 10,
-    maxInputTokens: 12_000,
-    emergencyInputTokens: 3_000,
-    credentialEnvName: 'GROQ_TEST_TOKEN',
-  });
   let providerCalls = 0;
-  const input = baseInput([primary, fallback], async () => {
+  const input = baseInput([primary], async () => {
     providerCalls += 1;
     return completion([submissionTool(7)]);
   }, {
-    packageContext: ((packInput: Parameters<SellerTurnRuntimeDependencies['packageContext']>[0]) => ({
+    packageContext: (() => ({
       ok: false,
       code: 'CONTEXT_BUDGET_EXCEEDED',
       attempts: 2,
@@ -846,26 +799,18 @@ test('fallback wire tokens are rebound after the router determines fallback reas
       availableInputTokens: 16_000,
     })) as SellerTurnRuntimeDependencies['packageContext'],
   });
-  input.estimateTokens = (value: unknown) => JSON.stringify(value).includes('PRIMARY_CONTEXT_EXCEEDED') ? 3_001 : 100;
 
   const result = await runSellerTurn(input);
-  if (result.ok || result.code !== 'NO_ELIGIBLE_ROUTE') throw new Error(`unexpected result: ${JSON.stringify(result)}`);
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, 'NO_ELIGIBLE_ROUTE');
   assert.equal(providerCalls, 0);
 });
 
-test('the complete Seller contract fits the real Groq emergency wire budget', async () => {
-  const fallback = route({
-    routeId: 'groq-fallback',
-    family: 'groq',
-    modelId: 'openai/gpt-oss-120b',
-    tier: 'independent_fallback',
-    maxInputTokens: 16_000,
-    emergencyInputTokens: 4_000,
-    credentialEnvName: 'GROQ_TEST_TOKEN',
-  });
+test('the complete Seller contract fits the DeepSeek primary wire budget', async () => {
+  const primary = route({ maxInputTokens: 16_000 });
   let providerCalls = 0;
   let maxMeasuredTokens = 0;
-  const input = baseInput([fallback], async () => {
+  const input = baseInput([primary], async () => {
     providerCalls += 1;
     return completion([submissionTool(7)]);
   });
@@ -878,7 +823,7 @@ test('the complete Seller contract fits the real Groq emergency wire budget', as
   const result = await runSellerTurn(input);
   assert.equal(result.ok, true, JSON.stringify(result));
   assert.equal(providerCalls, 1);
-  assert.ok(maxMeasuredTokens <= 4_000, `measured ${maxMeasuredTokens} fallback-wire tokens`);
+  assert.ok(maxMeasuredTokens <= 16_000, `measured ${maxMeasuredTokens} primary-wire tokens`);
 });
 
 test('non-deterministic token measurement is bounded and fails closed instead of looping or dispatching', async () => {
