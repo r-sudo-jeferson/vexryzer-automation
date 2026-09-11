@@ -313,8 +313,6 @@ interface PreparedRouteContexts {
 interface SellerProviderMessageSource<TContext extends CanonicalDispatchContext = CanonicalDispatchContext> {
   role: ProviderRouteDecision['role'];
   canonicalRevision: number;
-  contextMode: 'full';
-  fallbackReason: null;
   context: TContext;
 }
 
@@ -366,9 +364,7 @@ function validateRuntimeConfiguration(input: SellerTurnRuntimeInput): Extract<Se
     const route = input.routes.find((candidate) => candidate.routeId === item.routeId)!;
     if (
       route.maxInputTokens === null
-      || route.emergencyInputTokens === null
       || route.maxInputTokens !== availableInputTokens(item.budget)
-      || route.emergencyInputTokens !== item.budget.emergencyInputTokens
     ) {
       return { ok: false, code: 'INVALID_RUNTIME_CONFIG', canonical: input.canonical, detail: 'ROUTE_BUDGET_MISMATCH' };
     }
@@ -403,8 +399,6 @@ function prepareRouteContexts(
     estimateTokens: (contextPayload) => estimateSellerProviderInputTokens({
       role: 'seller',
       canonicalRevision: canonical.revision,
-      contextMode: 'full',
-      fallbackReason: null,
       context: contextPayload as CanonicalDispatchContext,
     }, input.estimateTokens, activeTools, input.revisionRequest, repairRequest),
   });
@@ -415,8 +409,6 @@ function prepareRouteContexts(
       fullContextInputTokens = estimateSellerProviderInputTokens({
         role: 'seller',
         canonicalRevision: canonical.revision,
-        contextMode: 'full',
-        fallbackReason: null,
         context: fullContext,
       }, input.estimateTokens, activeTools, input.revisionRequest, repairRequest);
     } catch {
@@ -434,7 +426,6 @@ function prepareRouteContexts(
   const usage = Object.freeze({
     routeId: route.routeId,
     fullContextInputTokens,
-    emergencyCapsuleInputTokens: 0,
   });
   return {
     ok: true,
@@ -448,7 +439,6 @@ function prepareRouteContexts(
         role: 'seller',
         canonicalRevision: canonical.revision,
         fullContextInputTokens,
-        emergencyCapsuleInputTokens: 0,
         requiresStreaming: true,
         requiresTools: true,
         requiresStructuredArguments: true,
@@ -512,8 +502,6 @@ export function buildSellerProviderMessages<TContext extends CanonicalDispatchCo
   const payload = Object.freeze({
     schemaVersion: 1 as const,
     canonicalRevision: envelope.canonicalRevision,
-    contextMode: envelope.contextMode,
-    fallbackReason: envelope.fallbackReason,
     context: envelope.context,
     ...(revisionRequest === undefined ? {} : { revisionRequest }),
     ...(repairRequest === undefined ? {} : { repairRequest }),

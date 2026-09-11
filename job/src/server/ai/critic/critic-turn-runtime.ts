@@ -190,8 +190,6 @@ interface PreparedRouteContexts {
 interface CriticProviderMessageSource<TContext extends CanonicalDispatchContext = CanonicalDispatchContext> {
   role: ProviderRouteDecision['role'];
   canonicalRevision: number;
-  contextMode: 'full';
-  fallbackReason: null;
   context: TContext;
 }
 
@@ -241,8 +239,6 @@ export function buildCriticProviderMessages<TContext extends CanonicalDispatchCo
   const payload = Object.freeze({
     schemaVersion: 1 as const,
     canonicalRevision: envelope.canonicalRevision,
-    contextMode: envelope.contextMode,
-    fallbackReason: envelope.fallbackReason,
     context: envelope.context,
     reviewTarget: reviewTarget(submission),
   });
@@ -308,9 +304,7 @@ function validateRuntimeConfiguration(
     const route = input.routes.find((candidate) => candidate.routeId === item.routeId)!;
     if (
       route.maxInputTokens === null
-      || route.emergencyInputTokens === null
       || route.maxInputTokens !== availableInputTokens(item.budget)
-      || route.emergencyInputTokens !== item.budget.emergencyInputTokens
     ) {
       return { ok: false, code: 'INVALID_RUNTIME_CONFIG', detail: 'ROUTE_BUDGET_MISMATCH' };
     }
@@ -343,8 +337,6 @@ function prepareRouteContexts(
     estimateTokens: (contextPayload) => estimateCriticProviderInputTokens({
       role: 'critic',
       canonicalRevision: input.canonical.revision,
-      contextMode: 'full',
-      fallbackReason: null,
       context: contextPayload as CanonicalDispatchContext,
     }, submission, input.estimateTokens),
   });
@@ -355,8 +347,6 @@ function prepareRouteContexts(
       fullContextInputTokens = estimateCriticProviderInputTokens({
         role: 'critic',
         canonicalRevision: input.canonical.revision,
-        contextMode: 'full',
-        fallbackReason: null,
         context: fullContext,
       }, submission, input.estimateTokens);
     } catch {
@@ -374,7 +364,6 @@ function prepareRouteContexts(
   const usage = Object.freeze({
     routeId: route.routeId,
     fullContextInputTokens,
-    emergencyCapsuleInputTokens: 0,
   });
   return {
     ok: true,
@@ -388,7 +377,6 @@ function prepareRouteContexts(
         role: 'critic',
         canonicalRevision: input.canonical.revision,
         fullContextInputTokens,
-        emergencyCapsuleInputTokens: 0,
         requiresStreaming: true,
         requiresTools: true,
         requiresStructuredArguments: true,
