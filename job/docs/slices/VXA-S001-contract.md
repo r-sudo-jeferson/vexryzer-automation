@@ -41,7 +41,7 @@ A user can open the application on desktop or mobile, experience the premium ori
 
 ## Exclusions
 
-- live Mistral requests;
+- live LLM requests;
 - ASK AI production conversation;
 - authoritative pricing;
 - real uploads;
@@ -60,7 +60,7 @@ The first screen must feel like a high-end product immediately. The user sees on
 
 ## Engineering Truth
 
-Canvas state, camera modes, node contracts and viewport behavior are typed and deterministic. Production code contains no Mistral mock pretending to be real AI.
+Canvas state, camera modes, node contracts and viewport behavior are typed and deterministic. Production code contains no LLM mock pretending to be real AI.
 
 ## Invariants
 
