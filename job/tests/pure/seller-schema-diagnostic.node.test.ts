@@ -27,8 +27,10 @@ test('schema diagnostic isolates tool count, submit complexity, combinators and 
     'submit-intent-only',
     'submit-intent-scalars-only',
     'submit-intent-capabilities-only',
+    'submit-intent-capabilities-without-unique-items',
     'submit-intent-actions-only',
     'submit-intent-quantitative-only',
+    'submit-intent-quantitative-without-unique-items',
     'submit-intent-artifacts-only',
     'submit-intent-question-only',
     'submit-records-only',
@@ -36,14 +38,17 @@ test('schema diagnostic isolates tool count, submit complexity, combinators and 
     'submit-only-complete',
     'submit-without-one-of',
     'submit-without-descriptions',
+    'submit-without-unique-items',
     'complete-tools',
   ]);
-  assert.deepEqual(cases.map((item) => item.tools.length), [1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3]);
-  assert.ok(countKey(cases[15]!.tools, 'oneOf') > 0);
-  assert.equal(countKey(cases[16]!.tools, 'oneOf'), 0);
-  assert.equal(countKey(cases[17]!.tools, 'description'), 1);
-  assert.equal(countKey(cases[17]!.tools[0]!.function.parameters, 'description'), 0);
-  assert.ok(JSON.stringify(cases[1]!.tools).length >= JSON.stringify(cases[15]!.tools).length);
+  assert.deepEqual(cases.map((item) => item.tools.length), [1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3]);
+  assert.ok(countKey(cases[17]!.tools, 'oneOf') > 0);
+  assert.equal(countKey(cases[18]!.tools, 'oneOf'), 0);
+  assert.equal(countKey(cases[19]!.tools, 'description'), 1);
+  assert.equal(countKey(cases[19]!.tools[0]!.function.parameters, 'description'), 0);
+  assert.ok(countKey(cases[17]!.tools, 'uniqueItems') > 0);
+  assert.equal(countKey(cases[20]!.tools, 'uniqueItems'), 0);
+  assert.ok(JSON.stringify(cases[1]!.tools).length >= JSON.stringify(cases[17]!.tools).length);
   assert.equal(countKey(cases[2]!.tools, 'properties'), 7);
   assert.ok(countKey(cases[3]!.tools, 'type') >= 125);
 });
@@ -101,4 +106,9 @@ test('schema diagnostic infers only a uniquely isolated structural dimension', (
     { id: 'submit-intent-question-only', accepted: true },
     { id: 'submit-only-complete', accepted: false },
   ]), 'INTENT_ACTIONS_BRANCH_REJECTED');
+  assert.equal(inferSellerSchemaRootCause([
+    { id: 'simple-control', accepted: true },
+    { id: 'submit-only-complete', accepted: false },
+    { id: 'submit-without-unique-items', accepted: true },
+  ]), 'UNIQUE_ITEMS_UNSUPPORTED_IN_SUBMIT_SCHEMA');
 });

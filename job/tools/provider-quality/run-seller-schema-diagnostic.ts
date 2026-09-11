@@ -75,7 +75,9 @@ export interface SellerSchemaDiagnosticCase {
   tools: readonly LocalFunctionTool[];
 }
 
-function transformSchema(value: unknown, option: 'without_one_of' | 'without_descriptions'): unknown {
+type SchemaTransform = 'without_one_of' | 'without_descriptions' | 'without_unique_items';
+
+function transformSchema(value: unknown, option: SchemaTransform): unknown {
   if (Array.isArray(value)) return Object.freeze(value.map((item) => transformSchema(item, option)));
   if (typeof value !== 'object' || value === null) return value;
   const source = value as Readonly<Record<string, unknown>>;
@@ -91,12 +93,13 @@ function transformSchema(value: unknown, option: 'without_one_of' | 'without_des
   const transformed: Record<string, unknown> = {};
   for (const [key, nested] of Object.entries(source)) {
     if (option === 'without_descriptions' && key === 'description') continue;
+    if (option === 'without_unique_items' && key === 'uniqueItems') continue;
     transformed[key] = transformSchema(nested, option);
   }
   return Object.freeze(transformed);
 }
 
-function transformTool(tool: LocalFunctionTool, option: 'without_one_of' | 'without_descriptions'): LocalFunctionTool {
+function transformTool(tool: LocalFunctionTool, option: SchemaTransform): LocalFunctionTool {
   const transformed = transformSchema(tool.function.parameters, option);
   if (typeof transformed !== 'object' || transformed === null || Array.isArray(transformed)) {
     throw new TypeError('diagnostic tool transform failed');
@@ -201,6 +204,11 @@ export function buildSellerSchemaDiagnosticCases(): readonly Readonly<SellerSche
     ['schemaVersion', 'narration', 'intent', 'criticRequired'],
     intentFields,
   );
+  const capabilitiesOnly = intentSubset(['schemaVersion', 'capabilities']);
+  const actionsOnly = intentSubset(['schemaVersion', 'actions']);
+  const quantitativeOnly = intentSubset(['schemaVersion', 'quantitativeOpportunities']);
+  const artifactsOnly = intentSubset(['schemaVersion', 'artifactIntents']);
+  const questionOnly = intentSubset(['schemaVersion', 'nextQuestion']);
   const recordsOnly = buildSubmitSubsetTool(
     submit,
     ['schemaVersion', 'proposalId', 'proposal'],
@@ -228,16 +236,19 @@ export function buildSellerSchemaDiagnosticCases(): readonly Readonly<SellerSche
     Object.freeze({ id: 'submit-envelope-only', tools: Object.freeze([envelopeOnly]) }),
     Object.freeze({ id: 'submit-intent-only', tools: Object.freeze([intentOnly]) }),
     Object.freeze({ id: 'submit-intent-scalars-only', tools: Object.freeze([intentSubset(['schemaVersion', 'objective', 'rationale'])]) }),
-    Object.freeze({ id: 'submit-intent-capabilities-only', tools: Object.freeze([intentSubset(['schemaVersion', 'capabilities'])]) }),
-    Object.freeze({ id: 'submit-intent-actions-only', tools: Object.freeze([intentSubset(['schemaVersion', 'actions'])]) }),
-    Object.freeze({ id: 'submit-intent-quantitative-only', tools: Object.freeze([intentSubset(['schemaVersion', 'quantitativeOpportunities'])]) }),
-    Object.freeze({ id: 'submit-intent-artifacts-only', tools: Object.freeze([intentSubset(['schemaVersion', 'artifactIntents'])]) }),
-    Object.freeze({ id: 'submit-intent-question-only', tools: Object.freeze([intentSubset(['schemaVersion', 'nextQuestion'])]) }),
+    Object.freeze({ id: 'submit-intent-capabilities-only', tools: Object.freeze([capabilitiesOnly]) }),
+    Object.freeze({ id: 'submit-intent-capabilities-without-unique-items', tools: Object.freeze([transformTool(capabilitiesOnly, 'without_unique_items')]) }),
+    Object.freeze({ id: 'submit-intent-actions-only', tools: Object.freeze([actionsOnly]) }),
+    Object.freeze({ id: 'submit-intent-quantitative-only', tools: Object.freeze([quantitativeOnly]) }),
+    Object.freeze({ id: 'submit-intent-quantitative-without-unique-items', tools: Object.freeze([transformTool(quantitativeOnly, 'without_unique_items')]) }),
+    Object.freeze({ id: 'submit-intent-artifacts-only', tools: Object.freeze([artifactsOnly]) }),
+    Object.freeze({ id: 'submit-intent-question-only', tools: Object.freeze([questionOnly]) }),
     Object.freeze({ id: 'submit-records-only', tools: Object.freeze([recordsOnly]) }),
     Object.freeze({ id: 'submit-material-only', tools: Object.freeze([materialOnly]) }),
     Object.freeze({ id: 'submit-only-complete', tools: Object.freeze([submit]) }),
     Object.freeze({ id: 'submit-without-one-of', tools: Object.freeze([transformTool(submit, 'without_one_of')]) }),
     Object.freeze({ id: 'submit-without-descriptions', tools: Object.freeze([transformTool(submit, 'without_descriptions')]) }),
+    Object.freeze({ id: 'submit-without-unique-items', tools: Object.freeze([transformTool(submit, 'without_unique_items')]) }),
     Object.freeze({ id: 'complete-tools', tools: SELLER_LOCAL_TOOLS }),
   ]);
 }
@@ -380,6 +391,7 @@ export function inferSellerSchemaRootCause(
   if (!rejected('submit-only-complete')) return 'NOT_ISOLATED';
   if (accepted('submit-without-one-of')) return 'ONE_OF_UNSUPPORTED_IN_SUBMIT_SCHEMA';
   if (accepted('submit-without-descriptions')) return 'DESCRIPTION_REJECTED_IN_SUBMIT_SCHEMA';
+  if (accepted('submit-without-unique-items')) return 'UNIQUE_ITEMS_UNSUPPORTED_IN_SUBMIT_SCHEMA';
 
   const padded = accepted('padded-simple-control');
   const deep = accepted('deep-simple-control');
