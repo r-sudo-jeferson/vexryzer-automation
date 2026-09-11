@@ -1,7 +1,6 @@
 export interface ProviderRouteBudget {
   maxInputTokens: number;
   reservedOutputTokens: number;
-  emergencyInputTokens: number;
 }
 
 export type TokenEstimator = (value: unknown) => number;
@@ -23,12 +22,8 @@ export function assertProviderRouteBudget(budget: ProviderRouteBudget): void {
   if (!Number.isInteger(budget.reservedOutputTokens) || budget.reservedOutputTokens < 0) {
     throw new TypeError('reservedOutputTokens must be a non-negative integer');
   }
-  assertPositiveInteger('emergencyInputTokens', budget.emergencyInputTokens);
   if (budget.reservedOutputTokens >= budget.maxInputTokens) {
     throw new TypeError('reservedOutputTokens must leave positive input capacity');
-  }
-  if (budget.emergencyInputTokens > budget.maxInputTokens - budget.reservedOutputTokens) {
-    throw new TypeError('emergencyInputTokens cannot exceed normal available input capacity');
   }
 }
 

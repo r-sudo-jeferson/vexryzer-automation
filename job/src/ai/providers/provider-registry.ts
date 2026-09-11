@@ -4,7 +4,7 @@ export type ProviderFamily = (typeof PROVIDER_FAMILIES)[number];
 export const PROVIDER_ROLES = ['seller', 'critic', 'composer', 'workshop'] as const;
 export type ProviderRole = (typeof PROVIDER_ROLES)[number];
 
-export const PROVIDER_ROUTE_TIERS = ['primary', 'independent_fallback', 'emergency', 'standby'] as const;
+export const PROVIDER_ROUTE_TIERS = ['primary'] as const;
 export type ProviderRouteTier = (typeof PROVIDER_ROUTE_TIERS)[number];
 
 export type VerificationVerdict = 'PASS' | 'FAIL' | 'NOT_VERIFIED' | 'NOT_APPLICABLE';
@@ -43,7 +43,6 @@ export interface ProviderRouteDefinition {
   runtimeActivation: Exclude<VerificationVerdict, 'NOT_APPLICABLE'>;
   capabilities: Readonly<ProviderRouteCapabilities>;
   maxInputTokens: number | null;
-  emergencyInputTokens: number | null;
   evidence: Readonly<ProviderEvidenceReference> | null;
 }
 
@@ -92,7 +91,6 @@ export const AUTHORIZED_PROVIDER_CANDIDATES: readonly Readonly<ProviderRouteDefi
     runtimeActivation: 'NOT_VERIFIED',
     capabilities: UNKNOWN_CAPABILITIES,
     maxInputTokens: null,
-    emergencyInputTokens: null,
     evidence: null,
   }),
 ]);

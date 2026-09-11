@@ -12,8 +12,6 @@ export interface ProviderDispatchEnvelope<TContext extends CanonicalDispatchCont
   modelId: string;
   role: ProviderRouteDecision['role'];
   canonicalRevision: number;
-  contextMode: ProviderRouteDecision['contextMode'];
-  fallbackReason: ProviderRouteDecision['fallbackReason'];
   credentialEnvName: string;
   context: TContext;
 }
@@ -47,8 +45,6 @@ function routeIsStaticallyDispatchable(decision: Readonly<ProviderRouteDecision>
     || route.modelId !== 'deepseek-v4-pro'
     || route.credentialEnvName !== 'DEEPSEEK_API_KEY'
     || route.tier !== 'primary'
-    || decision.contextMode !== 'full'
-    || decision.fallbackReason !== null
   ) return false;
 
   const requirements = decision.requirements;
@@ -78,14 +74,10 @@ function routeIsStaticallyDispatchable(decision: Readonly<ProviderRouteDecision>
     && routeHasRequiredRoleQuality(decision);
 }
 
-export function createProviderDispatchEnvelope<
-  TFull extends CanonicalDispatchContext,
-  TEmergency extends CanonicalDispatchContext,
->(input: {
+export function createProviderDispatchEnvelope<TFull extends CanonicalDispatchContext>(input: {
   decision: Readonly<ProviderRouteDecision>;
   fullContext?: TFull;
-  emergencyCapsule?: TEmergency;
-}): ProviderDispatchResult<TFull | TEmergency> {
+}): ProviderDispatchResult<TFull> {
   const route = input.decision.route;
   if (route.credentialScope !== 'server') {
     return { ok: false, code: 'CLIENT_CREDENTIAL_FORBIDDEN' };
@@ -109,8 +101,6 @@ export function createProviderDispatchEnvelope<
       modelId: route.modelId,
       role: input.decision.role,
       canonicalRevision: input.decision.canonicalRevision,
-      contextMode: 'full',
-      fallbackReason: null,
       credentialEnvName: route.credentialEnvName,
       context,
     }),

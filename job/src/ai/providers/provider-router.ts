@@ -5,20 +5,15 @@ import {
   type RouteRejectionReason,
 } from './route-eligibility.ts';
 
-export type ProviderContextMode = 'full' | 'emergency_capsule';
-export type ProviderFallbackReason = 'PRIMARY_UNAVAILABLE' | 'PRIMARY_CONTEXT_EXCEEDED';
-
 export interface ProviderRouteTokenUsage {
   routeId: string;
   fullContextInputTokens: number;
-  emergencyCapsuleInputTokens: number;
 }
 
 export interface ProviderSelectionRequest {
   role: ProviderRole;
   canonicalRevision: number;
   fullContextInputTokens: number;
-  emergencyCapsuleInputTokens: number;
   requiresStreaming: boolean;
   requiresTools: boolean;
   requiresStructuredArguments: boolean;
@@ -41,8 +36,6 @@ export interface ProviderRouteDecision {
   route: Readonly<ProviderRouteDefinition>;
   role: ProviderRole;
   canonicalRevision: number;
-  contextMode: ProviderContextMode;
-  fallbackReason: ProviderFallbackReason | null;
   requirements: Readonly<ProviderRouteRequirements>;
 }
 
@@ -67,9 +60,7 @@ function validRequestNumbers(request: Readonly<ProviderSelectionRequest>): boole
   return Number.isInteger(request.canonicalRevision)
     && request.canonicalRevision >= 0
     && Number.isFinite(request.fullContextInputTokens)
-    && request.fullContextInputTokens >= 0
-    && Number.isFinite(request.emergencyCapsuleInputTokens)
-    && request.emergencyCapsuleInputTokens >= 0;
+    && request.fullContextInputTokens >= 0;
 }
 
 /**
@@ -111,8 +102,6 @@ export function selectProviderRoute(
       || request.routeTokenUsage[0]?.routeId !== route.routeId
       || !Number.isFinite(request.routeTokenUsage[0].fullContextInputTokens)
       || request.routeTokenUsage[0].fullContextInputTokens < 0
-      || !Number.isFinite(request.routeTokenUsage[0].emergencyCapsuleInputTokens)
-      || request.routeTokenUsage[0].emergencyCapsuleInputTokens < 0
     ) {
       return {
         ok: false,
@@ -149,8 +138,6 @@ export function selectProviderRoute(
     route,
     role: request.role,
     canonicalRevision: request.canonicalRevision,
-    contextMode: 'full',
-    fallbackReason: null,
     requirements: Object.freeze({
       inputTokens,
       requiresStreaming: request.requiresStreaming,
