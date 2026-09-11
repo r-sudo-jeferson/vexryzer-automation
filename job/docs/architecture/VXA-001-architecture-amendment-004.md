@@ -13,7 +13,7 @@ authority: `FOUNDER_EXPLICIT_DIRECTIVE`
 model_provider: `DeepSeek`
 model_id: `deepseek-v4-pro`
 harness: `DeepSeek Harness`
-harness_target_version: `0.1.5-rc.2`
+harness_target_version: `0.1.5-rc.1`
 credential_env: `DEEPSEEK_API_KEY`
 
 ## 1. Decision
@@ -36,7 +36,7 @@ Thinking mode may vary by request complexity while remaining on the same exact m
 
 DeepSeek Harness becomes the required agentic runtime for the live Seller/Canvas coordination path after the exact target tuple passes the required compatibility and safety gates.
 
-The prior DeepSeek Harness result was produced on an older release candidate and remains historical evidence. It does not authorize a competing harness. The current target `0.1.5-rc.2` must be reverified rather than assuming that either the old failure or the new release implies compatibility.
+The prior DeepSeek Harness result was produced on an older release candidate and remains historical evidence. It does not authorize a competing harness. The current target `0.1.5-rc.1` must be reverified rather than assuming that either the old failure or the new release implies compatibility.
 
 Until that gate passes, the production runtime remains fail-closed. Engineering may not activate another harness to avoid the gate.
 
@@ -88,7 +88,7 @@ Founder-authorized prepaid DeepSeek balance is permitted. Automatic recharge, au
 
 ## 8. Exact activation gate
 
-Before the agent runtime is considered active, the exact `DeepSeek Harness 0.1.5-rc.2 + deepseek-v4-pro + Founder account` tuple must prove:
+Before the agent runtime is considered active, the exact `DeepSeek Harness 0.1.5-rc.1 + deepseek-v4-pro + Founder account` tuple must prove:
 - authenticated access using only `DEEPSEEK_API_KEY`;
 - streamed agent events;
 - real tool calls with validated structured arguments;
