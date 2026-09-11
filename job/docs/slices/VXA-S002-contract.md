@@ -41,7 +41,7 @@ The only authorized generative route is:
 - provider: DeepSeek;
 - model id: `deepseek-v4-pro`;
 - harness: DeepSeek Harness;
-- Harness target version for fresh exact-tuple verification: `0.1.5-rc.2`;
+- Harness target version for fresh exact-tuple verification: `0.1.5-rc.1`;
 - API base: `https://api.deepseek.com`;
 - server credential name: `DEEPSEEK_API_KEY`.
 
