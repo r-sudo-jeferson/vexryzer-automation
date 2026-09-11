@@ -1,4 +1,4 @@
-import type { ProviderRole, ProviderRouteDefinition, ProviderRouteTier } from './provider-registry.ts';
+import type { ProviderRole, ProviderRouteDefinition } from './provider-registry.ts';
 import {
   evaluateRouteEligibility,
   type ProviderRuntimeState,
@@ -55,119 +55,107 @@ export type ProviderSelectionResult =
       rejections: readonly Readonly<ProviderRouteRejection>[];
     };
 
-const TIER_RANK: Readonly<Record<ProviderRouteTier, number>> = Object.freeze({
-  primary: 0,
-  independent_fallback: 1,
-  emergency: 2,
-  standby: 3,
-});
-
-function contextModeFor(route: Readonly<ProviderRouteDefinition>): ProviderContextMode {
-  return route.tier === 'primary' ? 'full' : 'emergency_capsule';
+function isAuthorizedDeepSeekIdentity(route: Readonly<ProviderRouteDefinition>): boolean {
+  return route.family === 'deepseek'
+    && route.modelId === 'deepseek-v4-pro'
+    && route.credentialEnvName === 'DEEPSEEK_API_KEY'
+    && route.credentialScope === 'server'
+    && route.tier === 'primary';
 }
 
-function routeSort(left: Readonly<ProviderRouteDefinition>, right: Readonly<ProviderRouteDefinition>): number {
-  const tier = TIER_RANK[left.tier] - TIER_RANK[right.tier];
-  if (tier !== 0) return tier;
-  const priority = (left.priority ?? 100) - (right.priority ?? 100);
-  if (priority !== 0) return priority;
-  return left.routeId.localeCompare(right.routeId);
+function validRequestNumbers(request: Readonly<ProviderSelectionRequest>): boolean {
+  return Number.isInteger(request.canonicalRevision)
+    && request.canonicalRevision >= 0
+    && Number.isFinite(request.fullContextInputTokens)
+    && request.fullContextInputTokens >= 0
+    && Number.isFinite(request.emergencyCapsuleInputTokens)
+    && request.emergencyCapsuleInputTokens >= 0;
 }
 
+/**
+ * Select the one authorized DeepSeek route.
+ *
+ * S002 intentionally has no LLM fallback. Any route plurality, alternate tier,
+ * alternate model identity or malformed runtime snapshot fails closed into
+ * deterministic guided recovery.
+ */
 export function selectProviderRoute(
   routes: readonly Readonly<ProviderRouteDefinition>[],
   request: Readonly<ProviderSelectionRequest>,
   runtimeStates: readonly Readonly<ProviderRuntimeState>[],
 ): ProviderSelectionResult {
-  if (
-    !Number.isInteger(request.canonicalRevision) || request.canonicalRevision < 0 ||
-    !Number.isFinite(request.fullContextInputTokens) || request.fullContextInputTokens < 0 ||
-    !Number.isFinite(request.emergencyCapsuleInputTokens) || request.emergencyCapsuleInputTokens < 0
-  ) {
-    return { ok: false, code: 'INVALID_ROUTE_REQUEST', recovery: 'deterministic_guided_discovery', rejections: Object.freeze([]) };
+  if (!validRequestNumbers(request) || routes.length !== 1 || runtimeStates.length !== 1) {
+    return {
+      ok: false,
+      code: 'INVALID_ROUTE_REQUEST',
+      recovery: 'deterministic_guided_discovery',
+      rejections: Object.freeze([]),
+    };
   }
 
-  if (new Set(routes.map((route) => route.routeId)).size !== routes.length || new Set(runtimeStates.map((state) => state.routeId)).size !== runtimeStates.length) {
-    return { ok: false, code: 'INVALID_ROUTE_REQUEST', recovery: 'deterministic_guided_discovery', rejections: Object.freeze([]) };
+  const route = routes[0]!;
+  const runtime = runtimeStates[0]!;
+  if (!isAuthorizedDeepSeekIdentity(route) || runtime.routeId !== route.routeId) {
+    return {
+      ok: false,
+      code: 'INVALID_ROUTE_REQUEST',
+      recovery: 'deterministic_guided_discovery',
+      rejections: Object.freeze([]),
+    };
   }
 
-  let tokenUsageByRoute: ReadonlyMap<string, Readonly<ProviderRouteTokenUsage>> | null = null;
+  let inputTokens = request.fullContextInputTokens;
   if (request.routeTokenUsage !== undefined) {
     if (
-      request.routeTokenUsage.length !== routes.length
-      || new Set(request.routeTokenUsage.map((usage) => usage.routeId)).size !== request.routeTokenUsage.length
+      request.routeTokenUsage.length !== 1
+      || request.routeTokenUsage[0]?.routeId !== route.routeId
+      || !Number.isFinite(request.routeTokenUsage[0].fullContextInputTokens)
+      || request.routeTokenUsage[0].fullContextInputTokens < 0
+      || !Number.isFinite(request.routeTokenUsage[0].emergencyCapsuleInputTokens)
+      || request.routeTokenUsage[0].emergencyCapsuleInputTokens < 0
     ) {
-      return { ok: false, code: 'INVALID_ROUTE_REQUEST', recovery: 'deterministic_guided_discovery', rejections: Object.freeze([]) };
+      return {
+        ok: false,
+        code: 'INVALID_ROUTE_REQUEST',
+        recovery: 'deterministic_guided_discovery',
+        rejections: Object.freeze([]),
+      };
     }
-    const routeIds = new Set(routes.map((route) => route.routeId));
-    for (const usage of request.routeTokenUsage) {
-      if (
-        !routeIds.has(usage.routeId)
-        || !Number.isFinite(usage.fullContextInputTokens)
-        || usage.fullContextInputTokens < 0
-        || !Number.isFinite(usage.emergencyCapsuleInputTokens)
-        || usage.emergencyCapsuleInputTokens < 0
-      ) {
-        return { ok: false, code: 'INVALID_ROUTE_REQUEST', recovery: 'deterministic_guided_discovery', rejections: Object.freeze([]) };
-      }
-    }
-    tokenUsageByRoute = new Map(request.routeTokenUsage.map((usage) => [usage.routeId, usage] as const));
+    inputTokens = request.routeTokenUsage[0].fullContextInputTokens;
   }
 
-  const runtimeByRoute = new Map(runtimeStates.map((state) => [state.routeId, state] as const));
-  const ordered = [...routes].sort(routeSort);
-  const rejections: ProviderRouteRejection[] = [];
-  const primaryRejections: ProviderRouteRejection[] = [];
+  const eligibility = evaluateRouteEligibility(route, {
+    role: request.role,
+    inputTokens,
+    contextLimitTokens: route.maxInputTokens,
+    requiresStreaming: request.requiresStreaming,
+    requiresTools: request.requiresTools,
+    requiresStructuredArguments: request.requiresStructuredArguments,
+  }, runtime);
 
-  for (const route of ordered) {
-    const contextMode = contextModeFor(route);
-    const routeUsage = tokenUsageByRoute?.get(route.routeId);
-    const inputTokens = contextMode === 'full'
-      ? routeUsage?.fullContextInputTokens ?? request.fullContextInputTokens
-      : routeUsage?.emergencyCapsuleInputTokens ?? request.emergencyCapsuleInputTokens;
-    const limitTokens = contextMode === 'full' ? route.maxInputTokens : route.emergencyInputTokens;
-    const eligibility = evaluateRouteEligibility(route, {
-      role: request.role,
-      inputTokens,
-      contextLimitTokens: limitTokens,
-      requiresStreaming: request.requiresStreaming,
-      requiresTools: request.requiresTools,
-      requiresStructuredArguments: request.requiresStructuredArguments,
-    }, runtimeByRoute.get(route.routeId));
-
-    if (!eligibility.eligible) {
-      const rejection = Object.freeze({ routeId: route.routeId, reasons: eligibility.reasons });
-      rejections.push(rejection);
-      if (route.tier === 'primary') primaryRejections.push(rejection);
-      continue;
-    }
-
-    let fallbackReason: ProviderFallbackReason | null = null;
-    if (route.tier !== 'primary') {
-      const primaryContextOnly = primaryRejections.length > 0 && primaryRejections.every((item) =>
-        item.reasons.length === 1 && item.reasons[0] === 'CONTEXT_EXCEEDED');
-      fallbackReason = primaryContextOnly ? 'PRIMARY_CONTEXT_EXCEEDED' : 'PRIMARY_UNAVAILABLE';
-    }
+  if (!eligibility.eligible) {
     return {
-      ok: true,
-      route,
-      role: request.role,
-      canonicalRevision: request.canonicalRevision,
-      contextMode,
-      fallbackReason,
-      requirements: Object.freeze({
-        inputTokens,
-        requiresStreaming: request.requiresStreaming,
-        requiresTools: request.requiresTools,
-        requiresStructuredArguments: request.requiresStructuredArguments,
-      }),
+      ok: false,
+      code: 'NO_ELIGIBLE_ROUTE',
+      recovery: 'deterministic_guided_discovery',
+      rejections: Object.freeze([
+        Object.freeze({ routeId: route.routeId, reasons: eligibility.reasons }),
+      ]),
     };
   }
 
   return {
-    ok: false,
-    code: 'NO_ELIGIBLE_ROUTE',
-    recovery: 'deterministic_guided_discovery',
-    rejections: Object.freeze(rejections),
+    ok: true,
+    route,
+    role: request.role,
+    canonicalRevision: request.canonicalRevision,
+    contextMode: 'full',
+    fallbackReason: null,
+    requirements: Object.freeze({
+      inputTokens,
+      requiresStreaming: request.requiresStreaming,
+      requiresTools: request.requiresTools,
+      requiresStructuredArguments: request.requiresStructuredArguments,
+    }),
   };
 }

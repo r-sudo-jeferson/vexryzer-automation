@@ -34,6 +34,12 @@ function routeHasRequiredRoleQuality(decision: Readonly<ProviderRouteDecision>):
 
 function routeIsStaticallyDispatchable(decision: Readonly<ProviderRouteDecision>): boolean {
   const route = decision.route;
+  if (
+    route.family !== 'deepseek'
+    || route.modelId !== 'deepseek-v4-pro'
+    || route.credentialEnvName !== 'DEEPSEEK_API_KEY'
+    || route.tier !== 'primary'
+  ) return false;
   const requirements = decision.requirements;
   const expectedContextMode = route.tier === 'primary' ? 'full' : 'emergency_capsule';
   const expectedFallback = route.tier === 'primary' ? decision.fallbackReason === null : decision.fallbackReason !== null;
