@@ -157,20 +157,6 @@ function packageOk(input: Parameters<CriticTurnRuntimeDependencies['packageConte
   };
 }
 
-function capsuleOk(
-  input: Parameters<CriticTurnRuntimeDependencies['buildEmergencyContinuationCapsule']>[0],
-) {
-  return {
-    ok: true as const,
-    capsule: Object.freeze({
-      schemaVersion: 1 as const,
-      canonicalRevision: input.canonical.revision,
-      marker: 'critic-emergency',
-      estimatedInputTokens: 100,
-    }),
-  };
-}
-
 function baseInput(
   routes: readonly Readonly<ProviderRouteDefinition>[],
   executeProviderChatStream: CriticTurnRuntimeDependencies['executeProviderChatStream'],
@@ -201,8 +187,6 @@ function baseInput(
     timeoutMs: 10_000,
     dependencies: {
       packageContext: packageOk as unknown as CriticTurnRuntimeDependencies['packageContext'],
-      buildEmergencyContinuationCapsule:
-        capsuleOk as unknown as CriticTurnRuntimeDependencies['buildEmergencyContinuationCapsule'],
       validateSellerSubmission: ((value: Readonly<SellerSubmission>) => ({
         ok: true as const,
         submission: value,
