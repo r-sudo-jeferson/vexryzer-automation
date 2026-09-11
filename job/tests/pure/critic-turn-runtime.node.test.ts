@@ -68,15 +68,15 @@ function submission(revision = 7): Readonly<SellerSubmission> {
 function route(overrides: Partial<ProviderRouteDefinition> = {}): Readonly<ProviderRouteDefinition> {
   return Object.freeze({
     routeId: 'critic-primary',
-    family: 'cloudflare_workers_ai',
-    modelId: '@cf/example/critic',
+    family: 'deepseek',
+    modelId: 'deepseek-v4-pro',
     roles: Object.freeze(['critic'] as const),
     tier: 'primary',
     priority: 10,
     enabledByDefault: true,
-    credentialEnvName: 'TEST_CRITIC_TOKEN',
+    credentialEnvName: 'DEEPSEEK_API_KEY',
     credentialScope: 'server',
-    noPaymentEligibility: 'PASS',
+    billingAuthorization: 'PASS',
     protocolCompatibility: 'PASS',
     sellerQuality: 'NOT_APPLICABLE',
     criticQuality: 'PASS',
@@ -197,7 +197,7 @@ function baseInput(
     }))),
     estimateTokens: () => 100,
     resolveCredential: () => 'server-secret',
-    serverConfig: Object.freeze({ cloudflareAccountId: 'account-1' }),
+    serverConfig: Object.freeze({}),
     timeoutMs: 10_000,
     dependencies: {
       packageContext: packageOk as unknown as CriticTurnRuntimeDependencies['packageContext'],
@@ -294,48 +294,19 @@ test('primary Critic receives role-specific canonical context and only a bound t
   assert.equal(payload.context.marker, 'critic-full');
 });
 
-test('capacity failure can reselect an independent Critic fallback with the same revision emergency capsule', async () => {
+test('capacity failure stays on the single DeepSeek Critic route and fails bounded', async () => {
   const primary = route();
-  const fallback = route({
-    routeId: 'critic-groq',
-    family: 'groq',
-    modelId: 'openai/gpt-oss-120b',
-    tier: 'independent_fallback',
-    maxInputTokens: 12_000,
-    emergencyInputTokens: 3_000,
-    credentialEnvName: 'GROQ_CRITIC_TOKEN',
-  });
-  const seen: Array<{ routeId: string; messages: readonly unknown[] }> = [];
-  const input = baseInput([primary, fallback], async (providerInput) => {
-    seen.push({ routeId: providerInput.route.routeId, messages: providerInput.messages });
-    if (providerInput.route.routeId === primary.routeId) {
-      return {
-        ok: false,
-        class: 'capacity',
-        status: 503,
-        retryAfterMs: 500,
-      };
-    }
-    return completion([reviewTool()]);
-  });
-
-  const result = await runCriticTurn(input);
-  assert.equal(result.ok, true);
-  if (!result.ok) return;
-  assert.equal(result.routeId, fallback.routeId);
-  assert.equal(result.providerCalls, 2);
-  const fallbackPayload = JSON.parse(
-    (seen[1]!.messages[1] as { content: string }).content,
-  ) as {
-    canonicalRevision: number;
-    contextMode: string;
-    fallbackReason: string;
-    context: { marker: string };
-  };
-  assert.equal(fallbackPayload.canonicalRevision, 7);
-  assert.equal(fallbackPayload.contextMode, 'emergency_capsule');
-  assert.equal(fallbackPayload.fallbackReason, 'PRIMARY_UNAVAILABLE');
-  assert.equal(fallbackPayload.context.marker, 'critic-emergency');
+  let calls = 0;
+  const result = await runCriticTurn(baseInput([primary], async () => {
+    calls += 1;
+    return { ok: false, class: 'capacity', status: 503, retryAfterMs: 500 };
+  }));
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.code, 'PROVIDER_FAILED');
+    if (result.code === 'PROVIDER_FAILED') assert.equal(result.failureClass, 'capacity');
+  }
+  assert.equal(calls, 1);
 });
 
 test('free text, multiple review tools and stale review output are rejected fail-closed', async (t) => {
@@ -373,17 +344,10 @@ test('free text, multiple review tools and stale review output are rejected fail
 });
 
 for (const failureClass of ['cancelled', 'client'] as const) {
-  test(failureClass + ' Critic provider failure never triggers blind fallback', async () => {
+  test(failureClass + ' Critic provider failure stays on the single DeepSeek route', async () => {
     const primary = route();
-    const fallback = route({
-      routeId: 'critic-fallback',
-      family: 'groq',
-      tier: 'independent_fallback',
-      maxInputTokens: 12_000,
-      emergencyInputTokens: 3_000,
-    });
     let calls = 0;
-    const result = await runCriticTurn(baseInput([primary, fallback], async () => {
+    const result = await runCriticTurn(baseInput([primary], async () => {
       calls += 1;
       return {
         ok: false,
