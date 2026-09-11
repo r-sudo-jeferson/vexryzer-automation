@@ -15,7 +15,7 @@
 - Binding: `FORGE-VEXRYZER-AUTOMATION-v1.0.0`.
 - Never access Machina repositories.
 - All product files under `job/` except unavoidable provider glue.
-- No live Mistral integration in S001.
+- No live LLM integration in S001.
 - No fake production AI, upload or submission paths.
 - Free-tier-compatible dependencies only.
 - TypeScript strict; no `any` escape hatches without explicit reviewed justification.
