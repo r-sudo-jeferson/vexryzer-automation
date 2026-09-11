@@ -92,6 +92,15 @@ function forbiddenToolName(name: string): boolean {
   return FORBIDDEN_TOOL_SEGMENTS.some((segment) => name.includes(segment));
 }
 
+export function isDeepSeekHarnessToolAllowed(
+  role: DeepSeekHarnessAgentRole,
+  toolName: string,
+): boolean {
+  return SAFE_TOOL_NAME.test(toolName)
+    && !forbiddenToolName(toolName)
+    && DEEPSEEK_HARNESS_ALLOWED_TOOL_NAMES[role].includes(toolName);
+}
+
 export function validateDeepSeekHarnessToolSurface(
   role: DeepSeekHarnessAgentRole,
   toolNames: readonly string[],
@@ -109,7 +118,7 @@ export function validateDeepSeekHarnessToolSurface(
     if (forbiddenToolName(toolName)) {
       return { ok: false, code: 'FORBIDDEN_TOOL', toolName };
     }
-    if (!expected.includes(toolName)) {
+    if (!isDeepSeekHarnessToolAllowed(role, toolName)) {
       return { ok: false, code: 'UNAUTHORIZED_TOOL', toolName };
     }
     actual.add(toolName);
