@@ -16,8 +16,6 @@ function decision(route = createVerifiedRouteFixture(), revision = 44) {
     route,
     role: 'seller' as const,
     canonicalRevision: revision,
-    contextMode: 'full' as const,
-    fallbackReason: null,
     requirements: REQUIREMENTS,
   };
 }
@@ -32,8 +30,8 @@ test('dispatch binds exact DeepSeek identity to canonical full context', () => {
   assert.equal(result.envelope.modelId, 'deepseek-v4-pro');
   assert.equal(result.envelope.credentialEnvName, 'DEEPSEEK_API_KEY');
   assert.equal(result.envelope.context, context);
-  assert.equal(result.envelope.contextMode, 'full');
-  assert.equal(result.envelope.fallbackReason, null);
+  assert.equal('contextMode' in result.envelope, false);
+  assert.equal('fallbackReason' in result.envelope, false);
 });
 
 test('dispatch rejects stale canonical context', () => {
@@ -64,7 +62,7 @@ test('dispatch rejects billing, technical, quality, capability and client-secret
   }
 });
 
-test('router decision and dispatch never create an emergency model context', () => {
+test('router decision and dispatch expose no fallback context surface', () => {
   const route = createVerifiedRouteFixture();
   const selected = selectProviderRoute([route], {
     role: 'seller',
@@ -83,6 +81,6 @@ test('router decision and dispatch never create an emergency model context', () 
   });
   assert.equal(result.ok, true);
   if (!result.ok) return;
-  assert.equal(result.envelope.contextMode, 'full');
-  assert.equal(result.envelope.fallbackReason, null);
+  assert.equal('contextMode' in result.envelope, false);
+  assert.equal('fallbackReason' in result.envelope, false);
 });
