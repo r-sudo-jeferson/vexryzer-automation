@@ -42,13 +42,20 @@ test('Harness runtime requires Vexryzer-owned durable persistence and canonical 
   assert.equal(contract.restartRecoveryRequired, true);
 });
 
-test('Harness package surface is exact rc.1 core without CLI or executable-tool packages', () => {
+test('Harness package surface is exact rc.1 runtime closure without executable capability producers', () => {
   const packages = DEEPSEEK_HARNESS_IN_PROCESS_CONTRACT.packages;
 
   assert.deepEqual(packages, [
     '@deepseek-ai/cordis@4.0.2',
+    '@deepseek-ai/schemastery@3.18.2',
     '@deepseek-ai/dsh-agent@0.1.5-rc.1',
     '@deepseek-ai/dsh-agent-loop@0.1.5-rc.1',
+    '@deepseek-ai/dsh-anonymous-user-id@0.1.5-rc.1',
+    '@deepseek-ai/dsh-attachment@0.1.5-rc.1',
+    '@deepseek-ai/dsh-atomic-write@0.1.5-rc.1',
+    '@deepseek-ai/dsh-brand@0.1.5-rc.1',
+    '@deepseek-ai/dsh-credentials@0.1.5-rc.1',
+    '@deepseek-ai/dsh-home-paths@0.1.5-rc.1',
     '@deepseek-ai/dsh-invariants@0.1.5-rc.1',
     '@deepseek-ai/dsh-launch-environment@0.1.5-rc.1',
     '@deepseek-ai/dsh-llm@0.1.5-rc.1',
@@ -58,9 +65,28 @@ test('Harness package surface is exact rc.1 core without CLI or executable-tool 
     '@deepseek-ai/dsh-session-persistence@0.1.5-rc.1',
     '@deepseek-ai/dsh-session-projection@0.1.5-rc.1',
     '@deepseek-ai/dsh-system-prompt@0.1.5-rc.1',
+    '@deepseek-ai/dsh-timeout@0.1.5-rc.1',
     '@deepseek-ai/dsh-tools@0.1.5-rc.1',
+    '@deepseek-ai/dsh-util-values@0.1.5-rc.1',
+    'eventsource-parser@3.1.0',
+    'zod@4.4.3',
   ]);
 
   const joined = packages.join('\n');
-  assert.doesNotMatch(joined, /dsh-sdk|dsh-base|tool-bash|tool-pwsh|subprocess|terminal|sandbox|code-runtime|jobs/);
+  assert.doesNotMatch(joined, /@deepseek-ai\/dsh(?:$|@)|dsh-sdk|dsh-base|tool-bash|tool-pwsh|subprocess|terminal|sandbox|code-runtime|jobs/);
+});
+
+test('Harness package resolution cannot silently auto-install optional capability peers', () => {
+  const contract = DEEPSEEK_HARNESS_IN_PROCESS_CONTRACT;
+
+  assert.equal(contract.autoInstallPeers, false);
+  assert.equal(contract.requireExactLockfile, true);
+  assert.equal(contract.requireExactOverrides, true);
+  assert.deepEqual(contract.intentionallyUninstalledPeers, [
+    '@deepseek-ai/dsh-code-runtime',
+    '@deepseek-ai/dsh-deepseek-llm-api-extensions',
+    '@deepseek-ai/dsh-fs',
+    '@deepseek-ai/dsh-settings',
+    '@deepseek-ai/dsh-user-approval',
+  ]);
 });
