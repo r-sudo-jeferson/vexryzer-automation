@@ -77,6 +77,59 @@ test('Cloudflare wire does not receive Groq-specific reasoning output controls',
   assert.equal('include_reasoning' in body, false);
 });
 
+test('Cloudflare strips only unsupported array uniqueItems on transport without mutating canonical schemas or Groq wire', () => {
+  const cloudflare = createVerifiedRouteFixture({ family: 'cloudflare_workers_ai', modelId: '@cf/zai-org/glm-4.7-flash' });
+  const groq = createVerifiedRouteFixture({
+    family: 'groq',
+    modelId: 'openai/gpt-oss-120b',
+    tier: 'independent_fallback',
+  });
+  const parameters = Object.freeze({
+    type: 'object',
+    additionalProperties: false,
+    properties: Object.freeze({
+      values: Object.freeze({
+        type: 'array',
+        uniqueItems: true,
+        items: Object.freeze({ type: 'string' }),
+      }),
+      uniqueItems: Object.freeze({ type: 'string' }),
+    }),
+    required: Object.freeze(['values']),
+  });
+  const providerTools: readonly LocalFunctionTool[] = Object.freeze([Object.freeze({
+    type: 'function',
+    function: Object.freeze({
+      name: 'capture_values',
+      description: 'Capture bounded values.',
+      parameters,
+    }),
+  })]);
+
+  const cloudflareBody = buildProviderChatBody({
+    route: cloudflare,
+    messages: [{ role: 'user', content: 'latest intent' }],
+    tools: providerTools,
+  });
+  const cloudflareProperties = cloudflareBody.tools[0]!.function.parameters['properties'] as Record<string, Record<string, unknown>>;
+  assert.equal(Object.hasOwn(cloudflareProperties['values']!, 'uniqueItems'), false);
+  assert.deepEqual(cloudflareProperties['uniqueItems'], { type: 'string' });
+
+  const canonicalProperties = parameters.properties as Record<string, Record<string, unknown>>;
+  assert.equal(canonicalProperties['values']!['uniqueItems'], true);
+
+  const groqBody = buildProviderChatBody({
+    route: groq,
+    messages: [{ role: 'user', content: 'latest intent' }],
+    tools: providerTools,
+  });
+  assert.deepEqual(groqBody.tools, providerTools);
+  assert.equal(
+    ((groqBody.tools[0]!.function.parameters['properties'] as Record<string, Record<string, unknown>>)['values']!['uniqueItems']),
+    true,
+  );
+});
+
 test('wire rejects built-in/remote tools and executable provider-defined tool names', () => {
   const route = createVerifiedRouteFixture();
   assert.throws(() => buildProviderChatBody({

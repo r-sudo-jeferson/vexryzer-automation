@@ -51,7 +51,7 @@ const GROQ_FREE_TPM_SAFETY_BUDGET = 7_200;
 const GROQ_OUTPUT_RESERVE_TOKENS = 1_000;
 const GROQ_TOKEN_WINDOW_MS = 60_000;
 const ROUTE_INPUT_TOKENS = 16_000;
-const ROUTE_EMERGENCY_TOKENS = 4_000;
+const ROUTE_EMERGENCY_TOKENS = GROQ_FREE_TPM_SAFETY_BUDGET - GROQ_OUTPUT_RESERVE_TOKENS;
 const RESERVED_OUTPUT_TOKENS = 2_000;
 const MINIMUM_DISTINCT_STRATEGIES = 4;
 
@@ -1065,6 +1065,7 @@ async function main() {
       requestTimeoutMs: REQUEST_TIMEOUT_MS,
       groqFreeTpmSafetyBudget: GROQ_FREE_TPM_SAFETY_BUDGET,
       groqOutputReserveTokens: GROQ_OUTPUT_RESERVE_TOKENS,
+      groqEmergencyInputBudgetTokens: ROUTE_EMERGENCY_TOKENS,
       oneBoundedSellerRevision: true,
       authorizedScenarioCount: 13,
       sellerQualityScenarioCountPerRoute: ACCOUNTING_PROVIDER_QUALITY_SCENARIOS.length,

@@ -7,6 +7,10 @@ on:
       - staging/vxa-s002-agent-led-accounting-seller
     paths:
       - .github/workflows/s002-candidate-gate.yml
+      - .github/workflows/s002-final-provider-evidence.yml
+      - job/src/server/ai/providers/openai-chat-wire.ts
+      - job/tests/pure/provider-wire.node.test.ts
+      - job/tools/provider-quality/**
 
 permissions:
   contents: read

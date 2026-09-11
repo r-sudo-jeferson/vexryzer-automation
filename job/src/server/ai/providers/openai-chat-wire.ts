@@ -124,6 +124,39 @@ function validateJsonValue(value: unknown, depth = 0): void {
   throw new TypeError('tool schema must be JSON data');
 }
 
+function adaptCloudflareJsonSchema(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return Object.freeze(value.map((item) => adaptCloudflareJsonSchema(item)));
+  }
+  if (value === null || typeof value !== 'object') return value;
+
+  const record = value as Readonly<Record<string, unknown>>;
+  const output: Record<string, unknown> = {};
+  const isArraySchema = record['type'] === 'array';
+  for (const [key, nested] of Object.entries(record)) {
+    // Exact live Cloudflare evidence rejects the JSON Schema uniqueItems keyword.
+    // Uniqueness remains enforced by the application validators after tool output.
+    if (isArraySchema && key === 'uniqueItems') continue;
+    output[key] = adaptCloudflareJsonSchema(nested);
+  }
+  return Object.freeze(output);
+}
+
+function toolsForProvider(
+  route: Readonly<ProviderRouteDefinition>,
+  tools: readonly LocalFunctionTool[],
+): readonly LocalFunctionTool[] {
+  if (route.family !== 'cloudflare_workers_ai') return Object.freeze([...tools]);
+  return Object.freeze(tools.map((tool): LocalFunctionTool => Object.freeze({
+    type: 'function',
+    function: Object.freeze({
+      name: tool.function.name,
+      description: tool.function.description,
+      parameters: adaptCloudflareJsonSchema(tool.function.parameters) as JsonSchema,
+    }),
+  })));
+}
+
 function assertLocalTools(tools: readonly LocalFunctionTool[]): void {
   if (!Array.isArray(tools) || tools.length === 0 || tools.length > MAX_TOOLS) throw new TypeError('local function tools are invalid');
   const names = new Set<string>();
@@ -172,7 +205,7 @@ export function buildProviderChatBody(input: {
     model: input.route.modelId,
     messages: Object.freeze([...input.messages]),
     stream: true,
-    tools: Object.freeze([...input.tools]),
+    tools: toolsForProvider(input.route, input.tools),
     tool_choice: 'required',
     ...(input.route.family === 'groq' ? { include_reasoning: false as const } : {}),
   });
