@@ -88,7 +88,7 @@ export const AUTHORIZED_PROVIDER_CANDIDATES: readonly Readonly<ProviderRouteDefi
     composerQuality: 'NOT_VERIFIED',
     harnessCompatibility: 'NOT_VERIFIED',
     workshopSafety: 'NOT_VERIFIED',
-    workshopHarness: 'DeepSeek-Harness@0.1.5-rc.2',
+    workshopHarness: 'DeepSeek-Harness@0.1.5-rc.1',
     runtimeActivation: 'NOT_VERIFIED',
     capabilities: UNKNOWN_CAPABILITIES,
     maxInputTokens: null,
