@@ -20,10 +20,9 @@ export interface ProviderRouteRequest {
 
 export const ROUTE_REJECTION_REASONS = [
   'ROUTE_DISABLED',
-  'STANDBY_ROUTE',
   'CLIENT_CREDENTIAL_FORBIDDEN',
-  'NO_PAYMENT_INELIGIBLE',
-  'NO_PAYMENT_NOT_VERIFIED',
+  'BILLING_AUTHORIZATION_FAILED',
+  'BILLING_AUTHORIZATION_NOT_VERIFIED',
   'RUNTIME_ACTIVATION_FAILED',
   'RUNTIME_ACTIVATION_NOT_VERIFIED',
   'PROTOCOL_COMPATIBILITY_FAILED',
@@ -86,9 +85,17 @@ function qualityReason(route: Readonly<ProviderRouteDefinition>, role: ProviderR
     case 'composer':
       return requiredRoleVerdict(route.composerQuality, 'COMPOSER_QUALITY_FAILED', 'COMPOSER_QUALITY_NOT_VERIFIED');
     case 'workshop': {
-      const harness = requiredRoleVerdict(route.harnessCompatibility, 'HARNESS_COMPATIBILITY_FAILED', 'HARNESS_COMPATIBILITY_NOT_VERIFIED');
+      const harness = requiredRoleVerdict(
+        route.harnessCompatibility,
+        'HARNESS_COMPATIBILITY_FAILED',
+        'HARNESS_COMPATIBILITY_NOT_VERIFIED',
+      );
       if (harness !== null) return harness;
-      return requiredRoleVerdict(route.workshopSafety, 'WORKSHOP_SAFETY_FAILED', 'WORKSHOP_SAFETY_NOT_VERIFIED');
+      return requiredRoleVerdict(
+        route.workshopSafety,
+        'WORKSHOP_SAFETY_FAILED',
+        'WORKSHOP_SAFETY_NOT_VERIFIED',
+      );
     }
   }
 }
@@ -99,35 +106,78 @@ export function evaluateRouteEligibility(
   runtime: Readonly<ProviderRuntimeState> | undefined,
 ): ProviderEligibilityResult {
   if (!route.enabledByDefault) return { eligible: false, reasons: Object.freeze(['ROUTE_DISABLED']) };
-  if (route.tier === 'standby') return { eligible: false, reasons: Object.freeze(['STANDBY_ROUTE']) };
-  if (route.credentialScope !== 'server') return { eligible: false, reasons: Object.freeze(['CLIENT_CREDENTIAL_FORBIDDEN']) };
+  if (route.credentialScope !== 'server') {
+    return { eligible: false, reasons: Object.freeze(['CLIENT_CREDENTIAL_FORBIDDEN']) };
+  }
 
-  const noPayment = verdictReason(route.noPaymentEligibility, 'NO_PAYMENT_INELIGIBLE', 'NO_PAYMENT_NOT_VERIFIED');
-  if (noPayment !== null) return { eligible: false, reasons: Object.freeze([noPayment]) };
-  const activation = verdictReason(route.runtimeActivation, 'RUNTIME_ACTIVATION_FAILED', 'RUNTIME_ACTIVATION_NOT_VERIFIED');
+  const billing = verdictReason(
+    route.billingAuthorization,
+    'BILLING_AUTHORIZATION_FAILED',
+    'BILLING_AUTHORIZATION_NOT_VERIFIED',
+  );
+  if (billing !== null) return { eligible: false, reasons: Object.freeze([billing]) };
+
+  const activation = verdictReason(
+    route.runtimeActivation,
+    'RUNTIME_ACTIVATION_FAILED',
+    'RUNTIME_ACTIVATION_NOT_VERIFIED',
+  );
   if (activation !== null) return { eligible: false, reasons: Object.freeze([activation]) };
-  const protocol = verdictReason(route.protocolCompatibility, 'PROTOCOL_COMPATIBILITY_FAILED', 'PROTOCOL_COMPATIBILITY_NOT_VERIFIED');
+
+  const protocol = verdictReason(
+    route.protocolCompatibility,
+    'PROTOCOL_COMPATIBILITY_FAILED',
+    'PROTOCOL_COMPATIBILITY_NOT_VERIFIED',
+  );
   if (protocol !== null) return { eligible: false, reasons: Object.freeze([protocol]) };
-  if (!route.roles.includes(request.role)) return { eligible: false, reasons: Object.freeze(['ROLE_UNSUPPORTED']) };
+
+  if (!route.roles.includes(request.role)) {
+    return { eligible: false, reasons: Object.freeze(['ROLE_UNSUPPORTED']) };
+  }
 
   const quality = qualityReason(route, request.role);
   if (quality !== null) return { eligible: false, reasons: Object.freeze([quality]) };
 
   const reasons: RouteRejectionReason[] = [];
-  const capabilityReason = (verdict: 'PASS' | 'FAIL' | 'NOT_VERIFIED', unsupported: RouteRejectionReason, notVerified: RouteRejectionReason) => {
+  const capabilityReason = (
+    verdict: 'PASS' | 'FAIL' | 'NOT_VERIFIED',
+    unsupported: RouteRejectionReason,
+    notVerified: RouteRejectionReason,
+  ) => {
     if (verdict === 'FAIL') reasons.push(unsupported);
     else if (verdict !== 'PASS') reasons.push(notVerified);
   };
-  if (request.requiresStreaming) capabilityReason(route.capabilities.streaming, 'STREAMING_UNSUPPORTED', 'STREAMING_NOT_VERIFIED');
-  if (request.requiresTools) capabilityReason(route.capabilities.tools, 'TOOLS_UNSUPPORTED', 'TOOLS_NOT_VERIFIED');
-  if (request.requiresStructuredArguments) capabilityReason(route.capabilities.structuredArguments, 'STRUCTURED_ARGUMENTS_UNSUPPORTED', 'STRUCTURED_ARGUMENTS_NOT_VERIFIED');
-  const contextLimit = request.contextLimitTokens === undefined ? route.maxInputTokens : request.contextLimitTokens;
+
+  if (request.requiresStreaming) {
+    capabilityReason(route.capabilities.streaming, 'STREAMING_UNSUPPORTED', 'STREAMING_NOT_VERIFIED');
+  }
+  if (request.requiresTools) {
+    capabilityReason(route.capabilities.tools, 'TOOLS_UNSUPPORTED', 'TOOLS_NOT_VERIFIED');
+  }
+  if (request.requiresStructuredArguments) {
+    capabilityReason(
+      route.capabilities.structuredArguments,
+      'STRUCTURED_ARGUMENTS_UNSUPPORTED',
+      'STRUCTURED_ARGUMENTS_NOT_VERIFIED',
+    );
+  }
+
+  const contextLimit = request.contextLimitTokens === undefined
+    ? route.maxInputTokens
+    : request.contextLimitTokens;
   if (contextLimit === null) reasons.push('CONTEXT_BUDGET_NOT_VERIFIED');
-  else if (!Number.isFinite(request.inputTokens) || request.inputTokens < 0 || request.inputTokens > contextLimit) reasons.push('CONTEXT_EXCEEDED');
-  if (runtime === undefined || runtime.routeId !== route.routeId) reasons.push('RUNTIME_STATE_MISSING');
-  else {
+  else if (
+    !Number.isFinite(request.inputTokens)
+    || request.inputTokens < 0
+    || request.inputTokens > contextLimit
+  ) reasons.push('CONTEXT_EXCEEDED');
+
+  if (runtime === undefined || runtime.routeId !== route.routeId) {
+    reasons.push('RUNTIME_STATE_MISSING');
+  } else {
     if (runtime.circuit === 'open') reasons.push('CIRCUIT_OPEN');
     if (runtime.quota === 'exhausted') reasons.push('QUOTA_EXHAUSTED');
   }
+
   return { eligible: reasons.length === 0, reasons: Object.freeze(reasons) };
 }
