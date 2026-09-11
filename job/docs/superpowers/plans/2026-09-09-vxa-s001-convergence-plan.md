@@ -17,7 +17,7 @@
 - GAUNTLET: `GNT-VXA-S001-001`.
 - Product root: `job`.
 - Never access Machina repositories.
-- No live ASK AI, Mistral, pricing, upload, submission, email or provider path.
+- No live ASK AI, LLM, pricing, upload, submission, email or provider path.
 - No paid infrastructure.
 - Do not create a lockfile unless dependencies are resolved by a real package-manager install.
 - Remote CI remains `OPTIMIZED_GATES_ONLY`.
