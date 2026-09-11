@@ -13,10 +13,6 @@ import {
   type RecentContextTurn,
 } from '../../../ai/context/context-packager.ts';
 import {
-  buildEmergencyContinuationCapsule,
-  type EmergencyContinuationCapsule,
-} from '../../../ai/context/emergency-capsule.ts';
-import {
   assertProviderRouteBudget,
   availableInputTokens,
   type ProviderRouteBudget,
@@ -28,8 +24,6 @@ import type { ProviderRouteDefinition } from '../../../ai/providers/provider-reg
 import type { ProviderRuntimeState } from '../../../ai/providers/route-eligibility.ts';
 import {
   selectProviderRoute,
-  type ProviderContextMode,
-  type ProviderFallbackReason,
   type ProviderRouteDecision,
   type ProviderRouteTokenUsage,
   type ProviderSelectionRequest,
@@ -79,7 +73,6 @@ export type SellerCredentialResolver = (credentialEnvName: string) => string | n
 
 export interface SellerTurnRuntimeDependencies {
   packageContext: typeof packageContext;
-  buildEmergencyContinuationCapsule: typeof buildEmergencyContinuationCapsule;
   selectProviderRoute: typeof selectProviderRoute;
   createProviderDispatchEnvelope: typeof createProviderDispatchEnvelope;
   parseSellerToolCall: typeof parseSellerToolCall;
@@ -209,7 +202,6 @@ export type SellerTurnRuntimeResult =
 
 const DEFAULT_MAX_PROVIDER_ROUNDS = 6;
 const MAX_PROVIDER_ROUNDS = 8;
-const MAX_ROUTE_COUNT = 16;
 const MAX_PROVIDER_MESSAGE_TEXT = 64_000;
 const SAFE_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SAFE_REPAIR_TOKEN = /^[A-Z0-9_]{1,64}$/;
@@ -247,7 +239,6 @@ const SELLER_SYSTEM_INSTRUCTION = [
 
 const DEFAULT_DEPENDENCIES: SellerTurnRuntimeDependencies = Object.freeze({
   packageContext,
-  buildEmergencyContinuationCapsule,
   selectProviderRoute,
   createProviderDispatchEnvelope,
   parseSellerToolCall,
@@ -312,7 +303,6 @@ interface PreparedRouteContext {
   routeId: string;
   tokenUsage: Readonly<ProviderRouteTokenUsage>;
   fullContext?: ContextPack;
-  emergencyCapsule?: EmergencyContinuationCapsule;
 }
 
 interface PreparedRouteContexts {
@@ -323,8 +313,8 @@ interface PreparedRouteContexts {
 interface SellerProviderMessageSource<TContext extends CanonicalDispatchContext = CanonicalDispatchContext> {
   role: ProviderRouteDecision['role'];
   canonicalRevision: number;
-  contextMode: ProviderContextMode;
-  fallbackReason: ProviderFallbackReason | null;
+  contextMode: 'full';
+  fallbackReason: null;
   context: TContext;
 }
 
@@ -344,10 +334,10 @@ function validateRuntimeConfiguration(input: SellerTurnRuntimeInput): Extract<Se
   if (!Number.isInteger(input.timeoutMs) || input.timeoutMs < 1 || input.timeoutMs > 120_000) {
     return { ok: false, code: 'INVALID_RUNTIME_CONFIG', canonical: input.canonical, detail: 'INVALID_TIMEOUT' };
   }
-  if (input.routes.length < 1 || input.routes.length > MAX_ROUTE_COUNT || new Set(input.routes.map((route) => route.routeId)).size !== input.routes.length) {
+  if (input.routes.length !== 1) {
     return { ok: false, code: 'INVALID_RUNTIME_CONFIG', canonical: input.canonical, detail: 'DUPLICATE_ROUTE' };
   }
-  if (new Set(input.runtimeStates.map((state) => state.routeId)).size !== input.runtimeStates.length) {
+  if (input.runtimeStates.length !== 1 || input.runtimeStates[0]?.routeId !== input.routes[0]?.routeId) {
     return { ok: false, code: 'INVALID_RUNTIME_CONFIG', canonical: input.canonical, detail: 'DUPLICATE_RUNTIME_STATE' };
   }
   if (input.revisionRequest !== undefined) {
@@ -398,91 +388,71 @@ function prepareRouteContexts(
   activeTools: typeof SELLER_LOCAL_TOOLS,
   repairRequest?: Readonly<SellerRepairRequest>,
 ): PreparationResult {
-  const budgetByRoute = new Map(input.routeBudgets.map((item) => [item.routeId, item.budget] as const));
-  const prepared = new Map<string, Readonly<PreparedRouteContext>>();
-  const tokenUsage: ProviderRouteTokenUsage[] = [];
+  const route = input.routes[0]!;
+  const budget = input.routeBudgets[0]!.budget;
+  let fullContext: ContextPack | undefined;
+  let fullContextInputTokens = 0;
 
-  for (const route of input.routes) {
-    const budget = budgetByRoute.get(route.routeId)!;
-    let fullContext: ContextPack | undefined;
-    let emergencyCapsule: EmergencyContinuationCapsule | undefined;
-    let fullContextInputTokens = 0;
-    let emergencyCapsuleInputTokens = 0;
+  const packaged = dependencies.packageContext({
+    role: 'seller',
+    canonical,
+    digest: input.digest,
+    recentTurns: input.recentTurns,
+    visualState: input.visualState,
+    budget,
+    estimateTokens: (contextPayload) => estimateSellerProviderInputTokens({
+      role: 'seller',
+      canonicalRevision: canonical.revision,
+      contextMode: 'full',
+      fallbackReason: null,
+      context: contextPayload as CanonicalDispatchContext,
+    }, input.estimateTokens, activeTools, input.revisionRequest, repairRequest),
+  });
 
-    if (route.tier === 'primary') {
-      const packaged = dependencies.packageContext({
+  if (packaged.ok) {
+    fullContext = packaged.pack;
+    try {
+      fullContextInputTokens = estimateSellerProviderInputTokens({
         role: 'seller',
-        canonical,
-        digest: input.digest,
-        recentTurns: input.recentTurns,
-        visualState: input.visualState,
-        budget,
-        estimateTokens: (contextPayload) => estimateSellerProviderInputTokens({
-          role: 'seller',
-          canonicalRevision: canonical.revision,
-          contextMode: 'full',
-          fallbackReason: null,
-          context: contextPayload as CanonicalDispatchContext,
-        }, input.estimateTokens, activeTools, input.revisionRequest, repairRequest),
-      });
-      if (packaged.ok) {
-        fullContext = packaged.pack;
-        try {
-          fullContextInputTokens = estimateSellerProviderInputTokens({
-            role: 'seller',
-            canonicalRevision: canonical.revision,
-            contextMode: 'full',
-            fallbackReason: null,
-            context: fullContext,
-          }, input.estimateTokens, activeTools, input.revisionRequest, repairRequest);
-        } catch {
-          return { ok: false, routeId: route.routeId, detail: 'INVALID_TOKEN_ESTIMATOR' };
-        }
-      } else if (packaged.code === 'CONTEXT_BUDGET_EXCEEDED') {
-        fullContextInputTokens = overflowTokenCount(packaged.estimatedInputTokens, availableInputTokens(budget));
-      } else {
-        return { ok: false, routeId: route.routeId, detail: packaged.code };
-      }
-    } else if (route.tier !== 'standby' && route.enabledByDefault) {
-      const capsule = dependencies.buildEmergencyContinuationCapsule({
-        canonical,
-        visualState: input.visualState,
-        budget,
-        estimateTokens: input.estimateTokens,
-      });
-      if (capsule.ok) {
-        emergencyCapsule = capsule.capsule;
-        emergencyCapsuleInputTokens = capsule.capsule.estimatedInputTokens;
-      } else if (capsule.code === 'EMERGENCY_BUDGET_EXCEEDED') {
-        emergencyCapsuleInputTokens = overflowTokenCount(capsule.estimatedInputTokens, budget.emergencyInputTokens);
-      } else {
-        return { ok: false, routeId: route.routeId, detail: capsule.code };
-      }
+        canonicalRevision: canonical.revision,
+        contextMode: 'full',
+        fallbackReason: null,
+        context: fullContext,
+      }, input.estimateTokens, activeTools, input.revisionRequest, repairRequest);
+    } catch {
+      return { ok: false, routeId: route.routeId, detail: 'INVALID_TOKEN_ESTIMATOR' };
     }
-
-    const usage = Object.freeze({ routeId: route.routeId, fullContextInputTokens, emergencyCapsuleInputTokens });
-    tokenUsage.push(usage);
-    prepared.set(route.routeId, Object.freeze({
-      routeId: route.routeId,
-      tokenUsage: usage,
-      ...(fullContext === undefined ? {} : { fullContext }),
-      ...(emergencyCapsule === undefined ? {} : { emergencyCapsule }),
-    }));
+  } else if (packaged.code === 'CONTEXT_BUDGET_EXCEEDED') {
+    fullContextInputTokens = overflowTokenCount(
+      packaged.estimatedInputTokens,
+      availableInputTokens(budget),
+    );
+  } else {
+    return { ok: false, routeId: route.routeId, detail: packaged.code };
   }
 
+  const usage = Object.freeze({
+    routeId: route.routeId,
+    fullContextInputTokens,
+    emergencyCapsuleInputTokens: 0,
+  });
   return {
     ok: true,
     prepared: {
-      byRoute: prepared,
+      byRoute: new Map([[route.routeId, Object.freeze({
+        routeId: route.routeId,
+        tokenUsage: usage,
+        ...(fullContext === undefined ? {} : { fullContext }),
+      })]]),
       selectionRequest: Object.freeze({
         role: 'seller',
         canonicalRevision: canonical.revision,
-        fullContextInputTokens: tokenUsage.reduce((max, item) => Math.max(max, item.fullContextInputTokens), 0),
-        emergencyCapsuleInputTokens: tokenUsage.reduce((max, item) => Math.max(max, item.emergencyCapsuleInputTokens), 0),
+        fullContextInputTokens,
+        emergencyCapsuleInputTokens: 0,
         requiresStreaming: true,
         requiresTools: true,
         requiresStructuredArguments: true,
-        routeTokenUsage: Object.freeze(tokenUsage),
+        routeTokenUsage: Object.freeze([usage]),
       }),
     },
   };
@@ -493,14 +463,9 @@ function selectedDispatch(
   context: Readonly<PreparedRouteContext>,
   dependencies: SellerTurnRuntimeDependencies,
 ) {
-  if (decision.contextMode === 'full') {
-    return context.fullContext === undefined
-      ? dependencies.createProviderDispatchEnvelope({ decision })
-      : dependencies.createProviderDispatchEnvelope({ decision, fullContext: context.fullContext });
-  }
-  return context.emergencyCapsule === undefined
+  return context.fullContext === undefined
     ? dependencies.createProviderDispatchEnvelope({ decision })
-    : dependencies.createProviderDispatchEnvelope({ decision, emergencyCapsule: context.emergencyCapsule });
+    : dependencies.createProviderDispatchEnvelope({ decision, fullContext: context.fullContext });
 }
 
 function containsForbiddenProviderAuthorityKey(value: unknown, seen = new Set<object>()): boolean {
@@ -587,35 +552,15 @@ function estimateSellerProviderInputTokens(
 function withRouteTokenUsage(
   request: Readonly<ProviderSelectionRequest>,
   routeId: string,
-  contextMode: ProviderContextMode,
   measuredInputTokens: number,
 ): Readonly<ProviderSelectionRequest> {
   if (request.routeTokenUsage === undefined) return request;
-  const routeTokenUsage = request.routeTokenUsage.map((usage) => {
-    if (usage.routeId !== routeId) return usage;
-    return Object.freeze(contextMode === 'full'
-      ? { ...usage, fullContextInputTokens: measuredInputTokens }
-      : { ...usage, emergencyCapsuleInputTokens: measuredInputTokens });
-  });
+  const routeTokenUsage = request.routeTokenUsage.map((usage) => (
+    usage.routeId === routeId
+      ? Object.freeze({ ...usage, fullContextInputTokens: measuredInputTokens })
+      : usage
+  ));
   return Object.freeze({ ...request, routeTokenUsage: Object.freeze(routeTokenUsage) });
-}
-
-function canFallbackAfterProviderFailure(failureClass: Exclude<ProviderChatClientResult, { ok: true }>['class']): boolean {
-  return failureClass !== 'cancelled' && failureClass !== 'client';
-}
-
-function markRouteUnavailable(
-  states: readonly Readonly<ProviderRuntimeState>[],
-  routeId: string,
-  failureClass: Exclude<ProviderChatClientResult, { ok: true }>['class'],
-): readonly Readonly<ProviderRuntimeState>[] {
-  return Object.freeze(states.map((state) => {
-    if (state.routeId !== routeId) return state;
-    if (failureClass === 'rate_limit' || failureClass === 'capacity') {
-      return Object.freeze({ ...state, quota: 'exhausted' as const });
-    }
-    return Object.freeze({ ...state, circuit: 'open' as const });
-  }));
 }
 
 function providerFailure(
@@ -675,7 +620,7 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
   const dependencies: SellerTurnRuntimeDependencies = Object.freeze({ ...DEFAULT_DEPENDENCIES, ...input.dependencies });
   const maxProviderRounds = input.maxProviderRounds ?? DEFAULT_MAX_PROVIDER_ROUNDS;
   let canonical = input.canonical;
-  let runtimeStates: readonly Readonly<ProviderRuntimeState>[] = Object.freeze([...input.runtimeStates]);
+  const runtimeStates: readonly Readonly<ProviderRuntimeState>[] = Object.freeze([...input.runtimeStates]);
   let providerCalls = 0;
   const repairState: {
     used: boolean;
@@ -763,7 +708,7 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
         if (measurementAdjustments > input.routes.length * 2) {
           return { ok: false, code: 'CONTEXT_PREPARATION_FAILED', canonical, routeId: decision.route.routeId, detail: 'UNSTABLE_TOKEN_ESTIMATOR' };
         }
-        selectionRequest = withRouteTokenUsage(selectionRequest, decision.route.routeId, decision.contextMode, exactInputTokens);
+        selectionRequest = withRouteTokenUsage(selectionRequest, decision.route.routeId, exactInputTokens);
         continue;
       }
       attemptedRoutes.add(decision.route.routeId);
@@ -808,17 +753,7 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
         ) {
           continue providerRounds;
         }
-        if (!canFallbackAfterProviderFailure(providerResult.class)) {
-          return providerFailure(canonical, decision.route.routeId, providerResult);
-        }
-        runtimeStates = markRouteUnavailable(runtimeStates, decision.route.routeId, providerResult.class);
-        if (repairForRound !== null) {
-          continue providerRounds;
-        }
-        if (attemptedRoutes.size >= selectableRoutes.length) {
-          return providerFailure(canonical, decision.route.routeId, providerResult);
-        }
-        continue;
+        return providerFailure(canonical, decision.route.routeId, providerResult);
       }
 
       successful = { decision, completion: providerResult.completion };
