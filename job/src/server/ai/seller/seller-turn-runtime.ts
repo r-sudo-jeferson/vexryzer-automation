@@ -677,8 +677,10 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
   let canonical = input.canonical;
   let runtimeStates: readonly Readonly<ProviderRuntimeState>[] = Object.freeze([...input.runtimeStates]);
   let providerCalls = 0;
-  let repairUsed = false;
-  let pendingRepair: PendingSellerRepair | null = null;
+  const repairState: {
+    used: boolean;
+    pending: PendingSellerRepair | null;
+  } = { used: false, pending: null };
 
   const scheduleRepair = (
     routeId: string,
@@ -686,17 +688,17 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
     detail: string,
     path?: string,
   ): boolean => {
-    if (repairUsed) return false;
+    if (repairState.used) return false;
     const request = createSellerRepairRequest(code, detail, path);
     if (request === null) return false;
-    repairUsed = true;
-    pendingRepair = Object.freeze({ routeId, request });
+    repairState.used = true;
+    repairState.pending = Object.freeze({ routeId, request });
     return true;
   };
 
   providerRounds: for (let providerRound = 1; providerRound <= maxProviderRounds; providerRound += 1) {
-    const repairForRound = pendingRepair;
-    pendingRepair = null;
+    const repairForRound = repairState.pending;
+    repairState.pending = null;
     const activeTools = sellerLocalToolsFor(input.revisionRequest, canonical);
     const preparation = prepareRouteContexts(
       input,
