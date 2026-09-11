@@ -44,7 +44,7 @@ import {
 import type {
   ProviderChatMessage,
   ProviderServerConfig,
-} from '../providers/openai-chat-wire.ts';
+} from '../providers/deepseek-chat-wire.ts';
 import {
   parseSellerToolCall,
   SELLER_LOCAL_TOOLS,
