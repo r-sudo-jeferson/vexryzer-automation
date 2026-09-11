@@ -4,6 +4,7 @@ import { classifyProviderFailure, sanitizeProviderDiagnostic } from './provider-
 import { resolveDirectProviderConfig } from './provider-direct-config.ts';
 import { extractAssistantText, extractStructuredToolCall, isUsableOpenAiSse, parseOpenAiSse } from './provider-screen-protocol.ts';
 import { buildReplayRequest, buildStreamRequest, buildToolRequest } from './provider-screen-request.ts';
+import { shouldRetryProviderScreenStatus } from './provider-screen-retry.ts';
 
 const REQUEST_START_SPACING_MS = 2_500;
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -20,7 +21,7 @@ async function paceRequestStart() {
   lastRequestStartedAt = Date.now();
 }
 
-async function post(config, body) {
+async function postOnce(config, body) {
   await paceRequestStart();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error(`provider request exceeded ${REQUEST_TIMEOUT_MS}ms`)), REQUEST_TIMEOUT_MS);
@@ -36,6 +37,20 @@ async function post(config, body) {
     });
   } finally {
     clearTimeout(timer);
+  }
+}
+
+async function post(config, body) {
+  let capacityRetries = 0;
+  while (true) {
+    const response = await postOnce(config, body);
+    if (!shouldRetryProviderScreenStatus(response.status, capacityRetries)) return response;
+    capacityRetries += 1;
+    try {
+      await response.body?.cancel();
+    } catch {
+      // The retry decision is status-based; response disposal cannot weaken the bounded retry contract.
+    }
   }
 }
 
@@ -174,6 +189,7 @@ async function main() {
     notes: [
       'Requests are serialized across all candidates and raw provider payloads are not emitted.',
       '401/403/429 responses are recorded without blind retries.',
+      'CAPACITY responses receive at most one paced retry; persistent capacity failure remains FAIL.',
       'Streaming protocol proves SSE structure and delivery, not exact free-text instruction following; tool-call/replay markers and persuasion quality remain separate gates.',
     ],
   }, null, 2)}\n`);

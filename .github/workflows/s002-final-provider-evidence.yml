@@ -11,6 +11,9 @@ on:
       - job/src/server/ai/providers/openai-chat-wire.ts
       - job/tests/pure/provider-wire.node.test.ts
       - job/tools/provider-quality/**
+      - job/tools/workshop-spike/run-provider-screen.mjs
+      - job/tools/workshop-spike/provider-screen-retry.ts
+      - job/tests/pure/provider-screen-retry.node.test.ts
 
 permissions:
   contents: read
