@@ -15,7 +15,7 @@ GAUNTLET: `GNT-VXA-S001-001`.
 
 Observable result: the visitor converses with ASK AI and validated process understanding materializes in the canvas.
 
-Scope: Mistral server-side integration, streaming UX, structured extraction, XState dialogue lifecycle, provenance, corrections, ambiguity, multiple processes, concise question policy, prompt injection defenses, AI failure fallback.
+Scope: DeepSeek server-side integration through the authorized Harness, streaming UX, structured extraction, XState dialogue lifecycle, provenance, corrections, ambiguity, multiple processes, concise question policy, prompt injection defenses, and deterministic recovery when AI is unavailable.
 
 GAUNTLET: `GNT-VXA-S002-001`.
 
