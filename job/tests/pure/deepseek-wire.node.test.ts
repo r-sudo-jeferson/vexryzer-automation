@@ -5,7 +5,7 @@ import {
   buildProviderChatEndpoint,
   buildServerChatHttpRequest,
   type LocalFunctionTool,
-} from '../../src/server/ai/providers/openai-chat-wire.ts';
+} from '../../src/server/ai/providers/deepseek-chat-wire.ts';
 import { createChatStreamAccumulator } from '../../src/server/ai/providers/chat-sse.ts';
 import type { ProviderRouteDefinition } from '../../src/ai/providers/provider-registry.ts';
 
@@ -13,7 +13,7 @@ const route: Readonly<ProviderRouteDefinition> = Object.freeze({
   routeId: 'deepseek-v4-pro-agent',
   family: 'deepseek',
   modelId: 'deepseek-v4-pro',
-  roles: Object.freeze(['seller', 'critic', 'composer', 'workshop']),
+  roles: Object.freeze(['seller', 'critic', 'composer', 'workshop'] as const),
   tier: 'primary',
   priority: 1,
   enabledByDefault: true,

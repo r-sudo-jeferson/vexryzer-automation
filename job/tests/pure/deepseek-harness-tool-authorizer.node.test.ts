@@ -8,6 +8,7 @@ import {
 import {
   authorizeDeepSeekHarnessTool,
   type DeepSeekHarnessToolAuthorizationDependencies,
+  type DeepSeekHarnessToolAuthorizationInput,
 } from '../../src/server/ai/harness/deepseek-harness-tool-authorizer.ts';
 
 function entropy(sessionId = 'session-harness-tool') {
@@ -42,7 +43,9 @@ function authority(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function sellerInput(overrides: Record<string, unknown> = {}) {
+function sellerInput(
+  overrides: Partial<DeepSeekHarnessToolAuthorizationInput> = {},
+): DeepSeekHarnessToolAuthorizationInput {
   return {
     role: 'seller',
     callId: 'tool-call-one',

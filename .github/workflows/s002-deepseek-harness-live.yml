@@ -1,0 +1,63 @@
+name: S002 DeepSeek Harness Live Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - staging/vxa-s002-agent-led-accounting-seller
+    paths:
+      - .github/workflows/s002-deepseek-harness-live.yml
+      - job/config/deepseek-harness-smoke.cordis.patch.yml
+      - job/scripts/verify-deepseek-harness-live.mjs
+      - job/package.json
+      - job/pnpm-lock.yaml
+      - job/pnpm-workspace.yaml
+      - job/src/server/ai/harness/deepseek-harness-official-contract.ts
+      - job/tests/pure/deepseek-harness-official-contract.node.test.ts
+
+permissions:
+  contents: read
+
+jobs:
+  deepseek-harness-live:
+    environment: s002-spike
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact checkpoint
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm and Node.js
+        uses: pnpm/setup@c9883cc79df532ad1a7b81bf9ab944ceb090d65c # v2.0.0
+        with:
+          version: 11.25.0
+          runtime: node@24
+          package-json-file: job/package.json
+          install: false
+          cache: false
+
+      - name: Verify exact source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          printf 'candidate_sha=%s\n' "${GITHUB_SHA}"
+      - name: Install frozen dependencies
+        working-directory: job
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify official Harness provenance contract
+        working-directory: job
+        run: node --test tests/pure/deepseek-harness-official-contract.node.test.ts
+
+      - name: TypeScript strict
+        working-directory: job
+        run: pnpm typecheck
+
+      - name: Credentialed official DeepSeek Harness probe
+        working-directory: job
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: node scripts/verify-deepseek-harness-live.mjs

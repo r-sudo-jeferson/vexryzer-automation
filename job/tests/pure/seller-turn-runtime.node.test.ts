@@ -600,7 +600,7 @@ test('state-aware tool exposure hides capture without literal numeric evidence a
     if (numericCall === 1) {
       return completion([observationTool(7, [
         { id: 'obs-volume', kind: 'occurrences_per_month', turnId: 'turn-1', quote: '120 ocorrências por mês', value: 120 },
-        { id: 'obs-minutes', kind: 'minutes_per_occurrence', turnId: 'turn-1', quote: '12 minutos', value: 12 },
+        { id: 'obs-minutes', kind: 'minutes_per_occurrence', turnId: 'turn-1', quote: 'cada ocorrência leva 12 minutos', value: 12 },
       ])] as never);
     }
     return completion([submissionTool(8)]);

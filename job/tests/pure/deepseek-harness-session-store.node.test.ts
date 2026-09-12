@@ -50,7 +50,11 @@ class MemoryBlobStore implements ConditionalJsonBlobStore {
 }
 
 class ParentRepository implements AgentSessionRepository {
-  constructor(readonly record: Readonly<AgentSessionRecord>) {}
+  readonly record: Readonly<AgentSessionRecord>;
+
+  constructor(record: Readonly<AgentSessionRecord>) {
+    this.record = record;
+  }
 
   async get(sessionId: string): Promise<Readonly<VersionedAgentSession> | null> {
     return sessionId === this.record.sessionId
@@ -220,6 +224,72 @@ test('restart opens the same durable log without process memory', async () => {
   assert.equal(loaded.ok, true);
   if (!loaded.ok) return;
   assert.deepEqual(loaded.events, [event(0, 'critic/event')]);
+});
+
+test('append revalidates parent lease before manifest publication', async () => {
+  const blobs = new MemoryBlobStore();
+  const parent = parentRecord();
+  const creator = createDeepSeekHarnessBlobSessionStore({
+    store: blobs,
+    parentRepository: new ParentRepository(parent),
+    nowEpochMs: () => 2_000,
+  });
+  const created = await creator.create({
+    ...authority(),
+    role: 'seller',
+    header: { version: 1 },
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok || parent.lease === null) return;
+
+  const stolen = claimAgentSession(parent, {
+    requestId: 'request-two',
+    expectedRevision: parent.canonical.revision,
+    nowEpochMs: parent.lease.expiresAtEpochMs,
+  }, {
+    leaseId: () => 'lease-two',
+  });
+  assert.equal(stolen.ok, true);
+  if (!stolen.ok || stolen.idempotent) return;
+
+  let parentReads = 0;
+  const switchingParent: AgentSessionRepository = {
+    async get(sessionId) {
+      parentReads += 1;
+      const record = parentReads === 1 ? parent : stolen.record;
+      return sessionId === record.sessionId
+        ? { record, etag: `parent-v${parentReads}` }
+        : null;
+    },
+    async create() { throw new Error('not used'); },
+    async compareAndSet() { throw new Error('not used'); },
+  };
+  const appender = createDeepSeekHarnessBlobSessionStore({
+    store: blobs,
+    parentRepository: switchingParent,
+    nowEpochMs: () => 2_000,
+  });
+
+  const result = await appender.append({
+    ...authority(),
+    role: 'seller',
+    harnessSessionId: created.harnessSessionId,
+    expectedManifestEtag: created.manifestEtag,
+    events: [event(0)],
+  });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, 'PARENT_LEASE_INVALID');
+  assert.equal(parentReads, 2);
+
+  const loaded = await creator.read({
+    parentSessionId: authority().parentSessionId,
+    role: 'seller',
+    harnessSessionId: created.harnessSessionId,
+  });
+  assert.equal(loaded.ok, true);
+  if (!loaded.ok) return;
+  assert.deepEqual(loaded.events, []);
+  assert.equal(loaded.manifestEtag, created.manifestEtag);
 });
 
 test('stale writer loses ownership when manifest CAS has advanced', async () => {

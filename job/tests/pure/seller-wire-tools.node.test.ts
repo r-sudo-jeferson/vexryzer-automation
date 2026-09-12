@@ -4,7 +4,7 @@ import {
   SELLER_LOCAL_TOOLS,
   parseSellerToolCall,
 } from '../../src/server/ai/seller/seller-wire-tools.ts';
-import { buildProviderChatBody } from '../../src/server/ai/providers/openai-chat-wire.ts';
+import { buildProviderChatBody } from '../../src/server/ai/providers/deepseek-chat-wire.ts';
 import { createVerifiedRouteFixture } from './provider-test-fixtures.ts';
 
 function tool(name: string, args: unknown) {

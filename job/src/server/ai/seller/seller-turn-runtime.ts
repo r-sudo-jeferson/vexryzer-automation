@@ -575,6 +575,7 @@ function parseProviderTools(
   canonicalRevision: number,
   dependencies: SellerTurnRuntimeDependencies,
   allowedToolNames: ReadonlySet<string>,
+  unavailableToolDetail = 'TOOL_NOT_AVAILABLE_FOR_STATE',
 ):
   | { ok: true; parsed: readonly Extract<SellerWireToolResult, { ok: true }>[] }
   | { ok: false; detail: string } {
@@ -587,7 +588,7 @@ function parseProviderTools(
   const parsed: Extract<SellerWireToolResult, { ok: true }>[] = [];
   for (const call of completion.toolCalls) {
     if (!allowedToolNames.has(call.function.name)) {
-      return { ok: false, detail: 'TOOL_NOT_AVAILABLE_FOR_STATE' };
+      return { ok: false, detail: unavailableToolDetail };
     }
     const result = dependencies.parseSellerToolCall(call, canonicalRevision);
     if (!result.ok) return { ok: false, detail: result.code };
@@ -755,6 +756,9 @@ export async function runSellerTurn(input: SellerTurnRuntimeInput): Promise<Sell
       canonical.revision,
       dependencies,
       new Set(activeTools.map((tool) => tool.function.name)),
+      input.revisionRequest === undefined
+        ? 'TOOL_NOT_AVAILABLE_FOR_STATE'
+        : 'NON_SUBMISSION_TOOL_FORBIDDEN_DURING_CRITIC_REVISION',
     );
     if (!tools.ok) {
       if (scheduleRepair(
