@@ -25,6 +25,21 @@ Forbidden repositories:
 
 If any task appears to require either repository, STOP and mark `ISOLATION_VIOLATION`.
 
+PROJECT_ISOLATION_MODE: `ABSOLUTE`
+
+Isolation includes source, contracts, prompts, local worktrees, branches, commits, CI workflows, caches, artifacts, evidence, secrets, provider projects, deployment sites and runtime data. Vexryzer must never read from, write to, import from, export to, synchronize with, or depend on another product. Evidence created for another product is invalid for Vexryzer even when commands or toolchains match.
+
+## ChatGPT and Work execution routing
+
+1. Start each operation in the ChatGPT/Work native plane when it can complete the operation correctly and produce proportional evidence.
+2. On any material native limitation, move only the limited operation to the dedicated Vexryzer Alpine workspace at `/workspace/vexryzer-automation`.
+3. Use the GitHub connector for GitHub-native operations and the verified Netlify connector for Netlify-native operations.
+4. Use hosted CI only for clean-checkout independence, GitHub Actions semantics, provider integration, protected secrets, release/deploy, unavailable kernel or architecture capabilities, or another explicit remote-proof requirement.
+5. Never use CI as an edit/test retry loop. Stabilize and freeze the exact candidate locally first.
+6. Record every PASS with plane, command or run identifier, and exact candidate SHA. A changed candidate invalidates prior candidate-specific evidence.
+7. A limitation changes the execution plane; it never authorizes reduced tests, assertions, security, accessibility, visual quality or product scope.
+8. GitLab is outside the currently authorized Vexryzer execution topology. Do not inspect, access, synchronize with, or change it without a new explicit Founder authorization.
+
 ## job boundary
 
 Everything that can live in the product repository must live in `job/`: source, packages, Functions, tests, schemas, assets, runtime config, product docs, deployment config, scripts and generated product artifacts.
