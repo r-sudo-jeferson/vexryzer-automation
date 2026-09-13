@@ -1,364 +1,86 @@
-# Multi-Tenancy Security Foundation — Ordered Implementation Plan (PROPOSED)
-
-STATUS: PROPOSED / NOT AUTHORIZED
-FORGE_BINDING_ID: FORGE-VEXRYZER-AUTOMATION-v1.0.0
-PARENT_ARCHITECTURE: job/docs/architecture/VXA-MULTITENANCY-SECURITY-FOUNDATION.PROPOSED.md
-SECURITY_CONTRACT: job/docs/security/VXA-TENANT-ISOLATION-SECURITY-CONTRACT.PROPOSED.md
-CURRENT_SLICE: VXA-S002@1.0.0
-CURRENT_SLICE_MUTATION: PROHIBITED
-
-## 1. Purpose
-
-This plan decomposes the future foundation into Experience Slices. It does not authorize any Slice. Each Slice must receive a Founder-authorized contract, exact base SHA and binding GAUNTLET before implementation.
-
-The order is security-driven: identity and tenant authority must exist before tenant-owned data; database isolation must be proven before business modules depend on it; declarative experiences depend on the same ownership model; asynchronous/storage/integration/AI planes follow after the core authority contract is stable.
-
-## 2. Migration from current anonymous state
-
-Current durable truth:
-- anonymous AgentSession;
-- session token digest;
-- lease/request/revision;
-- compare-and-set persistence;
-- deterministic canonical/reactive state;
-- DeepSeek single truth;
-- closed Experience/AgentIntent contracts.
-
-Migration principle:
-Anonymous sessions remain valid pre-auth state. Authentication does not overwrite the anonymous record in place without an explicit attach/claim transaction.
-
-Proposed attach flow:
-1. anonymous visitor creates/uses existing AgentSession;
-2. future user authenticates;
-3. server establishes PrincipalContext;
-4. user creates/selects a tenant or redeems membership;
-5. server constructs verified TenantContext;
-6. explicit AttachAnonymousSession transaction validates session ownership, freshness and target tenant;
-7. canonical/session data eligible for attachment is copied/linked under a tenant-owned record with provenance;
-8. operation is idempotent and recorded;
-9. original anonymous token is invalidated or narrowed according to the final design;
-10. foreign tenant/session attachment attempts fail closed.
-
-No client-side change of tenant_id migrates data.
-
-## 3. Proposed Slice sequence
-
-### VXA-MT-S001 — Identity + Tenant Authority Kernel
-Status: PROPOSED / NOT AUTHORIZED.
-
-Scope:
-- identities;
-- tenants;
-- memberships;
-- capabilities/roles;
-- PrincipalContext;
-- TenantContext;
-- membership/security version;
-- session revocation;
-- tenant suspend/delete state;
-- explicit support/admin authority model;
-- anonymous->authenticated attach contract.
-
-RED first:
-- foreign tenant selector;
-- revoked membership;
-- tenant switch without membership;
-- guessed resource id;
-- stale session after role change;
-- support access without explicit capability.
-
-Exit:
-Server-side authority exists independently of frontend state. No tenant-owned business data beyond what is necessary to prove authority.
-
-### VXA-MT-S002 — PostgreSQL Tenant Isolation Kernel
-Status: PROPOSED / NOT AUTHORIZED.
-
-Scope:
-- PostgreSQL provider selection;
-- schema ownership classification;
-- runtime/migration roles;
-- RLS design;
-- tenant-aware FK/unique constraints;
-- chosen transaction tenant-context mechanism;
-- real connection-pool proof;
-- database privilege inspection.
-
-RED first:
-- cross-tenant read/write/update/delete;
-- omitted application tenant filter;
-- missing DB context;
-- runtime role owner/BYPASSRLS;
-- connection reuse A->B;
-- cross-tenant FK;
-- unsafe migration.
-
-Exit:
-Real PostgreSQL demonstrates isolation for >=2 tenants with application authorization plus database barrier.
-
-### VXA-MT-S003 — Declarative Experience Persistence + Private Delivery
-Status: PROPOSED / NOT AUTHORIZED.
-
-Scope:
-- Experience aggregate;
-- immutable ExperienceVersion;
-- registered components/actions/data sources/themes;
-- safe renderer projection;
-- rollback/version activation;
-- tenant ownership;
-- private server-side logic boundary.
-
-RED first:
-- executable fields;
-- unknown component/action;
-- cross-tenant Experience id;
-- version tampering;
-- stale publish;
-- unsafe URL;
-- browser attempts privileged action directly.
-
-Exit:
-Personalized experiences can differ deeply by tenant without separate SPA or proprietary backend delivery.
-
-### VXA-MT-S004 — Custom Data Collections
-Status: PROPOSED / NOT AUTHORIZED.
-
-Scope:
-- collection schemas;
-- documents JSONB;
-- schema validation/versioning;
-- byte/depth/cardinality limits;
-- safe query DSL;
-- promoted relational fields/index policy;
-- tenant-aware constraints and RLS.
-
-RED first:
-- dangerous object keys;
-- oversized/deep documents;
-- raw SQL attempts;
-- cross-tenant collection/document ids;
-- expensive unbounded query shapes.
-
-Exit:
-Tenant-custom data is flexible but remains bounded, queryable and isolated.
-
-### VXA-MT-S005 — Storage + Cache + Async Isolation
-Status: PROPOSED / NOT AUTHORIZED.
-
-Scope:
-- provider selection;
-- cache key contract;
-- object storage namespace/policy;
-- signed URL contract;
-- queue job authority envelope;
-- replay/idempotency;
-- tenant quotas/noisy-neighbor controls.
-
-RED first:
-- cache collision;
-- stale cache after revocation;
-- foreign object;
-- stale signed URL;
-- cross-tenant job;
-- stale membership job;
-- queue flooding.
-
-Exit:
-All non-DB persistence/async planes satisfy tenant isolation contract.
-
-### VXA-MT-S006 — Integrations / OAuth / Webhooks
-Status: PROPOSED / NOT AUTHORIZED.
-
-Scope:
-- encrypted credential store;
-- OAuth flow;
-- integration ownership;
-- webhook signature/replay;
-- outbound network policy/SSRF controls;
-- tenant-specific integration rate limits.
-
-RED first:
-- foreign integration id;
-- invalid/replayed callback;
-- overbroad token;
-- unapproved outbound destination;
-- webhook tenant confusion.
-
-Exit:
-External integrations cannot cross tenant authority.
-
-### VXA-MT-S007 — AI / RAG / Search Tenant Isolation
-Status: PROPOSED / NOT AUTHORIZED.
-
-Scope:
-- tenant-scoped retrieval;
-- vector/search ownership;
-- authority-bound tool calls;
-- prompt-injection boundaries;
-- model/session memory isolation;
-- tenant-aware AI quotas/evals.
-
-RED first:
-- foreign document/vector ids;
-- missing tenant retrieval filter;
-- prompt asks for another tenant;
-- tool call without authority;
-- cached model result reused across tenants.
-
-Exit:
-AI can operate on tenant data without becoming an authorization system or a cross-tenant memory channel.
-
-### VXA-MT-S008 — Tenant Operations / Export / Restore / Placement
-Status: PROPOSED / NOT AUTHORIZED.
-
-Scope:
-- DataPlacement runtime;
-- shared->dedicated migration;
-- tenant export;
-- tenant restore;
-- offboarding/deletion;
-- backups;
-- support/break-glass operational tooling.
-
-RED first:
-- export foreign rows/files;
-- restore foreign ownership;
-- placement switch with stale route;
-- split-brain cutover;
-- deleted tenant stale jobs/tokens.
-
-Exit:
-Enterprise placement and tenant lifecycle exist without bifurcating application/domain architecture.
-
-## 4. RED-first verification strategy
-
-Every Slice:
-1. bind exact authorized base SHA;
-2. classify all relevant security invariants;
-3. build failing adversarial proof before implementation;
-4. implement smallest root-cause fix preserving architecture;
-5. run targeted tests;
-6. run complete relevant suite;
-7. run real provider/infrastructure tests where isolation depends on provider behavior;
-8. run independent Security Critic;
-9. correct findings and re-run;
-10. freeze exact candidate SHA;
-11. re-run candidate-specific gates.
-
-Mocks may be used for deterministic units but cannot establish database/storage/cache/queue tenant isolation PASS.
-
-## 5. Required PostgreSQL proof harness
-
-The PostgreSQL Slice must provision a disposable real PostgreSQL environment matching the selected major version/provider semantics closely enough to test:
-- roles/ownership;
-- RLS enable/force state;
-- policies;
-- privileges;
-- transactions;
-- connection pooling mode;
-- prepared statements where applicable;
-- migration role behavior.
-
-Fixtures:
-Tenant A and Tenant B, each with at least two principals and resources with colliding human-readable names.
-
-Attack operations:
-- direct read;
-- joined read;
-- aggregate;
-- insert;
-- update;
-- delete;
-- upsert;
-- bulk operation;
-- relationship traversal;
-- background-job transaction.
-
-Expected result:
-No operation by A can observe/mutate B unless an explicitly authorized cross-tenant administrative contract is being tested.
-
-## 6. Browser/API proof
-
-Future tests must use real browser/API behavior:
-- DevTools-equivalent direct API calls;
-- altered tenant/resource selectors;
-- replay;
-- role change while page open;
-- tenant switch;
-- stored/reflected/DOM content;
-- CSRF/CORS policy;
-- CSP/Trusted Types where adopted;
-- browser storage inspection after logout/tenant switch.
-
-The frontend is considered compromised for authorization tests.
-
-## 7. Provider selection criteria
-
-No provider is chosen by this planning artifact.
-
-When selecting PostgreSQL/cache/storage/queue/auth providers, score:
-- security controls;
-- role/RLS semantics;
-- connection pool behavior;
-- backup/restore;
-- regional placement;
-- encryption/key integration;
-- observability/audit;
-- free-tier constraints without weakening security;
-- operational reliability;
-- portability cost;
-- documented incident/recovery capabilities.
-
-Provider convenience cannot weaken the Tenant Isolation Security Contract.
-
-## 8. Evidence model
-
-For every security gate record:
-- execution plane;
-- exact candidate SHA;
-- test/command/run identifier;
-- provider/version;
-- tenant fixture identities without secrets;
-- expected denial/allow behavior;
-- observed result;
-- artifacts/logs sanitized;
-- remaining NOT_VERIFIED items.
-
-Changed candidate invalidates candidate-specific PASS.
-
-## 9. Planning risks
-
-P1 Over-engineering tenancy before product need.
-Control: shared DB first, explicit seams only, no premature dedicated infra.
-
-P2 RLS creates false confidence.
-Control: application authorization + DB privileges + RLS + tests.
-
-P3 GUC/pooling context leaks.
-Control: transaction-local candidate only after real pool proof; alternatives remain open.
-
-P4 JSONB becomes schema avoidance.
-Control: promotion policy and integrity-driven relational model.
-
-P5 Experience configuration becomes code execution.
-Control: closed registered grammar and safe projection.
-
-P6 Authentication migration destroys anonymous-session invariants.
-Control: explicit attach transaction and non-regression.
-
-P7 Support becomes hidden superuser.
-Control: explicit separate audited authority.
-
-P8 AI sees everything because it is "internal".
-Control: TenantContext-bound retrieval/tooling with complete mediation.
-
-P9 Dedicated tenant requirement forks codebase.
-Control: DataPlacement abstraction below domain repositories, same ownership model.
-
-P10 Security tests become mock theater.
-Control: mandatory real PostgreSQL/provider/browser negative proof.
-
-## 10. Authorization boundary
-
-None of VXA-MT-S001 through VXA-MT-S008 is authorized.
-
-The Founder must choose the next Slice and bind it to the then-current exact repository SHA. The proposed GAUNTLET may be adopted, strengthened or replaced at authorization time; it cannot self-authorize implementation.
+# VXA Multitenancy Security Foundation — Plan (PROPOSED)
+
+Status: `PROPOSED / NOT_AUTHORIZED`
+Binding: `FORGE-VEXRYZER-AUTOMATION-v1.0.0`
+Companion: `job/docs/architecture/VXA-MULTITENANCY-SECURITY-FOUNDATION.PROPOSED.md` (holds the §9 Founder decisions cited below)
+Planning base: authorized S002 base `6244a246d8faf73e772fc944a398a71a02fb97e0` (reference only)
+Scope: planning only — this plan authorizes no build, no branch/worktree, no auth/database/runtime implementation, no VXA-S002 or product-code change.
+
+> GAUNTLET-first: each work package below begins with RED evidence proving the missing capability or risk on the exact candidate. Builder is not final judge. No WP may weaken tests, gates, accessibility, or the DeepSeek single truth to pass.
+
+## WP-MT01 — Anonymous-truth lock + planning baseline
+
+- Freeze the current-truth record: anonymous session tuple, Blobs-backed CAS repository, no tenant column/claim anywhere (verified by search, not by assertion).
+- Record the uncommitted Issue-3 working-tree state as concurrent work to preserve; this plan neither depends on it nor modifies it.
+- Record the known binding-string variant: the Slice contract and DeepSeek single-truth authorization carry a 41-char form of the base SHA while the binding GAUNTLET and Issue-3 pack (CORR-22) standardize on the canonical 40-char form used here; both resolve to the identical commit object, and the upstream one-char correction is reported for those docs (this plan does not edit higher-authority docs).
+- Fixture home (N-b): every docs-level fixture in WP-MT02…MT08 lives as tabletop/SQL-scratch analysis recorded in the plan's evidence bundle under `job/docs/` — never in `job/src`, `job/tests`, or any current product path (tenant-behavior tests in product code are `PROHIBITED_BY_CURRENT_BOUNDARY` until a Slice authorizes them).
+- RED: demonstrate a hypothetical cross-tenant read is currently *meaningless* (no tenant axis exists) — the gap this foundation would fill. The RED refutation bar for every fixture-WP below: each fixture MUST state the exact observation that would refute its mitigation (e.g. "if the bleed fixture serves tenant B rows under tenant A context, the transaction-local discipline is falsified") — fixtures that can only restate the design without a falsifiable observation fail their WP.
+- Evidence: search transcripts + file/line references; candidate SHA recorded.
+
+## WP-MT02 — Authorization model + membership lifecycle + intra-tenant authority
+
+- Design subject → membership set → single-active-tenant resolution; invite/accept/remove/revoke transitions; per-request re-resolution. **Sequencing (M1):** the companion-architecture §9.12 subject-authN decision (who issues subject identities, credential type, binding) is a PREDECESSOR of WP-MT02 acceptance — the WP may design authZ transitions now, but invite-acceptance and membership-resolution assertions stay `NOT_VERIFIED` until companion-architecture §9.12 exists. No authZ design evidence substitutes for the authN decision.
+- Design the intra-tenant model: closed owner/admin/member roles with server-side per-request evaluation; self-promotion refusal; scoped two-party rule for owner-conferring grants only (member-invite by owner/admin is not an owner grant; no Slice-level waiver — Founder decision only); fail-closed last-owner guard with in-transaction re-evaluation against the contended membership set (pre-check-only guard is a TOCTOU defect — H2); server-issued single-use ≥128-bit invite tokens with 24-h expiry bound to tenant + matrix role (`owner`→{`member`,`admin`}, `admin`→{`member`}, `member`→{}, never `owner` — F-08), bounded guessing attempts with per-invitation-only lockout (blast-radius limitation, NOT a DoS refusal — M4), ALL invitation outcomes under uniform denial + `T_deny`, issuer-visible lockout signal + rate-bounded re-issuance, single-winner concurrent-accept contention on the invitation record with consume-first crash-safe order (F-09), invitee-identity proof at acceptance (acceptance AND issuance gated on companion-architecture §9.12 — M1), human-relayed out-of-band delivery by the issuer (no product notification channel per S002; token shown once); closed provisioning default with the closed-path ceremony (designated provisioner, approval record, audit, rate limit + live-tenant cap — M7) and self-serve explicitly unauthorized pending a Founder decision with Sybil/abuse controls.
+- RED: removed member replays live lease (paired: legitimate member's lease still served — H1); sub-25-char / over-96-char / sequential / non-CSPRNG tenant id accepted (must fail closed — HSC6-01/NIT-5); double-active-tenant request smuggles second scope; member self-promotes to admin (must fail closed); admin grants admin/owner to anyone (must fail closed); admin grants admin to an EXISTING member membership (must fail closed — invitation≠upgrade; upgrades need an owner grantor — N8); owner-grant without distinct owner grantor (must fail closed); owner-grant where the grantor is demoted/revoked between check and commit (must fail closed — grantor status re-evaluated in-transaction, HSC9-01); invitation accepted after the issuer was demoted/revoked (must fail closed — issuer re-validation at acceptance, HSC9-02); `member`→`admin` upgrade where the grantor is demoted between check and commit (must fail closed — generalized in-transaction grantor rule, HSC12-01); removal/demotion of the final owner (must fail closed); simultaneous owner-membership expiry leaving zero owners (conditional — only where the Slice authorizes time-boxed memberships, N4; must fail closed where applicable — F-04); member-issued invitation (must fail closed — issuance is owner/admin-only); admin removing an owner (must fail closed — admin removes non-owners only); **concurrent final-owner removal race — two owners removing each other, both pre-checks passing (must serialize: all but at most one fail closed; a guard passing this fixture on pre-check alone falsifies the design — H2)**; forged/guessed invite accepted (must fail closed); invite TTL beyond 24h accepted (must fail closed — HSC4-03/HSC5-02b); sub-128-bit verifier or sub-64-bit handle accepted (must fail closed — N-iii); invite delivery requiring product notification (must fail — human-relayed executability or cited Slice channel); admin-issued admin-invite accepted (must fail closed — matrix); concurrent accepts yielding two memberships (must fail — single winner, F-09); already-member re-accept yielding a second membership or an oracle (must fail — uniform duplicate refusal); invitation-outcome oracle distinguishing locked from invalid (must fail — uniform denial); guessing attack locks a whole tenant's administration (must fail — lockout is per-invitation); unbounded lock/re-issue loop (must hit the re-issuance bound); open self-provisioning mass-creates tenants (must be refused under closed default); closed-path provisioning without ceremony record (must be refused). Every deny-fixture carries its paired allow-own positive control — a fixture suite with denial-only assertions fails the WP (H1).
+- Non-goals: no implementation; no UI.
+
+## WP-MT03 — Relational isolation design (RLS / pooling / FK / JSONB)
+
+- Specify the DB-neutral normative core (transaction-scoped tenant predicate, default deny, composite tenant-keyed references, real-column tenant key, single-migration landing) with Postgres spellings confined to an annex adopted only on Postgres selection; specify the trusted-resolver bypass (dedicated resolver role reading membership tables only) and the serverless connection proof obligation (per-invocation context vs transaction-mode pooler with concurrent checkout-reset proof).
+- Specify default-deny predicate shape, transaction-local context discipline (Postgres spelling `SET LOCAL`, illustrative pending DB selection), pooler checkout-reset proof obligation, composite `(tenant_id, id)` FK rule, real-column + generated-index JSONB rule, and the single-migration landing rule (column + backfill + RLS together).
+- RED: pooler context bleed under session-scoped context (paired: same-context own-tenant rows served — H1); RLS bypass executed as an owner/BYPASSRLS role with policies "enabled" (must still leak — proving role pinning is load-bearing — HSC4-01/HSC5-02a); single-column FK cross-reference; JSONB-only predicate bypass; resolver with broader-than-membership read (must be refused as designed); tenant-role seed-table write accepted (must fail — seed grants SELECT-only — HSC8-01); `TRUNCATE` on a tenant table executed as the tenant runtime role (must be refused by grant — `TRUNCATE` is not subject to RLS — HSC9-03); non-`security_invoker` view over tenant tables serving cross-tenant rows (must fail — HSC9-03); `SECURITY DEFINER` resolver without pinned `search_path` (must be refused at review — HSC9-03); tenant-owned table without RLS enabled passing migration lint (must fail the catalog assertion — HSC9-03); session-mode/cross-invocation context survival (must be refused as designed) — each shown on a docs-level isolated fixture with its falsifying observation stated (tabletop/SQL scratch recorded as evidence, never `job/src`, `job/tests`, or current product paths, which remain tenant-free until a Slice authorizes).
+- **Sequencing (L4):** the companion-architecture §9.2 database/pooler decision PRECEDES fixture acceptance — Postgres-spelled fixtures (`SET LOCAL`, RLS syntax, generated columns) are PROVISIONAL until Postgres is selected; if the store is Blobs/SQLite/D1/Turso, fixtures are re-spelled to that store's equivalent row-isolation mechanism at the same default-deny bar. No fixture passes on an unselected store's spelling.
+- Founder input: database/pooler selection within free-tier-first.
+
+## WP-MT04 — Experience tenant binding + RCE hardening plan
+
+- Specify Gate tenant-scope check placement (after target resolution, BEFORE evidence/disclosure — order is normative), uniform client-visible denial with `tenant-scope-denied` as server-side telemetry code ONLY (never on the wire), per-tenant projection partitioning, and tenant-content untrusted-input handling through existing executable rejection. The tenant-scope check is the early-positioned session-authority evaluation for tenant paths (explicit documented deviation from the canonical flow for tenant paths only); the authorizing Slice MUST adopt it into the Gate flow documentation while anonymous paths keep the canonical order. Drop `entitlement` from the disclosure function — visibility = f(disclosure-state, active-tenant), with any future entitlement engine under its own Slice.
+- RED: smuggled script in tenant label; cross-tenant target id batch (wire inspected for taxonomy-code leak — any `tenant-scope-denied` on the wire falsifies the uniform-denial design; paired: same-tenant batch accepted and projected — H1); check-order probe distinguishing cross-tenant from missing-evidence denial (any distinction falsifies the ordering); catalog escape attempt; cross-tenant projection replay committed under another tenant (must be refused — HSC5-02e); ENTITLED-state content served on any tenant path (must fail — ENTITLED unreachable before its Slice — N13) — all against docs-level fixtures (never `job/src`/`job/tests`), proving current absence of a tenant axis (NOT_APPLICABLE until authorized) rather than claiming protection. Gate-order fixtures are provisional on the companion-architecture §9.2 store decision only insofar as they touch predicate spelling (L4) — the Gate order itself is store-neutral.
+
+## WP-MT05 — Cache / storage / queue / integration scoping design
+
+- Specify key/namespace/envelope/secret schemes per plane with verify-at-use (dequeue, serve, ingress) obligations: cache TTL bounds + revocation-purge + break-glass-governed flush; storage bind-at-serve posture (or explicitly restated expiry-bounded-bearer with the ≤15-min revocation residual recorded — M3); queue drop-with-audit terminal state + structured-pair `(tenant_id, key)` idempotency namespacing, never string concatenation (queue section conditional on a queue being authorized — if scoped out, recorded NOT_APPLICABLE with the decision cited); webhook normative ingress order + versioned secret rotation (same conditionality: scoped-out webhooks are NOT_APPLICABLE-by-decision, never half-proven — L3); rate-limit enforcement (quotas with throttle-then-deny under uniform denial shape AND `T_deny` timing discipline — throttle quantized to buckets, no 429 oracle; counters alone fail the WP) PLUS the denial-hold cost guard (billed-duration + concurrency accounting under adversarial denial rates, per-source denial-rate cap, `T_deny` value + free-tier feasibility proof for the companion-architecture §9.13 Founder input — M2).
+- RED: unkeyed cache hit across tenants; boundary-shift cache-key collision under naive concatenation (must be impossible by construction — structured pairs — N9/HSC5-02c); global cache flush without a break-glass approval record accepted (must be refused); webhook ingress with steps out of order (must fail — route → server table → HMAC → attribute); traversal out of namespace; signed URL minted for A presented from B's session served without serve-time re-validation (falsifies bind-at-serve; if the Slice adopts expiry-bounded-bearer instead, the residual window must be stated — an unstated residual falsifies the design — M3); enqueue-only-checked job executed post-revocation (terminal state other than drop-with-audit falsifies the design); webhook secret selected by client field; stale rotated-out secret accepted past the overlap window (must be refused); revoked member served cached entry (must be refused); one tenant's flood starving another without enforcement firing (falsifies the rate-limit design); per-tenant quota counter incremented concurrently from many invocations understating usage (must fail — atomic increment required, NIT11-3/HSC12-03); denial-spam saturating Function concurrency/budget past the cap without the cap firing (falsifies the cost guard — M2/D7) — proven on docs-level fixtures outside product paths.
+
+## WP-MT06 — Browser-untrusted + AI/RAG isolation design
+
+- Specify server-round-trip tenant switch with per-store client purge inventory (reactive store, Canvas graph, Harness handle, packs, SW caches, history traversal with bfcache opt-out / `pageshow` re-validation); switch-endpoint CSRF/confused-deputy control (state-changing switch requires the live session credential — no cookie-only or GET-triggered switch — E4); single uniform denial shape with the `T_deny` minimum-latency bucket on all tenant-path denials (shape/status/timing asserted — no oracle); per-tenant retrieval namespaces with pre-budget active-tenant filter; model-emitted tenant refs untrusted; attachment boundary restated tenant-independently (per-tenant ingestion keys explicitly OUT — companion-architecture §9.15 — until an upload Slice exists).
+- RED: client-local toggle accepted (paired: legitimate server-round-trip switch succeeds — H1); error oracle distinguishes unknown/forbidden in shape, status, or timing; cross-site switch request without session credential accepted (must fail closed — E4); live leased turn silently continued across a switch (must fail — invalidate + re-issue only — HSC6-03/E5); back-button resurrects prior-tenant view under new authority; shared-namespace retrieval mixes tenants — each on docs-level fixtures outside product paths. **Timing methodology (L8):** denial-timing proof is proof-by-construction (hold-until-bucket in the serving path, shown in review) PLUS sampled percentile-bound measurement with documented sample size, percentile bound, and runner-variance note — exact-timing assertion on shared runners is unprovable and a bare "timing inspected" claim fails the WP.
+
+## WP-MT07 — Backups / export / restore + support / admin + DataPlacement
+
+- Specify per-tenant export with re-verified membership; staging + re-key + re-proof restore; blocked cross-tenant restore; break-glass approval-record (BEFORE access, hash-chained entries + approver-held duplicate with free-tier feasibility proof) + post-access review shape with chain-recompute and duplicate-compare — NO alert-channel dependency (S002 prohibits notification delivery; alerting needs its own Slice); server-config placement resolution with per-tenant move verification.
+- Specify the tenant deletion ritual: owner-confirmed double-affirmed freeze→erase→purge→backup-expiry, partial deletion defined as failure, deleted-tenant restore requiring fresh Founder re-authorization. The ritual presupposes the last-owner guard: deletion itself is an owner act, and no other transition may leave a tenant owner-less.
+- RED: export with hint trust; restore-as-other-tenant flag; mid-stream membership revocation during an export that keeps streaming (must abort with server-side partial discard — initiation-only verification falsifies the design — HSC4-02); model/client placement steering accepted (must be ignored); placement via a global move flag without per-tenant verification (must fail — NIT10-4); partial-move source decommissioned before per-tenant completeness verified (must fail — HSC5-02d); crash mid-deletion-ritual followed by re-execution mistaken for complete (must converge to full deletion — N-v); freeze without live-lease/turn invalidation leaving a servable turn (must fail — HSC7-02); freeze that revokes before rejecting new authority, with a lease minted mid-freeze (must fail — reject-first sub-order, HSC9-04); freeze executed by looping the guarded per-membership removal API instead of the separate deletion code path (must fail — F-06/N-c/NIT10-6); deletion executed through a caller-flagged normal-removal path (must be refused — separate deletion code path only — F-06); standing super-read query; break-glass access without prior approval record; access served past the grant's time bound (must fail — auto-expiry — HSC6-02); post-access review performed by the actor (must fail — actor≠reviewer); forged/backdated approval record passing review (must fail — chain-recompute + duplicate-compare refuses it); partial deletion with any inventory class left live — rows gone but webhook routes, invite artifacts, Harness partitions, or idempotency namespaces lingering (must fail — full-inventory enumeration — HSC6-04); deleted tenant id reassigned (must fail — non-reuse — N10); partial deletion (rows gone, backup restorable); routine restore of deleted tenant — fixture-proven as blockable-by-design inputs to the GAUNTLET.
+- Founder inputs: encryption/KMS posture, break-glass approver, audit retention, placement requirements, alerting-channel authorization (or acceptance of record+review), deletion retention schedule, webhook/queue scope confirmation, provisioning authority, invite-delivery channel (accept human-relayed default or authorize a product channel), two-party-rule / last-owner-guard waivers (neither waivable without an explicit decision here), subject-authN authority/mechanism (companion-architecture §9.12 — predecessor of acceptance), `T_deny` value + denial-hold cost accounting + free-tier feasibility (companion-architecture §9.13), backup-expiry free-tier feasibility on the observed Blobs substrate (companion-architecture §9.14 — L4: prove the substrate can do the ritual or re-open companion-architecture §9.2; no assumed capability), per-tenant ingestion-keys scope (companion-architecture §9.15 — in or out), abandoned-segment physical reclamation (companion-architecture §9.16 — until proven, the gateable guarantee is read-time unservability).
+
+## WP-MT08 — Anonymous→tenant promotion design
+
+- Specify one-time promotion token lifecycle (M5): server-side mint ONLY inside the authenticated tenant session at claim confirmation (never pre-/client-minted; mint/consumption assertions `NOT_VERIFIED` until the companion-architecture §9.12 subject-authN decision exists — F-01); SHA-256 digest storage with `timingSafeEqual` (bound sessionId + claiming subject + target tenant + issuance timestamp + consumed flag); token-consumption + session-invalidation atomic in the same CAS-guarded commit on the anonymous session record; lease-live-at-promotion invalidated with deterministic tenant-side re-issue (claimant told the turn restarted). Bound (sessionId + session-secret possession at claim), 15-min TTL, single-use, anonymous session consumed on success. Additive import-provenance field (never `source: system` overload; closed provenance untouched; origin disclosed in narration) with exactly one turn-reference disposition (remap / tombstone / retain-archive — L6/HSC5-01; dangling references forbidden) — all conditional on the companion-architecture §9.5 import-vs-clean decision (clean-start ⇒ import assertions NOT_APPLICABLE, expire-and-destroy still gated — HSC5-04). Anonymous-Harness abandonment with fresh tenant-partition session (canonical-wins) PLUS abandoned-segment destruction-or-read-time-unservability past the destruction stamp (a servable segment outside any partition is a defined failure — F-10/M6; physical reclamation is a companion-architecture §9.16 input). Graft/replay/fixation/double-promotion refusals, Harness-handle cross-tenant resume refusal (F5), expire-and-destroy for unclaimed sessions.
+- RED: graft session A into tenant B; claim on sessionId knowledge without session-secret possession (must fail closed); promotion-outcome oracle distinguishing invalid/expired/consumed/wrong-tenant claims (must fail — uniform denial + `T_deny` — HSC8-02); replay consumed token; attacker-fixed session id; double-promotion A→T1 then A→T2; expired (>15-min) promotion; consumed-token/live-session or live-token/dead-session split (must be impossible — atomicity falsified); lease live at promotion carried silently across partitions (must fail — re-issue only); anonymous Harness session resumed under tenant (must be refused); abandoned Harness segments servable past the destruction stamp (must fail — read-time enforcement, F-10/M6); foreign-partition Harness handle accepted (must be refused — F5); imported turn reference (`supportingTurnIds` or `confirmedByTurnId` — HSC5-01) resolving to nothing or a recycled session (must fail — L6); switch of the claiming session between mint and commit landing history in the wrong tenant (must fail — HSC7-01); imported history narrated without import-origin disclosure (must fail — HSC7-03) — fixture-proven refusals in design review (tabletop with exact state transitions, no product code touched).
+
+## WP-MT09 — GAUNTLET execution + convergence
+
+- Run `GNT-VXA-MULTITENANCY-FOUNDATION-001` gates MT-G01…MT-G15 against the design (tabletop + fixtures where code-free proof is possible; implementation-gated items recorded `NOT_VERIFIED`, never inferred).
+- Convergence: two fresh independent consecutive critic passes with no material findings after the last correction; any material finding resets convergence and invalidates the PASS claim until re-proven.
+- Candidate discipline: every evidence record binds plane + command/run id + exact candidate SHA; a changed candidate invalidates candidate-specific evidence.
+
+## WP-MT10 — Founder authorization package
+
+- Assemble decision asks (§9 of the architecture proposal), scope classification, residual risks, and the exact-SHA evidence bundle for explicit authorization. No construction begins on plan completion alone.
+
+## Scope classification (restated)
+
+- `CURRENT_SLICE_REQUIRED`: none. `COMPATIBILITY_SEAM`: opaque ids, server-side checks, CAS, taxonomy extensibility. `FUTURE_SLICE_REQUIRED`: all WP-MT02…MT08 content. `PROHIBITED_BY_CURRENT_BOUNDARY`: tenant columns, RLS, membership, switcher UI, tenant-behavior tests in product code.
+
+## Non-degradation
+
+PRESERVE anonymous S002 truth → CORRECT planning gaps → STRENGTHEN with explicit decisions → IMPROVE reviewability. No step weakens S002 behavior, coverage, accessibility, or security posture.
+
+## Reasoning effort record
+
+- Authoring model: Muse Spark (Muse Code). Correction pass: single-model deep review + edit in this runtime; the wrapper requested reasoning-effort `ultra`; the runtime reported `ultra_reasoning_effort` closed and executed `xhigh`. This fallback is material execution evidence and must not be represented as `ultra`.
+- GAUNTLET correction round: same runtime; wrapper requested `ultra`, runtime executed `xhigh` because `ultra_reasoning_effort` was closed. WP-MT02 sequenced on companion-architecture §9.12 with race/oracle/ceremony fixtures; WP-MT03/04 provisional on companion-architecture §9.2; WP-MT05–MT08 carry cost/posture/conditionality/methodology/lifecycle RED; WP-MT07 inputs extended to companion-architecture §9.12–companion-architecture §9.16 (N4).
+- Critic-11 correction round (HSC9-01…04): same runtime; wrapper requested `ultra`, runtime executed `xhigh` because `ultra_reasoning_effort` was closed. WP-MT02 RED gained grantor-revoked-mid-grant and issuer-demoted-before-acceptance fixtures; WP-MT03 RED gained TRUNCATE/view/DEFINER/catalog fixtures; WP-MT07 RED gained the freeze-order probe.
+- Critic-12 correction round (HSC12-01/HSC12-03): same runtime; wrapper requested `ultra`, runtime executed `xhigh` because `ultra_reasoning_effort` was closed. WP-MT02 RED gained the demoted-grantor-confers-admin fixture; WP-MT05 RED gained the concurrent-counter-understatement fixture.
+- Finding-ID legend (N14): H/M/L = round-1 HIGH gate-correctness / MEDIUM design / LOW findings; F-## = round-2/3 follow-up findings; N/N-a…/N-i…/N1… = round-2…5 corrective + nit IDs (each bare-N ID names exactly one norm — split/E4/M1/M3/N-i tags were disambiguated in the HSC6 round; legacy N-d reads N-i); HSC4/HSC5/HSC6/HSC7/HSC8/HSC9/HSC12 = hostile-critic rounds 4/5/6/7/8/9/12.

@@ -1,190 +1,47 @@
-# GNT-VXA-MULTITENANCY-FOUNDATION-001.PROPOSED — Tenant Isolation Foundation GAUNTLET
+# GNT-VXA-MULTITENANCY-FOUNDATION-001 — Multitenancy Security Foundation GAUNTLET (PROPOSED)
 
-STATUS: PROPOSED / NOT AUTHORIZED
-FORGE_BINDING_ID: FORGE-VEXRYZER-AUTOMATION-v1.0.0
-TARGET_SLICE: FUTURE / NOT YET AUTHORIZED
-CURRENT_SLICE: VXA-S002@1.0.0 — MUST NOT BE MUTATED BY THIS PROPOSAL
-PARENT_ARCHITECTURE: job/docs/architecture/VXA-MULTITENANCY-SECURITY-FOUNDATION.PROPOSED.md
-SECURITY_CONTRACT: job/docs/security/VXA-TENANT-ISOLATION-SECURITY-CONTRACT.PROPOSED.md
-PLAN: job/docs/superpowers/plans/2026-09-13-vxa-multitenancy-security-foundation-plan.PROPOSED.md
+Binding: `FORGE-VEXRYZER-AUTOMATION-v1.0.0`
+Companion: `job/docs/architecture/VXA-MULTITENANCY-SECURITY-FOUNDATION.PROPOSED.md` (holds the §9 Founder decisions cited below)
+Proposed scope: future multitenancy + private experience delivery (no Slice authorized by this document)
+Status: `PROPOSED / NOT_AUTHORIZED`
+Planning base: `6244a246d8faf73e772fc944a398a71a02fb97e0` (reference only)
 
-## Authority
+> This GAUNTLET is a proposed gate for a future authorized Slice. It does not authorize implementation. Until a Slice adopts it, implementation-gated assertions are `NOT_VERIFIED` by default — never inferred green.
 
-This is a proposed future gate. It has no implementation authority until the Founder authorizes a concrete Slice with an exact base SHA.
+## Gate intent
 
-No PASS in this document applies to VXA-S002 or to production.
+Prove, before any tenant-shaped production claim, that one tenant can neither observe nor mutate another tenant's data, state, narration, artifacts, jobs, files, exports, or placement — across authorization (including intra-tenant roles/invitations/provisioning), storage, pooling, relations, JSONB, Experience projection, cache, queue, integrations, browser, AI/RAG, backups, support/admin, DataPlacement, rate-limit enforcement, tenant deletion, and anonymous promotion — while S002 anonymous truth keeps working behavior-identically.
 
-## Gate model
+## Preflight evidence
 
-A future foundation candidate fails if any mandatory gate is FAIL or NOT_VERIFIED without an explicitly authorized deferral.
+Required before any PASS claim: exact `FORGE_BINDING_ID`; exact authorizing Slice id/version (once exists); exact authorized base SHA; exact frozen candidate SHA; proof all candidate-specific evidence belongs to that SHA; list of unavailable checks marked `NOT_VERIFIED`. A candidate SHA change invalidates candidate-specific PASS. Subject-authN blanket rule (HSC7-04): the companion-architecture §9.12 decision list is non-exhaustive — EVERY gate assertion presupposing an authenticated subject/session (membership resolution, invitation issuance/acceptance, promotion mint/claim, resolver input, tenant switch, export membership, break-glass actor/approver) is `NOT_VERIFIED` until companion-architecture §9.12 exists, whether or not the individual gate repeats the tag.
 
-### GMT-01 Authority / exact candidate
-Correct repository, branch, Slice, base SHA, candidate SHA and write-set. Any candidate mutation invalidates candidate-specific evidence.
+## Gates
 
-### GMT-02 Current-product non-regression
-Anonymous session lease/revision/idempotency, DeepSeek single truth, deterministic Trust Kernel, current Canvas behavior and security boundaries are preserved until explicitly migrated.
+- MT-G01 Authorization: forged/hinted tenant id; double-active-tenant request; revoked-membership replay; lease/request reuse across tenants. All fail closed with audit. Tenant-id floor (HSC6-01): a design accepting a sub-25-char, over-96-char, sequential, or non-CSPRNG tenant id FAILS this gate (same pin precedent as the 24h TTL bound). **Paired positive control (H1):** legitimate own-tenant requests under correct context are fully served (allow-own proven alongside every deny — a deny-all fixture with no passing positive control FAILS this gate). Intra-tenant: self-promotion refused; admin conferring admin/owner refused; owner-conferring grant without a distinct owner grantor refused (scoped two-party rule; member-invite by owner/admin is not an owner grant); final-owner removal/demotion refused, INCLUDING the concurrent-final-owner-removal race (two owners removing each other concurrently — contenders serialize on the membership set, all but at most one fail closed; pre-check-only guard FAILS this gate) AND simultaneous owner-membership expiry leaving zero owners (conditional on the Slice authorizing time-boxed memberships — memberships are non-expiring by default, N4; F-04) (last-owner guard — a live tenant always keeps ≥1 owner; provisioning and the tenant-destroying deletion ritual are outside the guard AND execute through a separate deletion code path — a caller-flagged normal-removal path bypassing the guard FAILS this gate — F-06/HSC5-03a). Role-matrix refusals: member-issued invitation refused (issuance is owner/admin-only); admin-removes-owner refused (admin may remove non-owners only) (F-04). Owner-conferring grants re-evaluate grantor-holds-`owner` AND grantor≠grantee inside the committing transaction (a grant committing on a pre-check alone with a grantor revoked mid-flight FAILS this gate — HSC9-01). The rule generalizes to every role-grant/upgrade mutation — a `member`→`admin` upgrade committing on a demoted grantor's pre-check FAILS this gate (HSC12-01). On stores without cross-record atomicity the issuer re-read immediately precedes the consuming invitation CAS (HSC12-02). Invitations: forged/guessed/expired invite refused (24-hour expiry bound proven — an invite TTL beyond 24h FAILS this gate — HSC4-03; handle/verifier split floors proven — sub-128-bit verifier or sub-64-bit handle FAILS this gate — N-iii/HSC5-03d); acceptance without issuer-still-authorized re-validation inside the consuming transaction FAILS this gate (HSC9-02); invite acceptance without invitee-identity proof refused (acceptance AND issuance assertions `NOT_VERIFIED` until the companion-architecture §9.12 subject-authN decision exists — M1); guessing attack locking a whole tenant's administration refused (lockout is per-invitation — blast-radius limitation, NOT a DoS refusal: per-invitee onboarding denial is accepted residual with issuer-visible lockout signal + rate-bounded re-issuance from the lockout-replacement reserve, all proven — NIT-2); invitation outcomes (invalid/expired/locked/consumed/wrong-tenant) proven indistinguishable under uniform denial + `T_deny` (any lockout-state oracle FAILS this gate); invite delivery proven executable without product notification (human-relayed copy, token shown once) or the product channel's own Slice cited. Provisioning: open self-provisioning refused under closed default; closed-path provisioning without the ceremony (designated provisioner, pre-provisioning approval record, audit, rate limit + live-tenant cap) refused — ceremony assertions `NOT_VERIFIED` until companion-architecture §9.6 designates them. Invitation matrix + concurrency (F-08/F-09): admin-issued admin-invite refused; owner-issued admin-invite accepted ONLY from an `owner` issuer; member-issued invite refused; concurrent accepts yield exactly one membership (two memberships from one invitation, or second-subject piggybacking, FAILS this gate); already-member acceptance refused as duplicate under uniform denial.
+- MT-G02 RLS/pooling: cross-tenant select/update/delete returns zero rows **AND own-tenant select/update/delete under correct context returns the owned rows (paired positive control — deny-all passes nothing: a fixture proving only zero-rows-cross-tenant with no passing own-tenant proof FAILS this gate)**; session-scoped-context bleed fixture refused; statement-mode tenant path refused; checkout-reset proof. Resolver-bypass proven least-privilege (trusted resolver reads membership tables only; resolver assertions `NOT_VERIFIED` until companion-architecture §9.12 — resolver takes the verified subject as input — HSC7-04). Serverless connection posture proven: per-invocation transaction-local context or transaction-mode pooler with concurrent multi-tenant checkout-reset proof — session-mode or cross-invocation state refused. Role pinning (HSC4-01): bypass + allow-own fixtures execute as the least-privilege tenant runtime role (non-owner, no `BYPASSRLS`, `FORCE RLS` where ownership unavoidable, ownership/grant set recorded) — an owner-role fixture run FAILS this gate. Elevated execution (HSC9-03): a tenant-role `TRUNCATE` on tenant tables refused by grant; views over tenant tables `security_invoker` or absent (an owner-view serving cross-tenant rows FAILS this gate); `SECURITY DEFINER` functions pin `search_path`; tenant roles hold no DDL on tenant schemas; migration lint carries the catalog assertion that every tenant-owned table has RLS enabled (+`FORCE` where required) — a tenant table without RLS FAILS this gate. Store-conditionality (F-03): if the companion-architecture §9.2 decision selects a non-Postgres store, RLS/predicate assertions re-spell to that store's equivalent row-isolation mechanism at the same default-deny bar — the gate is never unsatisfiable-by-spelling, and no fixture passes on an unselected store's spelling.
+- MT-G03 Relations/JSONB: single-column cross-tenant FK write refused; JSONB-only predicate query refused; generated-column path proven; seed-grant bar proven where seed tables exist — tenant-role `INSERT`/`UPDATE`/`DELETE`/`TRUNCATE` on seed refused, seed ownership/grant set recorded (a Slice granting tenant-role seed writes FAILS this gate — HSC8-01; no-seed design records the vacuous pass explicitly). Same companion-architecture §9.2 re-spell rule as MT-G02 (F-03): composite-reference, real-column-key, and single-migration-landing MUSTs are store-neutral; only their spelling adapts.
+- MT-G04 Experience binding/RCE: script/markup in tenant content rejected pre-projection; tenant-scope check ordered BEFORE evidence/disclosure as the early-positioned session-authority evaluation (order proven — no check-order oracle; the tenant-path deviation from the canonical flow is adopted in the Gate documentation, anonymous paths keep canonical order); cross-tenant target batch yields uniform client denial with `tenant-scope-denied` recorded server-side only (wire inspected: no taxonomy code leaks) **AND the same-tenant batch under correct context is accepted and projected (paired positive control — a batch-path that denies everything FAILS this gate)**; catalog escape refused; cross-tenant replay refused; ENTITLED-state content served on any tenant path FAILS this gate (ENTITLED is defined but unreachable before its own entitlement Slice — N13).
+- MT-G05 Cache/storage: unkeyed cache serve across tenants refused (cache keys structured-pair `(tenant_id, …)` namespaced, never naive concatenation — N9/NIT-4); namespace traversal refused; signed access for tenant A rejected under B — proven under the Slice's adopted posture: either bind-at-serve (serve-time active-tenant re-validation, cross-session presentation refused) or explicitly restated expiry-bounded-bearer with the residual window recorded (mint-time-only binding with a cross-presentation claim FAILS this gate); signed-URL expiry bound ≤15-min default proven per entry class; **revocation residual ≤15 minutes for bearer artifacts proven and stated (instant-revocation claim FAILS this gate)**; no secrets/content in logs. Revocation-purge proven (revoked subject's entries unservable before TTL expiry); TTL bounds proven per entry class; global flush without a PRIOR break-glass approval record refused (access-first-record-later fails — same PRIOR teeth as MT-G10).
+- MT-G06 Queue/integrations: post-revocation dequeued job refused with drop-with-audit terminal state; retry preserves original binding; cross-tenant idempotency-key collision impossible by structured-pair `(tenant_id, key)` namespacing (naive concatenation refused as a design input); webhook with spoofed tenant field refused; ingress order proven (route → server table → HMAC → attribute); stale (rotated-out, past the overlap window) webhook secret refused. Queue assertions apply only if a queue is authorized; otherwise recorded NOT_APPLICABLE with the scope-out decision cited. Webhook assertions carry the same conditionality: if the authorizing Slice scopes inbound webhooks out, webhook assertions are recorded NOT_APPLICABLE with the scope-out decision cited rather than half-proven.
+- MT-G07 Browser model (`NOT_VERIFIED` until companion-architecture §9.12 — switch presupposes an authenticated session — HSC7-04): client-local tenant toggle has no authority effect **AND a legitimate server-round-trip switch succeeds and serves the new tenant (paired positive control — a switch path that only ever denies FAILS this gate)**; unknown/forbidden uniformly denied in a single denial shape with `T_deny` bucket compliance proven — by construction (hold-until-bucket in the serving path, shown in review) PLUS sampled percentile-bound measurement on shared runners (exact-timing assertion on shared infrastructure is unprovable: methodology is bucket-compliance sampling with documented sample size, percentile bound, and runner-variance note — a bare "timing inspected" claim FAILS this gate); unknown-vs-forbidden cost difference unobservable; post-switch purge proven per store in the inventory (reactive store, Canvas graph, Harness handle, packs, SW caches, history traversal incl. bfcache — no stale B pixels/state under A). Switch-endpoint CSRF/confused-deputy fixture: cross-site switch request without the live session credential fails closed (no cookie-only or GET-triggered switch). Switch-lease rule (HSC6-03): a live leased turn silently continued across the switch FAILS this gate — invalidate + deterministic re-issue only.
+- MT-G08 AI/RAG: shared-namespace fixture shows no mixing once partitioned; model-emitted tenant ref ignored as authority; attachment boundary holds, in each tenant partition (one boundary, enforced per partition — not a per-tenant variant); diagnostics redacted.
+- MT-G09 Backups/export/restore (`NOT_VERIFIED` until companion-architecture §9.12 — export membership presupposes an authenticated subject — HSC7-04): export under hint trust refused; cross-tenant restore blocked (not flagged); staging + re-key + re-proof demonstrated; mid-stream revocation aborts the export with server-side partial discard proven (initiation-only verification FAILS this gate — HSC4-02); Slice-bounded export duration proven (unbounded export stream FAILS this gate — HSC5-03c); key material absent from artifacts/logs.
+- MT-G10 Support/admin: standing super-read absent; break-glass without PRIOR approval record refused; forged/backdated approval record refused at review (chain-recompute breaks, approver-held duplicate mismatches — tamper-evidence asserted, not just prior-record existence); access served past the grant's time bound FAILS this gate (auto-expiry enforced — review-detected overrun alone is insufficient — HSC6-02); post-access review performed by the break-glass actor themselves FAILS this gate (actor≠reviewer — HSC6-02); support view beyond tenant scope refused; post-access review record required. No gate depends on an out-of-band alert channel (S002 prohibits notification delivery); if a Founder-authorized alerting Slice exists, its firing is gated separately there.
+- MT-G11 DataPlacement: model/client placement steering ignored; partial-move reads stay consistent; per-tenant completeness verified before source decommission; a global move flag moving tenants without per-tenant verification FAILS this gate (NIT10-4); a placement-mapping change without a named operator-plane writer and audit record FAILS this gate (NIT11-2). Where placement beyond free-tier capability (e.g. region pinning) is not authorized, placement assertions beyond the proven substrate are recorded NOT_APPLICABLE with the paid-tier Founder decision cited (same conditionality discipline as MT-G06) — never silently narrowed.
+- MT-G12 Promotion: graft A→B refused; claim on `sessionId` knowledge WITHOUT session-secret possession refused; replay refused; fixation refused; promotion-claim outcomes (invalid/expired/consumed/wrong-tenant) proven indistinguishable under the uniform denial + `T_deny` — any issuance/session-existence oracle FAILS this gate (HSC8-02, symmetric to the invitation-oracle clause in MT-G01); promotion-mint/consumption assertions `NOT_VERIFIED` until the companion-architecture §9.12 subject-authN decision exists (mint presupposes an authenticated tenant session — F-01); a promotion claim committing with the claiming session's active tenant ≠ bound target tenant FAILS this gate (mid-claim switch — HSC7-01); imported history presented without import-origin disclosure FAILS this gate (HSC7-03); double-promotion (A→T1 then A→T2) refused on consumed record; expired (>15-min TTL) promotion refused; concurrent promotion single winner via CAS on the anonymous session record; promotion-token lifecycle proven (server-side mint inside the authenticated tenant session only; SHA-256 digest storage with `timingSafeEqual`; consumption marker co-located on the session record consumed in the same CAS-guarded write — off-record consumption state only on a companion-architecture §9.2 transactional store, else fixed crash-safe order invalidate-first — any consumed-token/live-session split FAILS this gate — N2; lease-live-at-promotion invalidated with deterministic tenant-side re-issue, never silent cross-partition continuation); anonymous Harness session proven abandoned (fresh tenant-partition session, canonical-wins) AND abandoned `harness-sessions/` segments proven destroyed-or-read-time-unservable (server refuses them past the destruction stamp — no assumed store TTL; retention of a SERVABLE segment outside any tenant partition FAILS this gate; physical reclamation gated via companion-architecture §9.16 — F-10); Harness-handle cross-tenant resume refused (foreign-partition handle never accepted); import marker proven additive (closed provenance untouched, origin disclosed) — conditional: under a companion-architecture §9.5 clean-start decision the import/disposition/marker assertions are NOT_APPLICABLE-by-decision while expire-and-destroy of the anonymous session is still gated (HSC5-04); every imported turn reference (`supportingTurnIds` AND `confirmedByTurnId` — HSC5-01) proven resolving under the adopted remap/tombstone/retain-archive disposition (dangling reference, or a globally-id-addressable tombstone readable outside the importing tenant's membership, FAILS this gate — F-02); unclaimed sessions expire-and-destroy.
+- MT-G13 Non-regression: anonymous S002 flows (session, lease, correction, recovery, Canvas, budgets, a11y) pass behavior-identically with tenancy proposals present-but-inert, proven by diff-scoped review showing no tenant-branch code in anonymous Gate paths (not by literal byte comparison of artifacts); DeepSeek single truth intact (no second provider/model/harness in docs, config, or tests); `DEEPSEEK_API_KEY` server-only. Validator-scope proof: the ≥25-char tenant-id floor is namespaced to tenant ids — the existing `1..96` `safeId` validators on anonymous paths are behavior-identical (any tightening of anonymous validators FAILS this gate).
+- MT-G14 Rate-limit/resource-isolation enforcement: per-tenant quotas proven with throttle-then-deny under the uniform denial shape AND `T_deny` timing discipline (throttle quantized to buckets with a documented cap; no quota oracle in shape, status, or timing — denial timing shape asserted, not just response shape/status); one tenant's flood does not starve or observably degrade another within the documented fairness posture; enforcement actions audited. Counters-without-enforcement fails this gate. Denial-hold cost (D7) proven: billed-duration + concurrency accounting of the hold-open under adversarial denial rates, per-source denial-rate cap on the denial path itself (still uniform; NAT/shared-egress collateral keying stated — N-i), and the free-tier feasibility proof — missing accounting or cap FAILS this gate. Queue/webhook budget assertions apply only where those planes are authorized; otherwise recorded NOT_APPLICABLE with the scope-out decision cited (same conditionality as MT-G06). Quota/denial counters prove atomic increment under concurrency — a lost-update counter design FAILS this gate (NIT11-3).
+- MT-G15 Tenant deletion/offboarding: freeze→erase→purge→backup-expiry ritual demonstrated idempotent and retry-safe (crash mid-ritual + re-execution converges to full deletion, never to mistaken-complete — N-v) through the separate deletion code path — a freeze implemented by looping the guarded per-membership removal API FAILS this gate (F-06/N-c/NIT10-6); a freeze that revokes before rejecting new authority (lease minted mid-freeze) FAILS this gate — reject-first sub-order is normative (HSC9-04); partial deletion fails this gate — enumerated against the canonical inventory shared with arch §6b / contract §14 (memberships, live leases/turns, queue drain, tenant rows, caches, exports/streams, storage namespaces, retrieval namespaces, Harness partitions, idempotency-key namespaces, webhook secrets/routes, invitation/promotion tokens, backups — a ritual leaving any class live passes nothing — HSC6-04/HSC7-02/NIT10-5); reassignment of a deleted tenant id FAILS this gate (non-reuse — N10); deleted-tenant routine restore refused (fresh Founder re-authorization required); post-retention backup unrestorable; deletion audit record retained without customer content.
 
-### GMT-03 Frontend-untrusted contract
-Direct API calls, changed ids/routes/state and disabled-control bypass do not grant additional authority.
+## PASS semantics
 
-### GMT-04 Principal authentication
-Authenticated principal is server-established and session/token validation is fail-closed.
+`PASS` requires all applicable gates proven on the exact frozen candidate with RED evidence preceding each mitigation claim. Implementation-gated gates without an authorized implementation are `NOT_VERIFIED`. A failed gate requires preserved evidence, root-cause correction, fresh verification, and a new GAUNTLET run. Two fresh independent consecutive critic passes with no material findings are required after the last correction.
 
-### GMT-05 Tenant resolution
-Client tenant selector is validated against active membership/service grant; unknown, suspended or unauthorized tenant fails closed.
+## Reasoning effort record
 
-### GMT-06 Tenant switching
-Switching tenant is an authorized server transition and invalidates tenant-specific client/server state as required.
-
-### GMT-07 Capability/resource authorization
-Every tenant-owned API action is mediated for principal + tenant + action + resource + policy version.
-
-### GMT-08 BOLA/IDOR
-Foreign tenant resource ids cannot be read, mutated, deleted, linked, exported or inferred through ordinary APIs.
-
-### GMT-09 Revocation
-Membership/role/session/tenant revocation becomes effective within the designed security window across request, cache and async planes.
-
-### GMT-10 PostgreSQL role separation
-Runtime role is not superuser, has no BYPASSRLS and does not own protected tables where owner bypass would apply. Migration/owner identity is separate.
-
-### GMT-11 RLS inventory
-Every shared TENANT_OWNED table is discovered from schema and proves RLS/policy state. An unclassified table fails the gate.
-
-### GMT-12 RLS read isolation
-Tenant A cannot read tenant B through direct lookup, joins, aggregates, list endpoints or omitted application filters.
-
-### GMT-13 RLS write isolation
-INSERT/UPDATE/DELETE/UPSERT cannot create or mutate foreign-tenant rows. USING/WITH CHECK behavior is proven.
-
-### GMT-14 Missing DB tenant context
-Tenant-scoped database access without verified tenant context denies; no unscoped fallback exists.
-
-### GMT-15 Pool reuse
-Real pooled connections alternate tenants repeatedly without tenant-context leakage.
-
-### GMT-16 Pool mode / prepared statements
-Selected pool mode and prepared-statement behavior are proven compatible with the isolation design.
-
-### GMT-17 Tenant-aware relational integrity
-Unique constraints and foreign keys prevent cross-tenant references while allowing legitimate same-value data in different tenants.
-
-### GMT-18 Migration safety
-Migrations cannot silently create tenant-owned persistence without classification, isolation controls and tests. Runtime cannot execute DDL.
-
-### GMT-19 Function/trigger safety
-SECURITY DEFINER, triggers and policy helper functions receive explicit hostile review for privilege/search_path/isolation problems.
-
-### GMT-20 Declarative Experience safety
-Experience definitions reject arbitrary executable JS/JSX/HTML/CSS, arbitrary imports/URLs, raw SQL, shell, unrestricted selectors and unregistered components/actions.
-
-### GMT-21 Experience version integrity
-Published versions are immutable, tenant-owned, revision-safe and rollback-safe. Cross-tenant version references fail.
-
-### GMT-22 Dynamic document safety
-Collection/document schemas enforce size/depth/cardinality/type limits and dangerous-key rejection. Query DSL is bounded and parameterized.
-
-### GMT-23 Cache isolation
-Tenant-dependent keys cannot collide; revocation/policy-version invalidates stale authorization-dependent entries.
-
-### GMT-24 Object storage isolation
-Foreign object access, key confusion, signed URL scope/expiry and content-type handling are tested against the real selected provider where relevant.
-
-### GMT-25 Queue/worker isolation
-Jobs carry verified authority references, reject stale/foreign authority, are idempotent/replay-safe and cannot let one tenant exhaust the worker fleet without limits.
-
-### GMT-26 OAuth/integration isolation
-Credentials are server-only and tenant-bound; redirect/state/PKCE/audience/scope and rotation controls match the selected integration design.
-
-### GMT-27 Webhook isolation
-Signature, replay, event schema and tenant binding are enforced before domain mutation.
-
-### GMT-28 SSRF / egress policy
-Outbound destinations obey the selected allowlist/policy; redirects and non-public destinations cannot bypass controls.
-
-### GMT-29 Browser security
-Stored/reflected/DOM injection, CSRF, CORS and CSP/Trusted Types posture are tested in a real browser. CSP is not treated as sole XSS defense.
-
-### GMT-30 AI/RAG isolation
-Retrieval/memory/search is tenant-bound; missing tenant scope fails; no foreign vector/document retrieval is possible.
-
-### GMT-31 AI tool authority
-Model intent never authorizes an action. Downstream tool authorizer validates principal/tenant/action/resource and applies least privilege.
-
-### GMT-32 Prompt-injection containment
-Untrusted user/retrieved/integration content cannot enlarge data/tool authority or exfiltrate another tenant's data.
-
-### GMT-33 Logging/telemetry privacy
-Secrets, raw protected payloads and inappropriate PII do not appear in logs/metrics/traces; tenant correlation is bounded and safe.
-
-### GMT-34 Rate/noisy-neighbor isolation
-Identity/tenant/resource/global quotas prevent one tenant from consuming disproportionate DB/queue/AI/integration capacity.
-
-### GMT-35 Custom-domain tenant routing
-Host resolves only through verified DomainBinding; unknown/dangling domain fails and Host never substitutes for membership authorization.
-
-### GMT-36 Support/admin isolation
-Cross-tenant operator access requires separate capability, actor identity, target tenant, reason/TTL and audit. No silent bypass.
-
-### GMT-37 Backup security
-Mixed-tenant backup access, encryption, retention and restore permissions are independently reviewed.
-
-### GMT-38 Tenant export
-Export inventory is ownership-derived and post-verified; fixtures prove tenant A export excludes every tenant B record/object.
-
-### GMT-39 Tenant restore
-Restore/import validates ownership in isolated staging/control path and cannot activate foreign records.
-
-### GMT-40 Offboarding
-Suspension, session revocation, job cancellation/rejection, integration revocation and retention/deletion workflow are proven.
-
-### GMT-41 DataPlacement routing
-Client/model cannot choose a placement. Shared/dedicated routing preserves identical domain authorization semantics.
-
-### GMT-42 Placement migration
-Cutover has generation/state, verification and rollback; no silent split-brain or mixed placement writes.
-
-### GMT-43 Secret confinement
-No server secret appears in browser bundles, source maps, Experience definitions, AI prompts, logs or public artifacts.
-
-### GMT-44 Dependency/supply-chain
-Lockfile, provenance/license/security review and vulnerability scanning cover new security-critical dependencies.
-
-### GMT-45 Real infrastructure proof
-Tenant-isolation PASS cannot rely exclusively on mocks. Real PostgreSQL plus real selected provider/browser proof is mandatory for controls whose behavior is provider-dependent.
-
-### GMT-46 Independent Security Critic
-A critic independent from the builder attacks authorization, RLS, pooling, tenancy across all planes, Experience RCE surfaces, AI isolation, operations and recovery.
-
-### GMT-47 Recovery readiness
-Security incident paths can revoke sessions/memberships, suspend tenant, disable integrations/domains, invalidate security epochs and preserve forensic events.
-
-### GMT-48 Candidate freeze
-Exact candidate SHA frozen after corrections; all affected gates rerun; evidence is bound to that SHA.
-
-## Mandatory adversarial fixture
-
-At minimum:
-- tenant A and tenant B;
-- two users in A with different capabilities;
-- at least one user in B;
-- colliding human-readable resource names across A/B;
-- active then revoked membership;
-- active then suspended tenant;
-- queued work created before revocation;
-- objects/cache/search records for both tenants.
-
-## Convergence
-
-Builder is never final judge.
-
-After the last material correction:
-1. run full affected verification;
-2. run independent Security Critic;
-3. correct root cause for every valid finding;
-4. repeat until no material finding;
-5. obtain two fresh independent consecutive critic PASSes on the same candidate bytes;
-6. freeze candidate SHA;
-7. rerun candidate-specific gates if freeze changes bytes.
-
-No document-only review can produce production tenant-isolation PASS.
+- Authoring model: Muse Spark (Muse Code). Correction pass: single-model deep review + edit in this runtime; the wrapper requested reasoning-effort `ultra`; the runtime reported `ultra_reasoning_effort` closed and executed `xhigh`. This fallback is material execution evidence and must not be represented as `ultra`.
+- GAUNTLET correction round: same runtime; wrapper requested `ultra`, runtime executed `xhigh` because `ultra_reasoning_effort` was closed. Paired allow-own controls added to MT-G01/G02/G04/G07 (deny-all fixtures fail); race, oracle, ceremony, lifecycle, residual, conditionality, and methodology assertions added per finding IDs in gate text.
+- Critic-11 correction round (HSC9-01…04 + NIT11-1…3): same runtime; wrapper requested `ultra`, runtime executed `xhigh` because `ultra_reasoning_effort` was closed. MT-G01 gained grantor in-transaction + issuer re-validation teeth; MT-G02 gained the elevated-execution + catalog-assertion bar; MT-G11 gained placement-config authority; MT-G14 gained counter atomicity; MT-G15 gained the reject-first freeze order.
+- Critic-12 correction round (HSC12-01/HSC12-02): same runtime; wrapper requested `ultra`, runtime executed `xhigh` because `ultra_reasoning_effort` was closed. MT-G01 teeth generalized to every grant/upgrade mutation; issuer re-read ordering pinned for non-transactional stores.
+- Finding-ID legend (N14): H/M/L = round-1 HIGH gate-correctness / MEDIUM design / LOW findings; F-## = round-2/3 follow-up findings; N/N-a…/N-i…/N1… = round-2…5 corrective + nit IDs (each bare-N ID names exactly one norm — split/E4/M1/M3/N-i tags were disambiguated in the HSC6 round; legacy N-d reads N-i); HSC4/HSC5/HSC6/HSC7/HSC8/HSC9/HSC12 = hostile-critic rounds 4/5/6/7/8/9/12.
