@@ -1,327 +1,151 @@
-# Tenant Isolation Security Contract — PROPOSED
+# VXA Tenant Isolation Security Contract (PROPOSED)
+
+Status: `PROPOSED / NOT_AUTHORIZED`
+Binding: `FORGE-VEXRYZER-AUTOMATION-v1.0.0`
+Companion: `job/docs/architecture/VXA-MULTITENANCY-SECURITY-FOUNDATION.PROPOSED.md`
+Scope: planning only — normative language (`MUST`/`NEVER`) binds future implementation if authorized; it authorizes nothing now and changes no current code or Slice.
+
+## 0. Precedence
+
+1. Founder instructions, AGENTS.md, Product Truth under `job/docs/`.
+2. This contract (if authorized) for tenant paths.
+3. DeepSeek single truth, secret boundary, free-tier-first, Netlify Free target.
+4. S002 anonymous-session truth — preserved, never reinterpreted.
+
+Where this contract conflicts with higher authority, higher authority wins and the conflict MUST be reported, never silently resolved.
+
+## 1. Identity and request authority
+
+- MUST: authenticate subject, resolve membership set, activate exactly one tenant per request — three separate steps, in that order.
+- MUST: derive the active tenant server-side from the verified session/membership record on every request.
+- NEVER: trust a client-supplied tenant id, header, cookie value, URL segment, or model-emitted tenant reference as authority. Client hints MUST equal the server-derived value or the request fails closed.
+- MUST: fail closed (deny, audited) on expired/revoked membership, tenant mismatch between layers, or missing tenant binding on a tenant path. Fail-open defaults are forbidden.
+- MUST: keep tenant identifiers opaque and unguessable with a ≥128-bit entropy floor (`SAFE_ID` format discipline as current ids; the floor is explicit and not inherited from UUIDv4's 122 bits). Sequential tenant ids are forbidden.
+- MUST (generation rule): draw tenant ids from a CSPRNG with ≥128 bits of entropy, mapped uniformly (rejection sampling — no modulo bias — NIT11-1), encoded in the `SAFE_ID` alphabet (`[a-z0-9-]`, 37 symbols ≈ 5.21 bits/char — 25 chars ≈ 130.2 bits, 24 chars ≈ 125.0 bits) under the exact observed shape `/^[a-z0-9]+(?:-[a-z0-9]+)*$/` (no leading/trailing/doubled hyphens — exact constrained length-25 entropy ≈130.13 bits ≥ 128, N-f) at a **minimum length of 25 characters** and a **maximum of 96** (N1); server-side validation MUST reject any tenant id outside 25..96 characters or failing the `SAFE_ID` shape. `SAFE_ID` constrains format only — length + CSPRNG source supply the entropy floor. Invitation tokens and promotion tokens follow the same generation rule. This ≥25-char floor is namespaced to tenant ids (and tenant-scoped tokens) ONLY — it MUST NOT tighten the existing `1..96` `safeId` validators on anonymous S002 paths, which stay behavior-identical (MT-G13).
+- MUST (subject-authN dependency, M1): the "authenticated subject" in §1/§1A — and the authenticated tenant session presupposed by invitation-issuance (§1A) and promotion-mint/consumption (§12) — presupposes a Founder-designated subject-authentication authority/mechanism (companion-architecture §9.12). Until that decision exists, every membership-resolution, invitation-issuance, invitation-acceptance, and promotion-mint/consumption assertion in this contract is `NOT_VERIFIED` — designed but unproven. No Slice may treat authZ design as evidence of authN existence.
+
+## 1A. Intra-tenant authorization
+
+- MUST: assign each membership exactly one role from the closed set `owner` / `admin` / `member`. Membership alone confers no privilege; every privileged operation evaluates the membership's role server-side per request. Client-asserted roles are forbidden as authority.
+- MUST: fail closed on self-promotion — no subject may raise its own role.
+- MUST (removal scope, N3): `admin` may remove non-owner subjects ONLY — `member`s and peer `admin`s, never an `owner` (N-g explicit: peer-admin removal is permitted, owner removal is refused regardless of remaining owner count). `owner` removal/demotion of another `owner` is permitted only through the two-party rule with the last-owner guard re-evaluated in-transaction. Invitation issuance follows the issuer×role matrix (F-08): `owner`→{`member`,`admin`}, `admin`→{`member`}, `member`→{}; never `owner`; invited role ≤ issuer role. Member-issued invitations are refused. Upgrades of existing memberships (`member`→`admin`, `→owner`) require the corresponding grantor (`owner` grantor / two-party `owner` grant) — never self-service, never via invitation — with grantor authority re-evaluated inside the committing transaction for every grant/upgrade mutation, not just `owner` conferral (HSC12-01).
+- MUST (invitation concurrent-accept, F-09): concurrent accepts contend on the invitation record via CAS/transaction — single winner consumes, all others fail closed on the consumed mark. Commit order is consume-mark FIRST, membership-add SECOND (crash leaves fail-closed consumed-without-membership, never privilege duplication). Two memberships from one invitation FAILS the gate. Acceptance by an already-member subject is refused as duplicate under the uniform denial (N-e). Two-party rule (scoped, no Slice-level waiver): a grant conferring `owner` MUST have a grantor who already holds `owner` in the same tenant AND is a different subject from the grantee, with both checks re-evaluated inside the committing transaction against the contended membership set (HSC9-01 — request-time-only grantor evaluation is a TOCTOU defect); `owner`/`admin` inviting a new `member` is not an `owner` grant but MUST prove invitee identity at acceptance and MUST never confer `admin`/`owner`. Any waiver or narrowing of this rule requires an explicit Founder decision — a future Slice MUST NOT restate, reinterpret, or drop it on its own authority.
+- MUST: refuse any removal, demotion, or expiry transition that preserves the tenant yet would leave zero `owner` memberships (last-owner guard, fail-closed, audited). A pre-mutation check alone is a TOCTOU violation — the guard MUST be re-evaluated inside the committing transaction against the contended record (the tenant's membership set: all role/grant/removal/demotion/expiry mutations on one tenant serialize in a single atomic commit unit — row-level lock / serializable transaction / CAS-guarded membership-set record per the authorized store). Memberships are non-expiring by default (N4) — the expiry arm binds future time-boxed memberships only. Pre-checks may deny fast; only the in-transaction re-evaluation is authoritative. Provisioning (first `owner` by operator act under the §1A ceremony) and the tenant-destroying deletion ritual are outside the guard, never constrained by it — and the deletion carve-out MUST be a separate code path unreachable from normal removal/demotion/expiry callers, never a caller-supplied flag (F-06). Owner-less-tenant recovery is break-glass only under §10 authority and MUST re-establish exactly one owner.
+- MUST: issue invitations server-side from `owner`/`admin` only, as single-use tokens (generation rule per §1) with **24-hour expiry**, bound to the issuing tenant and the invited role per the issuer×role matrix (`owner`→{`member`,`admin`}, `admin`→{`member`}, `member`→{}; never `owner` — F-08). Acceptance MUST prove the invitee's authenticated subject identity under the companion-architecture §9.12 authN authority (acceptance assertions `NOT_VERIFIED` until it exists). Invitation guessing beyond a bounded attempt count MUST lock **that invitation only** (per-invitation scope — never per-tenant or per-subject). Token shape is a (non-secret handle, secret verifier) pair: the verifier carries the ≥128-bit floor and ONLY its SHA-256 digest is stored (`timingSafeEqual` compare); the handle is CSPRNG-drawn ≥64-bit (N-iii); the handle is the lookup key and the attempt counter attaches to the handle, while unknown-handle guesses count under the per-source denial cap (§5/M2) under uniform denial. This is a blast-radius limitation, NOT a DoS refusal: tenant-wide lockout is refused, but per-invitee onboarding denial until the issuer acts is accepted residual risk. Invalid / expired / locked / consumed / wrong-tenant invitation outcomes MUST ALL present the single uniform `denied` shape under the §5 `T_deny` timing discipline — lockout state MUST NOT be distinguishable by shape, status, or timing; precise outcomes are server-side telemetry only. A locked invitation MUST surface an issuer-visible (never invitee-distinguishable) lockout signal in the tenant administration view; fresh-invitation re-issuance is rate-bounded (per-tenant issuance quota, throttle-then-deny under uniform denial) so lock/re-issue loops are bounded; re-issuance replacing a lockout-confirmed invitation draws from a separately-bounded lockout-replacement reserve (Slice-set) so attack-driven locks cannot drain the general quota into a tenant-wide onboarding halt. Delivery: tokens are NOT product-delivered (S002 prohibits notification delivery) — default is human-relayed out-of-band copy by the issuer, token displayed exactly once at issuance and never re-displayed; any product-delivered channel needs its own Slice authorization. MUST (HSC9-02): acceptance re-validates inside the consuming transaction that the issuer still holds a membership whose role could (re-)issue that invitation under the matrix — an issuer demoted/revoked since issuance (or a dissolved tenant) fails closed under uniform denial; stranded invitees are handled via bounded re-issuance, never by honoring a stale issuance.
+- MUST: keep tenant provisioning closed (operator-provisioned) unless a Founder decision explicitly authorizes self-serve with Sybil/abuse controls (per-provisioning rate limits, quota accounting). Open self-registration is forbidden by default. The closed path itself is controlled by a provisioning ceremony: a Founder-designated provisioner identity (role, never a shared credential), a pre-provisioning approval record at the §10 tamper-evidence bar (or an explicit Founder waiver of the duplicate half), full audit (provisioner, tenant id, first-owner subject binding, timestamp, justification), and abuse bounds (per-provisioner rate limit + standing live-tenant cap, throttle-then-deny under uniform denial). Until the ceremony is designated, provisioning assertions are `NOT_VERIFIED`.
+
+## 2. Enforcement points (all server-side)
+
+Tenant checks MUST execute at each of: Function entry, session load/CAS, tool-broker authorization, UI Adaptation Gate target/evidence/disclosure resolution, cache read/write, storage sign/serve, queue enqueue **and** dequeue, export/restore, webhook ingress/egress, invitation issuance/acceptance, promotion-mint/claim, tenant-switch endpoint, role change, tenant provisioning/deletion, admin/support projection. A check at only one layer (e.g. UI filtering, or enqueue-only) is a contract violation.
+
+## 3. Relational isolation (when a database is authorized)
+
+- MUST: `tenant_id` column on every tenant-owned table; RLS (or the selected store's equivalent row-isolation mechanism) enabled with default-deny. The predicate spelling `tenant_id = current_setting('app.tenant_id')::text` is illustrative for Postgres and binds only if Postgres is selected per companion-architecture §9.2; the DB-neutral MUST is a transaction-scoped tenant predicate with default deny. Wherever the spelling reads context, it MUST read it without a missing-ok default — absent tenant context errors fail closed, never predicate to NULL/empty.
+- MUST: set the tenant context transaction-locally inside the transacting unit (Postgres spelling: `SET LOCAL`). Session-scoped context for tenant identity is forbidden.
+- MUST: reset/verify pool checkout state so no connection serves tenant B with tenant A's leftover context. Statement-mode pooling without transaction wrap is forbidden on tenant paths.
+- MUST: model cross-tenant references as impossible by construction — FKs into tenant data are composite `(tenant_id, id)`. A single-column FK into tenant-owned rows is forbidden.
+- MUST: backfill + `NOT NULL` + RLS enable land together with rollback/roll-forward proof. Partial-enforcement production windows are forbidden.
+- MUST (table ownership, HSC4-01): tenant runtime roles MUST NOT own tenant tables and MUST hold no `BYPASSRLS`; apply `FORCE ROW LEVEL SECURITY` wherever ownership by a runtime-adjacent role is unavoidable. The authorizing Slice MUST record the exact tenant-table ownership/grant set (same bar as seed-table grants). GAUNTLET bypass + allow-own fixtures MUST run as the least-privilege tenant runtime role.
+- MUST (elevated execution, HSC9-03): the membership resolver is the ONLY elevated-reader path over tenant data. Any `SECURITY DEFINER` function on a tenant path MUST pin `SET search_path` with schema-qualified references. Tenant runtime roles MUST hold no `TRUNCATE` on tenant tables (`TRUNCATE`/`REFERENCES` are not subject to RLS) and no DDL (`CREATE`) on tenant schemas — DDL runs under the migration role only. Views over tenant tables MUST be `security_invoker` where supported, else forbidden. Every tenant-owned table MUST prove RLS enabled (and `FORCE` where required) via a catalog assertion in migration lint.
+- MUST (seed-table grants, HSC8-01): global lookup/seed tables (if any) are owned by a non-login role; tenant runtime roles hold `SELECT` ONLY (no `INSERT`/`UPDATE`/`DELETE`/`TRUNCATE`); migrations touching seed data run under a dedicated migration role; the authorizing Slice records the exact seed grant set. A tenant-role write on seed tables is refused — and its absence from the gate set would pass an over-granted Slice, so MT-G03 gates it.
+- MUST (under the future authorizing Slice only — no such test exists or is authorized now): integration and GAUNTLET suites run at least one test with RLS-bypass attempt (direct cross-tenant select/update/delete) proving zero rows affected.
+- MUST (paired allow-own assertions, H1 — deny-all must fail): every deny-gate in this contract MUST be proven with paired assertions — legitimate own-tenant access under correct context remains fully visible/served (positive control) AND cross-tenant access under the same mechanism returns zero rows / uniform denial (negative control). A deny-everything policy (context never set, predicate always false) satisfies the negative control and MUST therefore fail the gate on the missing positive control. Fixtures asserting only denial, without the companion allow-own proof, do not satisfy any gate in §§2–7.
+
+## 4. JSONB and secondary indexes
+
+- MUST: keep `tenant_id` as a real indexed column. NEVER gate isolation on a JSONB-internal field alone.
+- MUST: back any tenant-scoped JSONB access path with a generated column + B-tree index. GIN indexes MUST NOT serve as the isolation predicate.
+- MUST: reject queries on tenant paths that omit the tenant predicate, even when a JSONB facet matches.
+
+## 5. Experience / Canvas RCE boundary (tenant content is untrusted)
+
+- MUST: preserve the closed 11-kind intent union and executable-surface rejection for all tenant-supplied content (labels, descriptions, annotations, artifact fields).
+- MUST: bind every validated action to the active tenant at the Gate in this normative order — target resolution → tenant-scope check → evidence check → disclosure. The tenant-scope check runs BEFORE evidence/disclosure so probe responses cannot be distinguished by check order. Reconciliation: the tenant-scope check IS the session-authority evaluation for tenant paths, deliberately positioned early (a last-position session-authority check would itself be the oracle) — it REPLACES the late check on tenant paths, which does not additionally run (single tenant-path gate flow, F-07); the authorizing Slice MUST adopt this tenant-path deviation into the Gate flow documentation while anonymous paths keep the canonical TARGET → EVIDENCE → DISCLOSURE → SESSION-AUTHORITY order.
+- MUST: keep client-visible denials uniform in shape, status, AND timing — one `denied` shape that never distinguishes unknown from forbidden tenant, missing evidence from cross-tenant reference, nonexistent from inaccessible target, or invalid/expired/locked/consumed/wrong-tenant invitation outcomes from any other denial. Timing discipline: every denied tenant-path request completes no earlier than a fixed minimum-latency bucket `T_deny` set by the authorizing Slice (server holds the response until the bucket elapses); throttle delays are quantized to multiples of `T_deny` up to a documented cap, beyond which throttle becomes deny at `T_deny`. Deny MUST NOT use a distinct quota status code (no 429 oracle). `tenant-scope-denied` is a server-side telemetry/audit reason code ONLY and MUST NOT appear on the client-visible wire. Cross-tenant `targetId`/`memberIds`/`evidenceIds`/`artifactIntentId` references fail closed under the uniform denial with `tenant-scope-denied` recorded server-side.
+- MUST (denial-hold cost guard, M2): the hold-until-`T_deny` discipline burns billed Function duration and concurrency per denial. The authorizing Slice MUST account both under expected and adversarial denial rates, MUST set a per-source denial-rate cap (throttle-then-deny on the denial path itself, still uniform), and MUST prove free-tier feasibility — else the discipline returns to Founder decision (companion-architecture §9.13), never to distinguishable fast-denials. The Slice's fairness posture MUST address NAT/shared-egress collateral (a per-source cap keyed on source IP can throttle unrelated users behind one egress) — keying, collateral scope, and appeal/recovery are stated, not silent.
+- NEVER: let tenant data become code, markup, styles, selectors, coordinates, URLs, component names, or imports. Catalog resolution stays explicit and versioned.
+- NEVER (ENTITLED-unreachable): serve ENTITLED-state content on any tenant path before that state is populated by its own future entitlement Slice — ENTITLED is defined but unreachable; per-tenant billing/entitlement MUST NOT be smuggled in as an input to a security function.
+- MUST: partition projection chains (`basedOnRevision`/`projectionRevision`/choreography identity) and disclosure state by tenant. Replay across tenants is forbidden.
+
+## 6. Cache, storage, queue, integrations
+
+- MUST: namespace all cache entries, object keys, job envelopes, idempotency keys, and webhook secrets by tenant. Cache keys MUST be structured pairs / composites `(tenant_id, …)` — never naive string concatenation (same boundary-shift rationale as idempotency). The idempotency namespace MUST be a structured pair / composite constraint `(tenant_id, key)` — never naive string concatenation (which admits boundary-shift collisions); cross-tenant key collisions are impossible by construction.
+- MUST (where inbound webhooks are authorized — F-05; scoped-out webhooks make this whole bullet NOT_APPLICABLE-by-decision): verify inbound webhook signatures in this order — extract route identifier → look up server-side route→secret table (unrecognized route → uniform denial) → verify HMAC with the route's current (or overlapping-prior, during rotation) secret → attribute tenant only on valid signature. NEVER select the secret from a client-supplied tenant field, body parameter, or header. Per-tenant webhook secrets MUST support versioned rotation with overlapping validity and revocation of the superseded secret.
+- MUST: verify queue tenant binding at dequeue, not only at enqueue. On revoked/expired binding the terminal state is drop-with-audit; retries preserve the original tenant binding and never re-resolve to a "current" tenant. No dead-letter path readable by another tenant or a revoked subject. (Queue rules bind only if a future Slice authorizes a queue — none exists in current scope.)
+- MUST: mint storage access server-side for the active tenant with short expiry (**≤15 minutes** default — longer only with per-entry-class justification recorded by the authorizing Slice).
+- MUST (bind-at-serve, M3): mint-time tenant binding alone does not satisfy cross-tenant presentation — a signed URL is bearer. The authorizing Slice MUST adopt either (a) bind-at-serve — every serve/fetch of a tenant-namespaced object re-validates the presenting session's active tenant against the object's namespace server-side, failing closed (uniform denial) on mismatch; or (b) an explicitly restated expiry-bounded-bearer posture (unguessable key + ≤15-min TTL as the only control) with the residual window recorded as accepted risk. Membership revocation MUST take effect for bearer artifacts within **≤15 minutes** (max bearer TTL) — already-minted URLs may serve for at most their remaining TTL; this residual is stated normatively, never presented as instant revocation.
+- MUST: bound cache TTLs (tenant-path default ≤15 minutes unless justified per entry class) and purge a subject's tenant-scoped entries on membership revocation or tenant switch — never rely on TTL expiry alone. Global cache flush is governed as break-glass (§10 authority), never a routine support operation.
+- NEVER: serve a cached artifact, file, or job result computed under tenant A to tenant B (no unkeyed shared cache on tenant paths).
+- MUST: keep tenant correlation ids out of secret-bearing logs; NEVER log secrets, tokens, signing keys, or raw customer content.
+
+## 7. Browser-untrusted model
+
+- MUST: treat every browser-supplied tenant reference as an untrusted hint validated server-side.
+- MUST: perform tenant switching as a server round-trip that re-issues authority. Client-local tenant toggles are forbidden.
+- MUST (switch-during-live-lease, N12): a live leased turn under the prior tenant is invalidated at switch time with deterministic guided recovery under the new tenant (re-issue, never silent cross-tenant continuation — symmetric to the promotion lease rule); the switch itself still requires the live session credential (E4).
+- MUST (switch credential/method, E4): the switch endpoint is a state-changing mutation requiring presentation of the live session credential (same Bearer/[REDACTED] discipline as any mutation) — cookie-only or GET-triggered switching is forbidden, and cross-site switch requests without the session credential fail closed. A switch satisfying only "server round-trip" without the credential fails this contract.
+- MUST: purge the companion-architecture stale-view inventory on switch (reactive store, Canvas graph + projection cache, Harness handle, context packs, service-worker caches, history traversal with bfcache opt-out or `pageshow` re-validation failing closed to neutral state).
+- NEVER: expose tenant enumeration (sequential ids, list-all endpoints, or any response — including error shape, timing, or status-code difference — distinguishing "unknown tenant" from "forbidden tenant"). Client-visible denials are a single uniform `denied` shape under the §5 timing discipline (`T_deny` bucket); precise reason codes live server-side only.
+
+## 8. AI / RAG isolation
+
+- MUST: partition retrieval namespaces per tenant and filter context packaging to the active tenant before budgeting/truncation.
+- NEVER: retrieve across tenants, share an embedding namespace without a tenant partition key, or accept a model-emitted tenant id as authority for data access.
+- MUST: preserve the S002 attachment boundary (no customer attachment content to DeepSeek) independent of tenancy.
+- MUST: partition Harness session state (`deepseek-harness-session-store` and any successor) by active tenant; a Harness session established under tenant A is never resumed, replayed, or continued under tenant B — canonical Vexryzer session/evidence state remains authoritative on divergence.
+- MUST (promotion disposition): the anonymous Harness session does NOT migrate on promotion — it is abandoned and a fresh Harness session starts under the tenant partition with imported canonical state authoritative (canonical-wins on divergence). Replaying or continuing the anonymous Harness session under the tenant is forbidden.
+- MUST (abandoned-segment destruction, M6): "abandoned" means destroyed-or-unservable, never retained-outside-partition. Orphaned anonymous `harness-sessions/` segments MUST be destroyed at promotion-commit time where the store supports delete (same commit unit as session consumption where possible); segments that cannot be synchronously deleted MUST carry a destruction timestamp (≤ the anonymous session TTL) enforced server-side at read/serve time — "expired" is proven by read-time refusal, never by assumed store TTL/reaper (F-10). Physical reclamation is a companion-architecture §9.16 feasibility item. Retention of servable abandoned segments outside any tenant partition is a contract violation.
+- MUST: redact tenant-identifying material from diagnostics/telemetry; model-visible narration MUST NOT carry another tenant's data even on tool error paths.
+
+## 9. Backups, export, restore
+
+- MUST: scope exports per tenant with membership re-verified at export initiation AND re-validated during the stream (chunked/periodic checks or short-lived tickets re-checked at serve time); abort-on-revocation with server-side discard of the partial export (HSC4-02). Initiation-only verification is a contract violation for streams. Export duration is bounded by the authorizing Slice.
+- MUST: restore into isolated staging with re-keyed `tenant_id` and membership re-proof before promotion. Cross-tenant restore is a blocked operation.
+- MUST: encrypt backups with keys outside the backup itself; NEVER log or client-expose key material.
 
-STATUS: PROPOSED / NOT AUTHORIZED FOR IMPLEMENTATION
-FORGE_BINDING_ID: FORGE-VEXRYZER-AUTOMATION-v1.0.0
-PARENT_ARCHITECTURE: job/docs/architecture/VXA-MULTITENANCY-SECURITY-FOUNDATION.PROPOSED.md
-PLANNING_PARENT_SHA: ae6f4cb99291ce74ec48435cec7a1149abf50c69
+## 10. Support and administration
 
-## 1. Purpose
+- MUST: deny standing cross-tenant read. Break-glass is time-bound, tenant-scoped, approval-recorded, and fully audited (who / which tenant / which records / why / when). Sole exception (HSC7-05): global cache flush is an explicit companion-architecture §9.4-controlled non-tenant-scoped act — no other support act escapes tenant-scoping.
+- MUST: render support views as tenant-scoped projections. Raw cross-tenant queries in support tooling are forbidden.
+- MUST: record break-glass in an append-only tamper-evident approval/audit record written BEFORE access (approver, scope, time bound, justification) with mandatory post-access review by the designated approver. The time bound MUST be enforced by auto-expiry of the grant at the bound (access past the bound fails closed) — review-detected overrun alone is insufficient (N6). Separation (N7): the post-access reviewer MUST be a party other than the break-glass actor — if the companion-architecture §9.4 approver is the actor, a second reviewer designated in companion-architecture §9.4 performs the review (the approver holding the duplicate AND self-reviewing is a named residual otherwise). No break-glass access without a prior approval record — access first, record later is forbidden. Tamper-evidence mechanism: hash-chained entries (each entry carries the SHA-256 hash of the previous entry; genesis hash recorded in the Founder companion-architecture §9.4 authorization) PLUS an approver-held duplicate (synchronous copy to WORM retention where the platform supports it, else a separate namespace whose write grant excludes the support/break-glass identity) — a chain in a store the actor can rewrite is not tamper-evident, and an emailed/paged copy is not the duplicate (alerting belongs to its own Slice). The authorizing Slice MUST prove free-tier feasibility of both halves; if either is infeasible the mechanism returns to Founder decision, never to an unprotected log. Post-access review MUST recompute the chain and compare against the approver-held duplicate; forged/backdated entries are a defined gate failure. If the duplicate write fails, the record is incomplete and access MUST NOT proceed (fail closed, audited).
+- MUST NOT depend on an out-of-band alert channel: S002 prohibits notification delivery and no alerting infrastructure exists in scope. Any future alerting/paging channel requires its own Slice authorization (companion-architecture Founder decision); until then the approval record + review procedure is the control.
 
-This contract defines security properties that a future authorized multi-tenant foundation Slice must satisfy. It is deliberately stricter than "tenant_id is present" and deliberately independent of UI behavior.
+## 11. DataPlacement
 
-The governing security statement is:
+- MUST: resolve tenant→region/store mapping from server configuration keyed by active tenant. Model output and client input MUST NOT influence placement. MUST (NIT11-2): mapping changes are operator-plane acts under the provisioning-ceremony audit bar — never tenant-influenced, never unaudited; the authorizing Slice names the config writer.
+- MUST: verify per-tenant data completeness after any placement move before decommissioning the source copy.
+- MUST (N-iv): never move tenants via a global move flag — placement moves are per-tenant with per-tenant verification. Where placement exceeds free-tier capability, assertions beyond the proven substrate are NOT_APPLICABLE-by-decision (same conditionality as MT-G06) — never silently narrowed.
 
-Even if the frontend is controlled by an attacker, it cannot obtain authority the backend did not grant.
+## 12. Anonymous→tenant migration
 
-Even if one application query omits an intended tenant filter, another independent isolation layer must materially reduce the probability of horizontal disclosure.
+- MUST: preserve anonymous S002 sessions unchanged; promotion is single-use with a **15-minute TTL**, bound to the pair (anonymous `sessionId` + proof of session-secret possession at claim time, verified against the stored token digest — `sessionId` knowledge alone is insufficient and MUST NOT authorize promotion).
+- MUST (promotion-token lifecycle, M5): the promotion token is minted server-side ONLY inside an already-authenticated tenant session (subject-authN per companion-architecture §9.12 + active-tenant resolution first — mint/consumption assertions `NOT_VERIFIED` until companion-architecture §9.12 exists) at claim confirmation — never pre-minted, client-minted, or minted for an unauthenticated channel. Store ONLY the SHA-256 digest (same digest discipline as session tokens; `timingSafeEqual` comparison) with the bound anonymous `sessionId`, claiming subject, target tenant, issuance timestamp, and single-use-consumed flag. The promotion-consumption marker MUST live ON the contended anonymous `AgentSessionRecord` (same CAS-guarded write that invalidates the session — single-record atomicity, provable on conditional-write stores); a separate issuance record is audit only, never a commit party. Off-record consumption state is allowed ONLY on a companion-architecture §9.2 transactional store, else fixed crash-safe order applies (invalidate session first, mark consumed second — crash leaves fail-closed, never consumed-token/live-session) (N2). The committing write MUST re-validate that the authenticated claiming session's active tenant still equals the bound target tenant at claim time (mid-claim switch fails closed — HSC7-01). Promotion-claim outcomes (invalid/expired/consumed/wrong-tenant) MUST be indistinguishable under the uniform denial + `T_deny` — parent MUST for the MT-G12 oracle clause (NIT-1). If a leased turn is live at promotion commit, the lease is invalidated with the session and the turn is re-issued under the tenant partition via deterministic guided recovery — never silent cross-partition continuation, and the claimant is told the turn restarted.
+- MUST: consume/destroy the anonymous session on successful promotion (token digest invalidated; record not re-claimable). Sequential double-promotion (A→T1 then A→T2) MUST fail closed on the consumed record.
+- MUST: contend concurrent promotions on the anonymous `AgentSessionRecord` itself via the existing CAS/etag discipline — one winner consumes, others fail closed on stale etag.
+- NEVER: allow grafting (session A history into tenant B), replay of a consumed promotion, fixation (promoting a session the claimant did not create without re-proof of the current session binding — mechanism: live-session-credential presentation verified against the stored digest immediately before the CAS-guarded promotion mutation, per companion-architecture §7), or attacker-chosen session binding.
+- MUST (conditional on the companion-architecture §9.5 import-vs-clean decision — HSC5-04): if the Founder selects clean-start, the import/disposition/marker assertions in §12 are NOT_APPLICABLE-by-decision and promotion destroys the anonymous session with expire-and-destroy (still gated); if import is selected, the rules below bind. Until companion-architecture §9.5 is decided, import assertions are PROVISIONAL.
+- MUST: mark imported history with an explicit additive import field (e.g. `importedFromAnonymous` + promotion id) — NEVER by overloading `source: system`. Closed `EVIDENCE_SOURCES` (`user`/`inference`/`system`) keep their truthful origin; model-visible narration MUST disclose the imported origin where history is presented.
+- MUST (turn-reference disposition, L6): imported records of any carrier type holding turn references (`supportingTurnIds` AND `confirmedByTurnId`, and any future reference field — N-ii/HSC5-01) reference turns of the destroyed anonymous session. The authorizing Slice MUST adopt exactly one disposition — remap (rewrite to tenant-partition turn ids), tombstone (original ids resolving to a read-only no-authority tombstone whose reads are membership-gated to the importing tenant — globally-addressable tombstones are forbidden), or retain-archive (sealed read-only archive addressable only through the importing tenant's membership) — and prove every imported turn reference resolves under it. Dangling or recyclable references are forbidden.
+- MUST: expire-and-destroy unclaimed anonymous data under current lifecycle rules — never silent merge.
 
-A single layer failure must not automatically become a platform-wide tenant breach.
+## 13. Audit and observability (tenant-safe)
 
-## 2. Authority objects
+- MUST: log tenant-scoped denials with tenant id + reason code (`tenant-scope-denied`, `membership-revoked`, `promotion-replayed`, …) without customer content, secrets, or tokens. Reason codes are server-side telemetry — they MUST NOT leak into client-visible responses (see uniform-denial rule).
+- MUST: keep rate-limit and resource-isolation counters per tenant AND enforce them: per-tenant request/compute/storage quotas with throttle-then-deny actions under the uniform denial shape AND the §5 denial timing discipline (throttle quantized to `T_deny` buckets; no quota-oracle detail to the client in shape, status, or timing), per-tenant queue-depth and webhook-delivery budgets where those planes exist, and audit on enforcement. Counters without enforcement are a contract violation. MUST (NIT11-3): quota/denial counters increment atomically under concurrency (conditional-write/CAS or transactional increment) — lost-update counters falsify the fairness posture.
 
-Principal
-- authenticated human/service/support identity;
-- never derived from browser state alone.
+## 14. Tenant deletion and offboarding
 
-TenantSelection
-- user/request choice of organization/domain;
-- selector only, never authority.
+- MUST: make tenants deletable through an `owner`-confirmed, double-affirmed destructive operation (typed confirmation naming the tenant; never one-click or GET-triggered): (1) freeze in normative sub-order — reject new authority FIRST, then revoke all memberships, invalidate live leases/turns under the tenant, drain conditional queue depth to drop-with-audit (HSC9-04); (2) erase — verified row delete (crypto-shredding where per-tenant encryption was authorized), with index/vacuum considerations recorded; (3) purge — tenant-row remnants, caches, exports/streams (partial-discard verified), storage namespaces, retrieval namespaces, Harness partitions, idempotency-key namespaces, webhook secrets/routes, outstanding invitation tokens and promotion artifacts (N11 — tenant-absence already fails closed, but the inventory claims exhaustiveness) — canonical inventory: the same classes recur across arch §6b, contract §14, and MT-G15 (freeze: memberships/leases/turns/queue-drain; erase: rows; purge: the nine below; expire: backups — NIT10-5); (4) expire backups per the Founder-set retention schedule.
+- MUST (ritual idempotency, N-v/HSC5-03b): the ritual MUST be idempotent and retry-safe — crash mid-ritual plus re-execution converges to full deletion, never to mistaken-complete; each step re-verifies its own precondition.
+- MUST (tenant-id non-reuse, N10): a deleted tenant's id is NEVER reassigned — fail-closed-by-absence for stale bearer artifacts and cached references depends on the id staying dead.
+- MUST: refuse partial deletion as a defined failure — rows gone while backups/exports/caches linger is a contract violation the GAUNTLET gates against.
+- MUST: require fresh Founder-level re-authorization to restore a deleted tenant — routine restore of deleted tenants is forbidden. Live backups of a deleted tenant MUST NOT remain restorable past the retention window.
+- MUST: retain only the deletion audit record itself per the audit schedule (no customer content); all other tenant data follows the tenant retention window.
 
-TenantContext
-- server-verified immutable request/transaction authority context.
+## 15. Reasoning effort record
 
-AuthorizationDecision
-- action + tenant + principal + resource + policy-version decision.
-
-DataPlacement
-- logical location of tenant-owned persistence;
-- not an authorization object.
-
-## 3. Mandatory invariants
-
-TIS-001 No tenant authority from unverified input.
-Headers, host, URL, query, body, cookies, local storage, model output and Experience config cannot independently establish tenant authority.
-
-TIS-002 Membership/service grant is current.
-TenantContext can be constructed only from active membership or explicitly authorized service grant. Revocation/suspension invalidates subsequent requests.
-
-TIS-003 Every privileged request is mediated.
-Authorization must run for each privileged operation, including indirect paths such as batch endpoints, exports, background work, file URLs and tool calls.
-
-TIS-004 Object lookup is tenant/resource authorized.
-Knowing or guessing an id never grants access. APIs avoid lookup-then-authorize patterns that expose existence where a tenant-scoped lookup/authorization boundary can be used.
-
-TIS-005 Server context is immutable downstream.
-Once TenantContext is built, downstream layers consume the verified value; they cannot replace it with client/model input.
-
-TIS-006 Runtime DB role cannot defeat row isolation.
-Ordinary tenant-request database credentials are not superuser, do not have BYPASSRLS and are not owners where owner bypass would defeat RLS.
-
-TIS-007 Shared tenant-owned tables are deny-by-default.
-RLS is enabled for classified shared tenant tables, with policy coverage appropriate to SELECT/INSERT/UPDATE/DELETE and WITH CHECK for writes.
-
-TIS-008 Missing tenant context fails closed.
-A query path dependent on tenant context returns denial/zero tenant-owned rows rather than becoming unscoped.
-
-TIS-009 Cross-tenant references are structurally blocked.
-Tenant-owned relational references use constraints that prevent linking tenant A rows to tenant B rows where the relationship is tenant-scoped.
-
-TIS-010 Migration privilege is separate.
-DDL/migration identity is separate from runtime application identity. Production runtime cannot opportunistically acquire migration privileges.
-
-TIS-011 New persistence is classified.
-Every new table/index/object-store namespace/cache/queue/search index is explicitly classified GLOBAL, TENANT, USER, SECURITY_INTERNAL or another reviewed isolation class before merge.
-
-TIS-012 Cache identity is complete.
-Tenant-dependent cache entries include tenant scope and relevant authorization/policy versions. No global key can resolve tenant-owned data.
-
-TIS-013 Storage identity is complete.
-Object access is authorized for exact tenant + object + operation. Object-key possession or prefix does not imply authority.
-
-TIS-014 Queue authority is complete.
-Tenant id in a job message is not authority. Consumers reconstruct verified authority and reauthorize high-impact/stale operations.
-
-TIS-015 Integration credentials are tenant bound.
-Credential references resolve only inside the verified tenant/integration relationship and are never browser-readable.
-
-TIS-016 AI authority is bounded.
-LLM/RAG/tool output is proposal/data. Downstream systems perform complete mediation and server-side tenant authorization.
-
-TIS-017 Search/retrieval is tenant isolated.
-Search/vector/document retrieval cannot run without mandatory tenant scope or stronger placement isolation. Missing filters fail closed.
-
-TIS-018 Experience definitions are non-executable.
-Customer/model-authored experience data cannot create arbitrary JS/JSX/HTML/CSS/SQL/shell/network execution.
-
-TIS-019 Support access is explicit.
-Cross-tenant support/admin access uses separate capabilities, actor identity, target tenant, reason, TTL and audit. No silent master bypass.
-
-TIS-020 Revocation propagates.
-Membership, tenant, integration or support revocation has an explicit invalidation mechanism for sessions, caches, queued work and signed capabilities proportional to risk.
-
-TIS-021 Error responses do not enumerate tenants.
-Denials should avoid distinguishing "foreign tenant object exists" from "not accessible" unless product requirements explicitly require disclosure.
-
-TIS-022 Audit preserves actor and tenant.
-Security-sensitive events record real actor, verified tenant, decision/reason and request correlation without logging secrets.
-
-TIS-023 Backup/export/restore preserves ownership.
-Mixed-tenant backup privileges are isolated. Tenant export/restore has ownership verification and cannot silently include foreign records.
-
-TIS-024 Custom domain does not become authority.
-Host/domain maps to a candidate tenant through verified DomainBinding; privileged operations still validate principal membership/capability.
-
-TIS-025 No security claim from identifier entropy.
-Opaque UUIDs reduce enumeration but never replace authorization.
-
-TIS-026 Tenant isolation is tested on real infrastructure.
-Mocks cannot be the only evidence for database/cache/storage/queue isolation.
-
-TIS-027 No current-Slice scope smuggling.
-VXA-S002 remains anonymous-session scope. Future identities/tenants require a new Founder-authorized Slice.
-
-## 4. Database contract
-
-For every TENANT_OWNED shared PostgreSQL table, the implementation plan must specify:
-- ownership column/key;
-- RLS enablement;
-- FORCE RLS decision;
-- runtime role;
-- owner/migration role;
-- SELECT policy;
-- INSERT/UPDATE WITH CHECK policy;
-- DELETE policy;
-- tenant-aware unique constraints;
-- tenant-aware foreign keys;
-- required indexes;
-- cross-tenant denial tests.
-
-Schema review fails if any item is omitted without a stronger documented isolation boundary.
-
-## 5. PostgreSQL role contract
-
-Expected logical roles:
-- schema_owner / migration role: owns schema objects and performs controlled DDL; not used for tenant requests;
-- application_runtime: minimal DML/EXECUTE grants; NOSUPERUSER; NOBYPASSRLS; non-owner for protected tables;
-- operational_readonly or support roles only if later required and separately constrained/audited.
-
-No application path may SET ROLE into a more privileged database role based on tenant input.
-
-Any SECURITY DEFINER function must:
-- have a narrowly scoped purpose;
-- be owned by a controlled role;
-- set or harden search_path as appropriate;
-- reference trusted schemas explicitly;
-- expose no generic SQL execution;
-- be tested for cross-tenant access and injection;
-- receive independent security review.
-
-## 6. Tenant-context DB contract
-
-If a custom PostgreSQL setting is selected:
-- it is established only from server-verified TenantContext;
-- it is transaction-local;
-- the transaction begins before context is set;
-- no tenant-sensitive statement runs before context is set;
-- connection is returned only after commit/rollback;
-- missing/invalid setting denies;
-- callers cannot supply raw SET/SET LOCAL SQL;
-- ordinary SQL injection must not be able to choose another tenant context;
-- pooled reuse and transaction-pool behavior are explicitly tested;
-- background jobs follow the same verified-context rule.
-
-Session-scoped GUC reuse across requests is PROHIBITED unless a later architecture demonstrates an equivalent stronger reset/isolation model with adversarial tests.
-
-## 7. Experience security contract
-
-Published ExperienceVersion is immutable.
-
-Experience definition grammar is closed and versioned. Unknown keys fail closed.
-
-Registered surface/action/data-source ids are server-defined.
-
-DataSource definitions contain logical references, not credentials or arbitrary URLs/SQL.
-
-Actions resolve to a finite server-owned capability catalog.
-
-Themes use bounded token schemas; no raw CSS injection.
-
-Rich content uses safe structured data and context-correct encoding/sanitization.
-
-Generated definitions are validated identically whether authored by humans or AI.
-
-The renderer receives only an authorized projection.
-
-## 8. Identity/session contract
-
-Future authenticated session must bind:
-- principal id;
-- session id;
-- security/membership version;
-- authentication assurance metadata;
-- active tenant selection where product UX supports switching;
-- expiration/revocation semantics.
-
-Tenant switching is a server-authorized state transition, not a client variable update.
-
-The current anonymous AgentSession lease/revision/idempotency semantics should be preserved or consciously superseded with equivalent guarantees.
-
-## 9. Cache contract
-
-Cache namespaces/keys must include all dimensions that change authorization or representation:
-- tenant;
-- resource;
-- representation/version;
-- policy/security epoch where needed.
-
-Negative authorization results may be cached only with careful TTL/version semantics.
-
-Authentication or authorization cache invalidation must support revocation.
-
-Cross-tenant key collision/property tests are mandatory.
-
-## 10. Object storage contract
-
-Signed URL generation is an authorization event.
-
-Signed URL scope includes exact object and operation. TTL is minimized.
-
-Uploads have server-created object identity or strict normalized key policy.
-
-Download/upload authorization is repeated as required by the operation model.
-
-File metadata cannot smuggle executable browser content into unsafe sinks.
-
-Content-type, size and malware policy are explicit for each file class.
-
-## 11. Async contract
-
-Every queued job has idempotency/replay handling.
-
-A stale membership/policy can invalidate execution.
-
-High-impact jobs reauthorize at execution.
-
-Global/system jobs use explicit service identity and scope rather than a fake tenant.
-
-Queue fairness protects other tenants from one tenant's excessive load.
-
-## 12. Integration contract
-
-Secrets never enter client bundles, Experience definitions or model prompts.
-
-OAuth/webhook/integration objects are tenant-owned.
-
-OAuth redirect destinations are registered, exact and server-controlled.
-
-Webhook signatures/replay windows are verified before tenant-domain mutation.
-
-Outbound network actions are governed by destination policy/SSRF controls.
-
-## 13. AI/RAG contract
-
-Context/retrieval code receives server-verified TenantContext.
-
-Model cannot select arbitrary tenant namespace.
-
-Retrieval filters/namespace are mandatory.
-
-Tool authorizer validates principal/tenant/action/resource separately from model intent.
-
-Indirect prompt injection cannot grant tool or data authority.
-
-Model caches and conversation memory do not cross tenants.
-
-No secret is treated as protected merely because it is in a system prompt.
-
-## 14. Verification gates
-
-A future implementation cannot claim tenant-isolation PASS without:
-- >=2 tenant fixtures on real PostgreSQL;
-- foreign-id read/write/update/delete attacks;
-- omitted-filter tests demonstrating DB barrier;
-- RLS owner/BYPASSRLS privilege inspection;
-- connection-pool reuse tests;
-- missing-context tests;
-- tenant-aware FK/unique constraint attacks;
-- membership/session revocation;
-- cache collision/revocation;
-- storage foreign-object attacks;
-- signed-URL expiry/replay;
-- queue replay/stale membership/cross-tenant payload;
-- webhook signature/replay and tenant binding;
-- SSRF destination attacks;
-- browser XSS/CSRF/CORS/CSP tests;
-- Experience executable-surface rejection;
-- AI/RAG foreign-tenant retrieval/tool attacks;
-- backup/export/restore review;
-- secret/bundle/source-map scan;
-- independent Security Critic.
-
-## 15. Failure and recovery
-
-Isolation failures are security incidents, not generic validation errors.
-
-Required operational capabilities for the eventual platform:
-- revoke sessions/memberships;
-- suspend tenant;
-- invalidate policy/security epoch;
-- stop/cancel queued work where possible;
-- revoke integration credentials/tokens;
-- disable compromised domain/integration binding;
-- rotate secrets/keys;
-- preserve forensic security events;
-- identify potentially affected tenant sets;
-- execute tenant-specific restore/export only through reviewed tooling.
-
-## 16. Explicit non-goals
-
-This contract does not:
-- select an identity provider;
-- select PostgreSQL/cache/storage/queue vendors;
-- implement authentication;
-- authorize database migrations;
-- authorize dedicated tenant databases;
-- authorize billing;
-- change VXA-S002;
-- claim production security PASS.
+- Authoring model: Muse Spark (Muse Code). Correction pass: single-model deep review + edit in this runtime; no separate reasoning-effort ladder (ultra/xhigh) exists in this runtime to fall back from, so no fallback occurred — stated as observed fact about this pass, not as a reusable mechanism.
+- GAUNTLET correction round (H1/H2/M1–M7/L1–L8): same runtime, same effort observation — no ultra/xhigh ladder present, no fallback. Normative MUSTs added without weakening existing bars; paired allow-own rule constrains §§2–7.
+- Critic-11 correction round (HSC9-01…04 + NIT11-1…3): same runtime, no ultra/xhigh ladder, no fallback. Mirrored grantor-status in-transaction rule (HSC9-01), issuer re-validation at acceptance (HSC9-02), elevated-execution MUSTs — DEFINER search_path, TRUNCATE/DDL exclusion, security_invoker views, RLS catalog assertion (HSC9-03) — freeze reject-first sub-order (HSC9-04), uniform CSPRNG mapping (NIT11-1), placement-config authority (NIT11-2), counter atomicity (NIT11-3).
+- Critic-12 correction round (HSC12-01): same runtime, no ultra/xhigh ladder, no fallback. Upgrade grantor authority re-evaluated inside the committing transaction for every grant/upgrade mutation, not just `owner` conferral.
+- Finding-ID legend (N14): H/M/L = round-1 HIGH gate-correctness / MEDIUM design / LOW findings; F-## = round-2/3 follow-up findings; N/N-a…/N-i…/N1… = round-2…5 corrective + nit IDs (each bare-N ID names exactly one norm — split/E4/M1/M3/N-i tags were disambiguated in the HSC6 round; legacy N-d reads N-i); HSC4/HSC5/HSC6/HSC7/HSC8/HSC9/HSC12 = hostile-critic rounds 4/5/6/7/8/9/12.
