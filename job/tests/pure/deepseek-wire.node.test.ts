@@ -68,7 +68,7 @@ test('DeepSeek thinking request omits incompatible tool_choice and pins reasonin
   });
   assert.equal(body.model, 'deepseek-flash');
   assert.deepEqual(body.thinking, { type: 'enabled' });
-  assert.equal(body.reasoning_effort, 'high');
+  assert.equal(body.reasoning_effort, 'max');
   assert.equal(body.stream, true);
   assert.equal('tool_choice' in body, false);
   assert.equal('include_reasoning' in body, false);

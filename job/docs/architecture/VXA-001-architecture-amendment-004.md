@@ -30,7 +30,7 @@ The production target is DeepSeek-V4.1-Flash through the official API selector `
 
 Legacy aliases and sibling models are not authorized. The only authorized API selector is `deepseek-flash`, currently documented by DeepSeek as DeepSeek-V4.1-Flash; no legacy chat/reasoner alias, Pro alias, sibling model or silent compatibility route may substitute for it.
 
-Thinking mode may vary by request complexity while remaining on the same exact model. Reasoning effort may use `low`, `high` or `max` according to a deterministic application-owned policy. Provider-returned hidden reasoning is never application truth.
+Thinking mode remains enabled on the same exact model, and VXA-S002 fixes `reasoning_effort` to `max`. The application does not dynamically downgrade this Slice to `low` or `high`; provider-returned hidden reasoning is never application truth.
 
 ## 3. Harness truth
 

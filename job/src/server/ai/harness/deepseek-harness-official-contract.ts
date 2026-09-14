@@ -5,7 +5,7 @@ export const DEEPSEEK_HARNESS_OFFICIAL_CONTRACT = Object.freeze({
   model: 'deepseek-flash',
   modelRelease: 'DeepSeek-V4.1-Flash',
   credentialEnvName: 'DEEPSEEK_API_KEY',
-  reasoningEffort: 'high',
+  reasoningEffort: 'max',
   toolPresentationMode: 'native',
   maxParallelToolCalls: 1,
   launcherProfile: 'sdk',
@@ -54,7 +54,7 @@ export function assertDeepSeekHarnessOfficialContract(
     || contract.model !== 'deepseek-flash'
     || contract.modelRelease !== 'DeepSeek-V4.1-Flash'
     || contract.credentialEnvName !== 'DEEPSEEK_API_KEY'
-    || contract.reasoningEffort !== 'high'
+    || contract.reasoningEffort !== 'max'
     || contract.toolPresentationMode !== 'native'
     || contract.maxParallelToolCalls !== 1
     || contract.launcherProfile !== 'sdk'

@@ -19,6 +19,7 @@ The only authorized generative route is:
 - model: `deepseek-flash`;
 - harness: DeepSeek Harness;
 - target Harness version for fresh verification: `0.1.5-rc.2`;
+- reasoning effort: `max`;
 - server credential: `DEEPSEEK_API_KEY`;
 - API base: `https://api.deepseek.com`.
 
@@ -26,7 +27,7 @@ No other LLM provider, model, alias, fallback, standby route, model bakeoff, alt
 
 ## Founder model/Harness refresh — 2026-09-14
 
-The Founder explicitly refreshed the single DeepSeek truth after official DeepSeek V4.1-Flash release evidence was reviewed. The current exact API selector is `deepseek-flash`, which DeepSeek documents as DeepSeek-V4.1-Flash. The current pinned Harness target is `0.1.5-rc.2`. This supersedes the prior V4-Pro / Harness rc.1 tuple encoded by the earlier authorization state; Git history preserves that prior state.
+The Founder explicitly refreshed the single DeepSeek truth after official DeepSeek V4.1-Flash release evidence was reviewed. The current exact API selector is `deepseek-flash`, which DeepSeek documents as DeepSeek-V4.1-Flash. The current pinned Harness target is `0.1.5-rc.2`, and the active thinking policy is fixed at the provider's strongest explicit effort, `max`, for this agent-led Slice. This supersedes the prior V4-Pro / Harness rc.1 tuple and the prior `high` effort encoded by the earlier authorization state; Git history preserves that prior state.
 
 This refresh does not authorize a second model, alias, provider, fallback, vision attachment path or alternate harness. V4.1-Flash native multimodality does not change the current S002 attachment-content boundary. Exact candidate compatibility must be proven again before runtime activation.
 

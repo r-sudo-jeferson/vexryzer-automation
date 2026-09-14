@@ -63,12 +63,7 @@ The application validates all tool arguments independently because schema-confor
 
 ## Reasoning policy
 
-Reasoning effort stays on the same model and may be selected deterministically:
-- `low`: trivial continuation or low-risk wording;
-- `high`: normal accounting discovery, objection handling and visual coordination;
-- `max`: complex multi-evidence synthesis, high-impact reframing or multi-tool Canvas composition.
-
-This policy is cost/latency tuning, not model routing.
+Reasoning effort stays on the same model and is fixed to `max` for VXA-S002. The Seller, Critic and Canvas coordination path do not dynamically downgrade to `low` or `high`; cost and latency must be controlled through bounded context, validated tools and execution policy rather than reducing reasoning depth.
 
 ## Persuasion quality
 

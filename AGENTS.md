@@ -87,6 +87,7 @@ AI_MODEL: `deepseek-flash`
 AI_MODEL_RELEASE: `DeepSeek-V4.1-Flash`
 AI_HARNESS: `DeepSeek Harness`
 AI_HARNESS_TARGET_VERSION: `0.1.5-rc.2`
+AI_REASONING_EFFORT: `max`
 AI_CREDENTIAL_ENV: `DEEPSEEK_API_KEY`
 AI_API_BASE: `https://api.deepseek.com`
 

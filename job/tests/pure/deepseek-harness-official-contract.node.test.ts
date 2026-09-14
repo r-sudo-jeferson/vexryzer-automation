@@ -15,6 +15,7 @@ test('Harness runtime is the official DeepSeek TypeScript SDK on exact rc.2 V4.1
   assert.equal(contract.model, 'deepseek-flash');
   assert.equal(contract.modelRelease, 'DeepSeek-V4.1-Flash');
   assert.equal(contract.credentialEnvName, 'DEEPSEEK_API_KEY');
+  assert.equal(contract.reasoningEffort, 'max');
   assert.equal(contract.launcherProfile, 'sdk');
   assert.equal(contract.runtimeActivation, 'NOT_VERIFIED');
   assert.deepEqual(contract.officialPackages, [

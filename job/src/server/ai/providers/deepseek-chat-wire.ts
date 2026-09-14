@@ -35,7 +35,7 @@ export interface ProviderChatBody {
   stream: true;
   tools: readonly LocalFunctionTool[];
   thinking: Readonly<{ type: 'enabled' }>;
-  reasoning_effort: 'high';
+  reasoning_effort: 'max';
 }
 
 export interface ServerChatHttpRequest {
@@ -205,7 +205,7 @@ export function buildProviderChatBody(input: {
     stream: true as const,
     tools: Object.freeze([...input.tools]),
     thinking: Object.freeze({ type: 'enabled' as const }),
-    reasoning_effort: 'high' as const,
+    reasoning_effort: 'max' as const,
   });
 }
 
