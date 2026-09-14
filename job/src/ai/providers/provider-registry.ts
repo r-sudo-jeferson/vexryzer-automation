@@ -71,9 +71,9 @@ const UNKNOWN_CAPABILITIES = Object.freeze({
  */
 export const AUTHORIZED_PROVIDER_CANDIDATES: readonly Readonly<ProviderRouteDefinition>[] = Object.freeze([
   freezeRoute({
-    routeId: 'deepseek-v4-pro-agent',
+    routeId: 'deepseek-flash-agent',
     family: 'deepseek',
-    modelId: 'deepseek-v4-pro',
+    modelId: 'deepseek-flash',
     roles: ['seller', 'critic', 'composer', 'workshop'],
     tier: 'primary',
     priority: 1,
@@ -87,7 +87,7 @@ export const AUTHORIZED_PROVIDER_CANDIDATES: readonly Readonly<ProviderRouteDefi
     composerQuality: 'NOT_VERIFIED',
     harnessCompatibility: 'NOT_VERIFIED',
     workshopSafety: 'NOT_VERIFIED',
-    workshopHarness: 'DeepSeek-Harness@0.1.5-rc.1',
+    workshopHarness: 'DeepSeek-Harness@0.1.5-rc.2',
     runtimeActivation: 'NOT_VERIFIED',
     capabilities: UNKNOWN_CAPABILITIES,
     maxInputTokens: null,

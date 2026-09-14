@@ -69,7 +69,7 @@ function route(overrides: Partial<ProviderRouteDefinition> = {}): Readonly<Provi
   return Object.freeze({
     routeId: 'critic-primary',
     family: 'deepseek',
-    modelId: 'deepseek-v4-pro',
+    modelId: 'deepseek-flash',
     roles: Object.freeze(['critic'] as const),
     tier: 'primary',
     priority: 10,

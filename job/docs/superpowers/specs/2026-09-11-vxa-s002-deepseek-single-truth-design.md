@@ -6,11 +6,11 @@ AUTHORIZED design for `VXA-S002@1.0.0` under Founder direction dated 2026-09-11.
 
 ## Goal
 
-Converge Vexryzer S002 from experimental multi-provider routing into one production AI truth: DeepSeek Harness coordinating `deepseek-v4-pro`, with the Infinite Canvas as the agent's persistent visual workspace and the existing Deterministic Trust Kernel as the non-model authority.
+Converge Vexryzer S002 from experimental multi-provider routing into one production AI truth: DeepSeek Harness coordinating `deepseek-flash`, with the Infinite Canvas as the agent's persistent visual workspace and the existing Deterministic Trust Kernel as the non-model authority.
 
 ## Invariants
 
-1. Exactly one active generative model id exists: `deepseek-v4-pro`.
+1. Exactly one active generative model id exists: `deepseek-flash`.
 2. Exactly one LLM credential name exists: `DEEPSEEK_API_KEY`.
 3. Exactly one agent harness is eligible: DeepSeek Harness.
 4. No model/provider/harness fallback exists.
@@ -29,7 +29,7 @@ The target runtime has five responsibilities.
 
 DeepSeek Harness owns the agent loop, session continuity, tool invocation and operational agent memory. The exact Harness version is pinned; it is never consumed through an unbounded latest tag.
 
-`deepseek-v4-pro` owns language, strategy, sales improvisation, objection handling, tool choice and semantic visual intent.
+`deepseek-flash` owns language, strategy, sales improvisation, objection handling, tool choice and semantic visual intent.
 
 ### Canonical truth plane
 
@@ -55,7 +55,7 @@ There is no LLM fallback. Credential failure, balance/rate/capacity failure, tim
 
 ## DeepSeek wire requirements
 
-The product uses the DeepSeek API at `https://api.deepseek.com` with model `deepseek-v4-pro`.
+The product uses the DeepSeek API at `https://api.deepseek.com` with model `deepseek-flash`.
 
 The implementation must support DeepSeek thinking-mode tool-call continuity correctly. When the selected API mode requires reasoning-content replay around tool calls, the wire adapter must preserve protocol-required data without treating hidden reasoning as canonical application truth or exposing it to the user.
 

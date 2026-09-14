@@ -50,7 +50,7 @@ export type ProviderSelectionResult =
 
 function isAuthorizedDeepSeekIdentity(route: Readonly<ProviderRouteDefinition>): boolean {
   return route.family === 'deepseek'
-    && route.modelId === 'deepseek-v4-pro'
+    && route.modelId === 'deepseek-flash'
     && route.credentialEnvName === 'DEEPSEEK_API_KEY'
     && route.credentialScope === 'server'
     && route.tier === 'primary';

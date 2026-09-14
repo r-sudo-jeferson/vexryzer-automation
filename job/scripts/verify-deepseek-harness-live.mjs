@@ -50,7 +50,7 @@ if (typeof apiKey !== 'string' || apiKey.trim() !== apiKey || apiKey.length < 16
     processCwd: JOB_ROOT,
     cwd: JOB_ROOT,
     provider: 'deepseek-official',
-    model: 'deepseek-v4-pro',
+    model: 'deepseek-flash',
     reasoningEffort: 'high',
     maxTokens: 128,
     initializeTimeoutMs: 60_000,

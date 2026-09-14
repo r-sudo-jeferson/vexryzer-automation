@@ -6,22 +6,32 @@ import {
   assertDeepSeekHarnessOfficialContract,
 } from '../../src/server/ai/harness/deepseek-harness-official-contract.ts';
 
-test('Harness runtime is the official DeepSeek TypeScript SDK on exact rc.1 launcher surface', () => {
+test('Harness runtime is the official DeepSeek TypeScript SDK on exact rc.2 V4.1 Flash surface', () => {
   const contract = assertDeepSeekHarnessOfficialContract();
 
   assert.equal(contract.mode, 'official_sdk_subprocess');
-  assert.equal(contract.harnessVersion, '0.1.5-rc.1');
+  assert.equal(contract.harnessVersion, '0.1.5-rc.2');
   assert.equal(contract.provider, 'deepseek-official');
-  assert.equal(contract.model, 'deepseek-v4-pro');
+  assert.equal(contract.model, 'deepseek-flash');
+  assert.equal(contract.modelRelease, 'DeepSeek-V4.1-Flash');
   assert.equal(contract.credentialEnvName, 'DEEPSEEK_API_KEY');
   assert.equal(contract.launcherProfile, 'sdk');
   assert.equal(contract.runtimeActivation, 'NOT_VERIFIED');
   assert.deepEqual(contract.officialPackages, [
-    '@deepseek-ai/dsh@0.1.5-rc.1',
-    '@deepseek-ai/dsh-sdk-client@0.1.5-rc.1',
-    '@deepseek-ai/dsh-sdk-protocol@0.1.5-rc.1',
+    '@deepseek-ai/dsh@0.1.5-rc.2',
+    '@deepseek-ai/dsh-sdk-client@0.1.5-rc.2',
+    '@deepseek-ai/dsh-sdk-protocol@0.1.5-rc.2',
   ]);
 });
+test('rejects a mismatched marketing release identity even when the API selector is valid', () => {
+  const forged = {
+    ...DEEPSEEK_HARNESS_OFFICIAL_CONTRACT,
+    modelRelease: 'DeepSeek-V4-Pro',
+  } as unknown as typeof DEEPSEEK_HARNESS_OFFICIAL_CONTRACT;
+
+  assert.throws(() => assertDeepSeekHarnessOfficialContract(forged), /DEEPSEEK_HARNESS_OFFICIAL_IDENTITY_INVALID/);
+});
+
 test('SDK subprocess is required but receives only an explicit replacement environment', () => {
   const contract = DEEPSEEK_HARNESS_OFFICIAL_CONTRACT;
 
@@ -60,7 +70,7 @@ test('installed direct packages prove official DeepSeek provenance and exact dir
       'utf8',
     )) as { name: string; version: string; repository?: { url?: string } };
     assert.equal(manifest.name, `@deepseek-ai/${name}`);
-    assert.equal(manifest.version, '0.1.5-rc.1');
+    assert.equal(manifest.version, '0.1.5-rc.2');
     assert.equal(manifest.repository?.url, 'git+https://github.com/deepseek-ai/deepseek-harness.git');
   }
 });

@@ -69,7 +69,7 @@ Every external provider has a visible bounded failure state. AI failure can fall
 
 ## Architecture summary
 
-Vite/React client, XState orchestration, React Flow canvas, Motion transitions. Netlify Functions own server authority and secrets. Netlify Blobs provide request/file storage. DeepSeek `deepseek-v4-pro` through the authorized DeepSeek Harness provides structured conversational intelligence. Transactional email provides notification only.
+Vite/React client, XState orchestration, React Flow canvas, Motion transitions. Netlify Functions own server authority and secrets. Netlify Blobs provide request/file storage. DeepSeek `deepseek-flash` through the authorized DeepSeek Harness provides structured conversational intelligence. Transactional email provides notification only.
 
 ## Deferred intentionally
 

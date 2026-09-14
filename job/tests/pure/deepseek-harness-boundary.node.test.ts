@@ -11,9 +11,9 @@ test('DeepSeek Harness visitor profile is exact, native-only and Trust-Kernel su
   const profile = assertDeepSeekHarnessVisitorProfile();
   assert.equal(profile, DEEPSEEK_HARNESS_VISITOR_PROFILE);
   assert.equal(profile.harness, 'DeepSeek-Harness');
-  assert.equal(profile.version, '0.1.5-rc.1');
+  assert.equal(profile.version, '0.1.5-rc.2');
   assert.equal(profile.providerFamily, 'deepseek');
-  assert.equal(profile.modelId, 'deepseek-v4-pro');
+  assert.equal(profile.modelId, 'deepseek-flash');
   assert.equal(profile.credentialEnvName, 'DEEPSEEK_API_KEY');
   assert.equal(profile.credentialScope, 'server');
   assert.equal(profile.toolPresentationMode, 'native');

@@ -27,7 +27,7 @@ test('dispatch binds exact DeepSeek identity to canonical full context', () => {
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.envelope.providerFamily, 'deepseek');
-  assert.equal(result.envelope.modelId, 'deepseek-v4-pro');
+  assert.equal(result.envelope.modelId, 'deepseek-flash');
   assert.equal(result.envelope.credentialEnvName, 'DEEPSEEK_API_KEY');
   assert.equal(result.envelope.context, context);
   assert.equal('contextMode' in result.envelope, false);

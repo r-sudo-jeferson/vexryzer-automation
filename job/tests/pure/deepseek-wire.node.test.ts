@@ -10,9 +10,9 @@ import { createChatStreamAccumulator } from '../../src/server/ai/providers/chat-
 import type { ProviderRouteDefinition } from '../../src/ai/providers/provider-registry.ts';
 
 const route: Readonly<ProviderRouteDefinition> = Object.freeze({
-  routeId: 'deepseek-v4-pro-agent',
+  routeId: 'deepseek-flash-agent',
   family: 'deepseek',
-  modelId: 'deepseek-v4-pro',
+  modelId: 'deepseek-flash',
   roles: Object.freeze(['seller', 'critic', 'composer', 'workshop'] as const),
   tier: 'primary',
   priority: 1,
@@ -26,7 +26,7 @@ const route: Readonly<ProviderRouteDefinition> = Object.freeze({
   composerQuality: 'NOT_VERIFIED',
   harnessCompatibility: 'NOT_VERIFIED',
   workshopSafety: 'NOT_VERIFIED',
-  workshopHarness: 'DeepSeek-Harness@0.1.5-rc.1',
+  workshopHarness: 'DeepSeek-Harness@0.1.5-rc.2',
   runtimeActivation: 'NOT_VERIFIED',
   capabilities: Object.freeze({
     streaming: 'NOT_VERIFIED',
@@ -53,7 +53,7 @@ const tools: readonly LocalFunctionTool[] = Object.freeze([Object.freeze({
   }),
 })]);
 
-test('DeepSeek wire uses only the official V4 Pro chat endpoint', () => {
+test('DeepSeek wire uses only the official V4.1 Flash chat endpoint', () => {
   assert.equal(buildProviderChatEndpoint(route, Object.freeze({})), 'https://api.deepseek.com/chat/completions');
 });
 
@@ -66,7 +66,7 @@ test('DeepSeek thinking request omits incompatible tool_choice and pins reasonin
     ]),
     tools,
   });
-  assert.equal(body.model, 'deepseek-v4-pro');
+  assert.equal(body.model, 'deepseek-flash');
   assert.deepEqual(body.thinking, { type: 'enabled' });
   assert.equal(body.reasoning_effort, 'high');
   assert.equal(body.stream, true);

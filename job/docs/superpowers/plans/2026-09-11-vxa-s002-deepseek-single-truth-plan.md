@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Apply test-driven-development to behavior changes.
 
-**Goal:** Remove every active alternative model/provider/harness and converge S002 on DeepSeek Harness + `deepseek-v4-pro` + `DEEPSEEK_API_KEY`, with the agent coordinating the Infinite Canvas through bounded semantic tools.
+**Goal:** Remove every active alternative model/provider/harness and converge S002 on DeepSeek Harness + `deepseek-flash` + `DEEPSEEK_API_KEY`, with the agent coordinating the Infinite Canvas through bounded semantic tools.
 
 **Architecture:** Keep the existing Agent-Led Experience and Deterministic Trust Kernel. Narrow the provider plane to one DeepSeek route, then adapt the wire/runtime and Harness integration without weakening canonical truth, Critic, session, Canvas or recovery boundaries.
 
@@ -12,7 +12,7 @@
 
 ## Global constraints
 
-- Active model id: exactly `deepseek-v4-pro`.
+- Active model id: exactly `deepseek-flash`.
 - Harness: exactly DeepSeek Harness, pinned exact version.
 - Credential: exactly `DEEPSEEK_API_KEY`, server-only.
 - No LLM/provider/harness fallback.
@@ -46,7 +46,7 @@
 - Modify: `job/tests/pure/provider-test-fixtures.ts`
 - Modify or replace obsolete multiprovider tests.
 
-- [ ] Write tests requiring one provider family `deepseek`, one model `deepseek-v4-pro`, one server credential `DEEPSEEK_API_KEY`, one primary route and zero fallback/standby tiers.
+- [ ] Write tests requiring one provider family `deepseek`, one model `deepseek-flash`, one server credential `DEEPSEEK_API_KEY`, one primary route and zero fallback/standby tiers.
 - [ ] Write a test proving unavailable DeepSeek returns deterministic recovery instead of selecting another route.
 - [ ] Write a source-tree guard that rejects forbidden alternative provider/model/harness identifiers in active runtime/config surfaces.
 - [ ] Run focused tests and observe the expected RED before production edits.
@@ -150,7 +150,7 @@
 - [ ] Run TypeScript strict/typecheck.
 - [ ] Run production build and bundle/secret scan.
 - [ ] Run applicable browser/accessibility/visual checks without weakening existing requirements.
-- [ ] Execute exact DeepSeek Harness + V4 Pro compatibility evidence.
+- [ ] Execute exact DeepSeek Harness + DeepSeek V4.1-Flash compatibility evidence.
 - [ ] Execute strengthened S002 GAUNTLET.
 - [ ] Independent Critic reviews contract, security, Canvas authority, persuasion truth, accessibility and deployment.
 - [ ] Freeze one exact candidate SHA only after all required evidence is green.

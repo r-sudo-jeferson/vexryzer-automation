@@ -30,7 +30,7 @@ export type ProviderChatMessage =
 export type ProviderServerConfig = Readonly<Record<string, never>>;
 
 export interface ProviderChatBody {
-  model: 'deepseek-v4-pro';
+  model: 'deepseek-flash';
   messages: readonly ProviderChatMessage[];
   stream: true;
   tools: readonly LocalFunctionTool[];
@@ -177,7 +177,7 @@ function assertLocalTools(tools: readonly LocalFunctionTool[]): void {
 
 function assertDeepSeekRoute(route: Readonly<ProviderRouteDefinition>): void {
   if (route.family !== 'deepseek') throw new TypeError('only DeepSeek provider family is authorized');
-  if (route.modelId !== 'deepseek-v4-pro') throw new TypeError('only deepseek-v4-pro is authorized');
+  if (route.modelId !== 'deepseek-flash') throw new TypeError('only deepseek-flash is authorized');
   if (route.credentialEnvName !== 'DEEPSEEK_API_KEY') {
     throw new TypeError('DeepSeek route must use DEEPSEEK_API_KEY');
   }
@@ -200,7 +200,7 @@ export function buildProviderChatBody(input: {
   assertMessages(input.messages);
   assertLocalTools(input.tools);
   return Object.freeze({
-    model: 'deepseek-v4-pro' as const,
+    model: 'deepseek-flash' as const,
     messages: Object.freeze([...input.messages]),
     stream: true as const,
     tools: Object.freeze([...input.tools]),

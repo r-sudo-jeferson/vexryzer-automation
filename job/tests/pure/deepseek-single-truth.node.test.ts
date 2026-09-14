@@ -51,18 +51,18 @@ async function sourceFiles(root: string): Promise<string[]> {
   return files;
 }
 
-test('active AI registry has exactly one DeepSeek V4 Pro route and one credential', () => {
+test('active AI registry has exactly one DeepSeek V4.1 Flash route and one credential', () => {
   assert.equal(AUTHORIZED_PROVIDER_CANDIDATES.length, 1);
   const [route] = AUTHORIZED_PROVIDER_CANDIDATES;
   assert.ok(route);
   assert.equal(route.family, 'deepseek');
-  assert.equal(route.modelId, 'deepseek-v4-pro');
+  assert.equal(route.modelId, 'deepseek-flash');
   assert.equal(route.credentialEnvName, 'DEEPSEEK_API_KEY');
   assert.equal(route.tier, 'primary');
   assert.equal(route.enabledByDefault, true);
   assert.equal(route.credentialScope, 'server');
   assert.equal(route.billingAuthorization, 'PASS');
-  assert.equal(route.workshopHarness, 'DeepSeek-Harness@0.1.5-rc.1');
+  assert.equal(route.workshopHarness, 'DeepSeek-Harness@0.1.5-rc.2');
 });
 
 test('unavailable DeepSeek fails closed instead of selecting another LLM', () => {
@@ -93,10 +93,10 @@ test('active AI surfaces expose no second provider identity, model id, LLM crede
   ];
   const violations: string[] = [];
 
-  const allowedModels = new Set(['deepseek-v4-pro']);
+  const allowedModels = new Set(['deepseek-flash']);
   const allowedFamilies = new Set(['deepseek']);
   const allowedCredentials = new Set(['DEEPSEEK_API_KEY']);
-  const allowedHarnesses = new Set(['DeepSeek-Harness@0.1.5-rc.1']);
+  const allowedHarnesses = new Set(['DeepSeek-Harness@0.1.5-rc.2']);
 
   for (const root of roots) {
     for (const path of await sourceFiles(root)) {

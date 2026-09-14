@@ -16,13 +16,19 @@ The Founder explicitly directed Engineering to remove every other failed or alte
 
 The only authorized generative route is:
 - provider: DeepSeek;
-- model: `deepseek-v4-pro`;
+- model: `deepseek-flash`;
 - harness: DeepSeek Harness;
-- target Harness version for fresh verification: `0.1.5-rc.1`;
+- target Harness version for fresh verification: `0.1.5-rc.2`;
 - server credential: `DEEPSEEK_API_KEY`;
 - API base: `https://api.deepseek.com`.
 
 No other LLM provider, model, alias, fallback, standby route, model bakeoff, alternative harness or emergency model is authorized. Unavailability must produce deterministic guided recovery rather than provider substitution.
+
+## Founder model/Harness refresh — 2026-09-14
+
+The Founder explicitly refreshed the single DeepSeek truth after official DeepSeek V4.1-Flash release evidence was reviewed. The current exact API selector is `deepseek-flash`, which DeepSeek documents as DeepSeek-V4.1-Flash. The current pinned Harness target is `0.1.5-rc.2`. This supersedes the prior V4-Pro / Harness rc.1 tuple encoded by the earlier authorization state; Git history preserves that prior state.
+
+This refresh does not authorize a second model, alias, provider, fallback, vision attachment path or alternate harness. V4.1-Flash native multimodality does not change the current S002 attachment-content boundary. Exact candidate compatibility must be proven again before runtime activation.
 
 ## Revoked current-state assumptions
 

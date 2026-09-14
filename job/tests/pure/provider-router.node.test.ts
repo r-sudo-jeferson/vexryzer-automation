@@ -18,19 +18,19 @@ const REQUEST = Object.freeze({
   requiresStructuredArguments: true,
 });
 
-test('route taxonomy exposes only primary and the authorized registry has exactly one fail-closed DeepSeek V4 Pro route', () => {
+test('route taxonomy exposes only primary and the authorized registry has exactly one fail-closed DeepSeek V4.1 Flash route', () => {
   assert.deepEqual(PROVIDER_ROUTE_TIERS, ['primary']);
   assert.equal(AUTHORIZED_PROVIDER_CANDIDATES.length, 1);
   const route = AUTHORIZED_PROVIDER_CANDIDATES[0]!;
   assert.equal(route.family, 'deepseek');
-  assert.equal(route.modelId, 'deepseek-v4-pro');
+  assert.equal(route.modelId, 'deepseek-flash');
   assert.equal(route.credentialEnvName, 'DEEPSEEK_API_KEY');
   assert.equal(route.tier, 'primary');
   assert.equal(route.billingAuthorization, 'PASS');
   assert.equal(route.protocolCompatibility, 'NOT_VERIFIED');
   assert.equal(route.runtimeActivation, 'NOT_VERIFIED');
   assert.equal(route.harnessCompatibility, 'NOT_VERIFIED');
-  assert.equal(route.workshopHarness, 'DeepSeek-Harness@0.1.5-rc.1');
+  assert.equal(route.workshopHarness, 'DeepSeek-Harness@0.1.5-rc.2');
 });
 
 test('Founder prepaid billing authorization is mandatory but never substitutes technical verification', () => {

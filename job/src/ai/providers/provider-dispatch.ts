@@ -42,7 +42,7 @@ function routeIsStaticallyDispatchable(decision: Readonly<ProviderRouteDecision>
   const route = decision.route;
   if (
     route.family !== 'deepseek'
-    || route.modelId !== 'deepseek-v4-pro'
+    || route.modelId !== 'deepseek-flash'
     || route.credentialEnvName !== 'DEEPSEEK_API_KEY'
     || route.tier !== 'primary'
   ) return false;

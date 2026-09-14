@@ -14,7 +14,7 @@ Frontend:
 - XState v5 stable.
 
 AI:
-- DeepSeek `deepseek-v4-pro` through the authorized DeepSeek Harness;
+- DeepSeek `deepseek-flash` through the authorized DeepSeek Harness;
 - Structured Outputs / Function Calling;
 - model output validated before state mutation.
 

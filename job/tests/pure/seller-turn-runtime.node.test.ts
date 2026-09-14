@@ -35,9 +35,9 @@ function canonical(revision = 7): CanonicalSalesContext {
 
 function route(overrides: Partial<ProviderRouteDefinition> = {}): Readonly<ProviderRouteDefinition> {
   return Object.freeze({
-    routeId: 'deepseek-v4-pro-seller',
+    routeId: 'deepseek-flash-seller',
     family: 'deepseek',
-    modelId: 'deepseek-v4-pro',
+    modelId: 'deepseek-flash',
     roles: Object.freeze(['seller'] as const),
     tier: 'primary',
     priority: 10,
@@ -232,9 +232,9 @@ function baseInput(
 test('builds every Seller provider message from the revision-bound dispatch context and rejects provider conversation authority keys', () => {
   const envelope = Object.freeze({
     schemaVersion: 1 as const,
-    routeId: 'deepseek-v4-pro-seller',
+    routeId: 'deepseek-flash-seller',
     providerFamily: 'deepseek' as const,
-    modelId: 'deepseek-v4-pro',
+    modelId: 'deepseek-flash',
     role: 'seller' as const,
     canonicalRevision: 7,
     credentialEnvName: 'DEEPSEEK_API_KEY',

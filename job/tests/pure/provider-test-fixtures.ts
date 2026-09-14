@@ -4,9 +4,9 @@ export function createVerifiedRouteFixture(
   overrides: Partial<ProviderRouteDefinition> = {},
 ): Readonly<ProviderRouteDefinition> {
   return Object.freeze({
-    routeId: 'deepseek-v4-pro-test',
+    routeId: 'deepseek-flash-test',
     family: 'deepseek',
-    modelId: 'deepseek-v4-pro',
+    modelId: 'deepseek-flash',
     roles: Object.freeze(['seller'] as const),
     tier: 'primary',
     enabledByDefault: true,

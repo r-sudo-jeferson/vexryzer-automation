@@ -39,9 +39,10 @@ Historical experiments do not remain eligible merely because their evidence exis
 
 The only authorized generative route is:
 - provider: DeepSeek;
-- model id: `deepseek-v4-pro`;
+- model id: `deepseek-flash`;
+- model release: `DeepSeek-V4.1-Flash`;
 - harness: DeepSeek Harness;
-- Harness target version for fresh exact-tuple verification: `0.1.5-rc.1`;
+- Harness target version for fresh exact-tuple verification: `0.1.5-rc.2`;
 - API base: `https://api.deepseek.com`;
 - server credential name: `DEEPSEEK_API_KEY`.
 
@@ -85,7 +86,7 @@ No compatibility or quality PASS is inferred from documentation, a prior Harness
 
 Before activation, Engineering must prove on the exact Founder account and exact candidate:
 - access through `DEEPSEEK_API_KEY` without exposing the value;
-- exact model `deepseek-v4-pro`;
+- exact model `deepseek-flash`;
 - streaming;
 - structured tool calling;
 - multi-tool and multi-turn continuation;

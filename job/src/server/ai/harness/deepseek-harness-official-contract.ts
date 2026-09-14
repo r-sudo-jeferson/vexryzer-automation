@@ -1,8 +1,9 @@
 export const DEEPSEEK_HARNESS_OFFICIAL_CONTRACT = Object.freeze({
   mode: 'official_sdk_subprocess',
-  harnessVersion: '0.1.5-rc.1',
+  harnessVersion: '0.1.5-rc.2',
   provider: 'deepseek-official',
-  model: 'deepseek-v4-pro',
+  model: 'deepseek-flash',
+  modelRelease: 'DeepSeek-V4.1-Flash',
   credentialEnvName: 'DEEPSEEK_API_KEY',
   reasoningEffort: 'high',
   toolPresentationMode: 'native',
@@ -29,19 +30,19 @@ export const DEEPSEEK_HARNESS_OFFICIAL_CONTRACT = Object.freeze({
   autoInstallPeers: false,
 
   officialPackages: Object.freeze([
-    '@deepseek-ai/dsh@0.1.5-rc.1',
-    '@deepseek-ai/dsh-sdk-client@0.1.5-rc.1',
-    '@deepseek-ai/dsh-sdk-protocol@0.1.5-rc.1',
+    '@deepseek-ai/dsh@0.1.5-rc.2',
+    '@deepseek-ai/dsh-sdk-client@0.1.5-rc.2',
+    '@deepseek-ai/dsh-sdk-protocol@0.1.5-rc.2',
   ] as const),
 } as const);
 
 export type DeepSeekHarnessOfficialContract = typeof DEEPSEEK_HARNESS_OFFICIAL_CONTRACT;
 
-const EXACT_HARNESS_VERSION = '0.1.5-rc.1';
+const EXACT_HARNESS_VERSION = '0.1.5-rc.2';
 const EXACT_OFFICIAL_PACKAGES = Object.freeze([
-  '@deepseek-ai/dsh@0.1.5-rc.1',
-  '@deepseek-ai/dsh-sdk-client@0.1.5-rc.1',
-  '@deepseek-ai/dsh-sdk-protocol@0.1.5-rc.1',
+  '@deepseek-ai/dsh@0.1.5-rc.2',
+  '@deepseek-ai/dsh-sdk-client@0.1.5-rc.2',
+  '@deepseek-ai/dsh-sdk-protocol@0.1.5-rc.2',
 ] as const);
 
 export function assertDeepSeekHarnessOfficialContract(
@@ -50,7 +51,8 @@ export function assertDeepSeekHarnessOfficialContract(
   if (contract.mode !== 'official_sdk_subprocess'
     || contract.harnessVersion !== EXACT_HARNESS_VERSION
     || contract.provider !== 'deepseek-official'
-    || contract.model !== 'deepseek-v4-pro'
+    || contract.model !== 'deepseek-flash'
+    || contract.modelRelease !== 'DeepSeek-V4.1-Flash'
     || contract.credentialEnvName !== 'DEEPSEEK_API_KEY'
     || contract.reasoningEffort !== 'high'
     || contract.toolPresentationMode !== 'native'

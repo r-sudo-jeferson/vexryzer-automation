@@ -3,9 +3,9 @@ import { SELLER_TOOL_NAMES } from '../seller/seller-wire-tools.ts';
 
 export const DEEPSEEK_HARNESS_VISITOR_PROFILE = Object.freeze({
   harness: 'DeepSeek-Harness',
-  version: '0.1.5-rc.1',
+  version: '0.1.5-rc.2',
   providerFamily: 'deepseek',
-  modelId: 'deepseek-v4-pro',
+  modelId: 'deepseek-flash',
   credentialEnvName: 'DEEPSEEK_API_KEY',
   credentialScope: 'server',
   toolPresentationMode: 'native',
@@ -139,9 +139,9 @@ export function validateDeepSeekHarnessToolSurface(
 export function assertDeepSeekHarnessVisitorProfile(): typeof DEEPSEEK_HARNESS_VISITOR_PROFILE {
   const profile = DEEPSEEK_HARNESS_VISITOR_PROFILE;
   if (profile.harness !== 'DeepSeek-Harness'
-    || profile.version !== '0.1.5-rc.1'
+    || profile.version !== '0.1.5-rc.2'
     || profile.providerFamily !== 'deepseek'
-    || profile.modelId !== 'deepseek-v4-pro'
+    || profile.modelId !== 'deepseek-flash'
     || profile.credentialEnvName !== 'DEEPSEEK_API_KEY'
     || profile.credentialScope !== 'server'
     || profile.toolPresentationMode !== 'native'

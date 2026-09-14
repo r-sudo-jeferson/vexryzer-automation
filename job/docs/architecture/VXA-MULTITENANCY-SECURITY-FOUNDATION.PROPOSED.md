@@ -12,7 +12,7 @@ Scope: planning only — authorizes no implementation, no auth/database/runtime 
 - S002 current authority is **anonymous visitor session scope**. There is **no current tenant truth**: no tenant claim in the Slice contract, authorizations, session records, or canonical context (`createCanonicalSalesContext({ sessionId })`).
 - Current session tuple: `sessionId` + session-token SHA-256 digest / Bearer + `leaseId` + `requestId` + canonical revision, enforced through `agent-session.ts`, `ask-ai-http.ts`, `session-repository.ts`, and the Harness tool authorizer.
 - Current persistence is the `AgentSessionRepository` CAS interface over Netlify Blobs. There is **no relational database, no RLS, no connection pool, no tenant column anywhere** in current code.
-- DeepSeek (`deepseek-v4-pro`, DeepSeek Harness `0.1.5-rc.1`, `DEEPSEEK_API_KEY` server-only) is the single mandatory AI truth. Deterministic guided recovery on route failure; never a provider switch.
+- DeepSeek (`deepseek-flash`, DeepSeek Harness `0.1.5-rc.2`, `DEEPSEEK_API_KEY` server-only) is the single mandatory AI truth. Deterministic guided recovery on route failure; never a provider switch.
 - The agent emits only the closed 11-kind semantic intent union; application validators/projectors enforce it. No executable JS/CSS/HTML/React, selectors, coordinates, or imports from the model — ever.
 
 Any multitenancy design that weakens, bypasses, or reinterprets the above is rejected by this plan before any other merit is considered.

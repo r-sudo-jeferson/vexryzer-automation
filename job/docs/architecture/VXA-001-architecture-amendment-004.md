@@ -11,14 +11,14 @@ authorized_base_sha: `6244a246d8faf73e772fc944a398a71a02fb97e0a`
 authorized_at: `2026-09-11`
 authority: `FOUNDER_EXPLICIT_DIRECTIVE`
 model_provider: `DeepSeek`
-model_id: `deepseek-v4-pro`
+model_id: `deepseek-flash`
 harness: `DeepSeek Harness`
-harness_target_version: `0.1.5-rc.1`
+harness_target_version: `0.1.5-rc.2`
 credential_env: `DEEPSEEK_API_KEY`
 
 ## 1. Decision
 
-VXA-S002 has exactly one active generative model truth: DeepSeek `deepseek-v4-pro`. The sole authorized agent harness is DeepSeek Harness. No second LLM provider, model family, model alias, agent harness, compatibility route, emergency LLM, standby LLM or silent fallback may exist in active product configuration, runtime selection, tests, deployment configuration or current normative documentation.
+VXA-S002 has exactly one active generative model truth: DeepSeek V4.1-Flash via API selector `deepseek-flash`. The sole authorized agent harness is DeepSeek Harness. No second LLM provider, model family, model alias, agent harness, compatibility route, emergency LLM, standby LLM or silent fallback may exist in active product configuration, runtime selection, tests, deployment configuration or current normative documentation.
 
 Historical evidence for prior experiments remains recoverable from Git history only. Historical success or failure does not keep an alternative route alive in the current tree.
 
@@ -26,9 +26,9 @@ If DeepSeek is unavailable, rate limited, out of prepaid balance, misconfigured 
 
 ## 2. Exact model truth
 
-The production target is the exact API model id `deepseek-v4-pro` using the DeepSeek API endpoint `https://api.deepseek.com`.
+The production target is DeepSeek-V4.1-Flash through the official API selector `deepseek-flash` at `https://api.deepseek.com`. The selector is versionless, so each provider-side model refresh requires a new exact compatibility gate before runtime activation.
 
-Legacy aliases and sibling models are not authorized. In particular, no legacy chat/reasoner alias or Flash variant may be introduced as an implicit substitute for V4 Pro.
+Legacy aliases and sibling models are not authorized. The only authorized API selector is `deepseek-flash`, currently documented by DeepSeek as DeepSeek-V4.1-Flash; no legacy chat/reasoner alias, Pro alias, sibling model or silent compatibility route may substitute for it.
 
 Thinking mode may vary by request complexity while remaining on the same exact model. Reasoning effort may use `low`, `high` or `max` according to a deterministic application-owned policy. Provider-returned hidden reasoning is never application truth.
 
@@ -36,9 +36,13 @@ Thinking mode may vary by request complexity while remaining on the same exact m
 
 DeepSeek Harness becomes the required agentic runtime for the live Seller/Canvas coordination path after the exact target tuple passes the required compatibility and safety gates.
 
-The prior DeepSeek Harness result was produced on an older release candidate and remains historical evidence. It does not authorize a competing harness. The current target `0.1.5-rc.1` must be reverified rather than assuming that either the old failure or the new release implies compatibility.
+The prior DeepSeek Harness result was produced on an older release candidate and remains historical evidence. It does not authorize a competing harness. The current target `0.1.5-rc.2` must be reverified rather than assuming that either the old failure or the new release implies compatibility.
 
 Until that gate passes, the production runtime remains fail-closed. Engineering may not activate another harness to avoid the gate.
+
+### 3.1 Known Harness 0.1.5-line risk
+
+Public upstream evidence for the 0.1.5 line reports that a reasoning-only provider completion may be classified as a successful turn even when no visible text or tool call is emitted. Vexryzer must therefore treat an empty/degenerate Harness result as failure, never as a successful Seller/Critic completion, and must not infer runtime activation from package installation or a single happy-path smoke. No third-party guard plugin is made part of the product by this amendment; the exact pinned Harness remains subject to Vexryzer's fail-closed validation and GAUNTLET evidence.
 
 ## 4. Agent lives in the Infinite Canvas
 
@@ -88,7 +92,7 @@ Founder-authorized prepaid DeepSeek balance is permitted. Automatic recharge, au
 
 ## 8. Exact activation gate
 
-Before the agent runtime is considered active, the exact `DeepSeek Harness 0.1.5-rc.1 + deepseek-v4-pro + Founder account` tuple must prove:
+Before the agent runtime is considered active, the exact `DeepSeek Harness 0.1.5-rc.2 + deepseek-flash + Founder account` tuple must prove:
 - authenticated access using only `DEEPSEEK_API_KEY`;
 - streamed agent events;
 - real tool calls with validated structured arguments;
