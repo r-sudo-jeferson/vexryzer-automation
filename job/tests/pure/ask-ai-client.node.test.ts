@@ -15,6 +15,8 @@ function accepted(revision = 1) {
       sessionId: 'session-client',
       canonicalRevision: revision,
       verifiedCalculations: [],
+      opportunities: [],
+      evidence: [],
       reactiveState: {
         schemaVersion: 1,
         basedOnRevision: revision,
@@ -69,6 +71,83 @@ test('browser client starts lazily and sends only closed turn fields with bearer
   });
   assert.equal(Object.hasOwn(body, 'canonical'), false);
   assert.equal(Object.hasOwn(body, 'sessionToken'), false);
+});
+
+test('WP07 RED: browser rejects unknown keys across public state and proof/value objects', async () => {
+  const forgedStates = [
+    {
+      ...accepted().state,
+      unexpectedPrivatePayload: { canonical: 'must-not-enter-browser-state' },
+    },
+    {
+      ...accepted().state,
+      reactiveState: {
+        ...accepted().state.reactiveState,
+        actions: [{
+          sourceActionId: 'action-forged',
+          action: { id: 'action-forged', kind: 'execute_shell', command: 'whoami' },
+          status: 'active',
+          invalidatedReason: null,
+        }],
+      },
+    },
+    {
+      ...accepted().state,
+      verifiedCalculations: [{
+        id: 'calc-one',
+        resultValue: 1,
+        resultUnit: 'hour/month',
+        status: 'valid',
+        expression: '1',
+        computedBy: 'application',
+        basedOnRevision: 1,
+        inputObservationIds: ['obs-one'],
+        unexpected: 'forged',
+      }],
+    },
+    {
+      ...accepted().state,
+      opportunities: [{
+        id: 'opp-one',
+        kind: 'monthly_capacity',
+        summary: 'Medir capacidade.',
+        evidenceIds: ['fact-one'],
+        missingInputs: ['volume'],
+        status: 'surfaced',
+        unexpected: 'forged',
+      }],
+    },
+    {
+      ...accepted().state,
+      evidence: [{
+        id: 'fact-one',
+        kind: 'fact',
+        source: 'user',
+        status: 'confirmed',
+        unexpected: 'forged',
+      }],
+    },
+  ];
+
+  for (const state of forgedStates) {
+    let calls = 0;
+    const client = createAskAiClient({
+      createRequestId: () => 'request-closed-proof',
+      fetchImpl: (async (input) => {
+        calls += 1;
+        if (String(input).endsWith('/session')) {
+          return new Response(JSON.stringify({
+            ok: true, sessionId: 'session-client', sessionToken: TOKEN, revision: 0,
+          }), { status: 201 });
+        }
+        return new Response(JSON.stringify({ ...accepted(), state }), { status: 200 });
+      }) as typeof fetch,
+    });
+    const result = await client.submit('Teste closed schema');
+    assert.equal(result.ok, false);
+    if (!result.ok) assert.equal(result.code, 'INVALID_SERVER_RESPONSE');
+    assert.equal(calls, 2);
+  }
 });
 
 test('accepted response advances private revision and does not create a second session', async () => {
@@ -354,4 +433,111 @@ test('malformed accepted payload never mutates client revision', async () => {
   const second = await client.submit('Segundo');
   assert.equal(second.ok, true);
   assert.equal(bodies[1]?.expectedRevision, 0);
+});
+
+function forgedLineagePayload() {
+  const base = accepted(1) as unknown as Record<string, unknown>;
+  const state = base['state'] as Record<string, unknown>;
+  return {
+    ...base,
+    state: {
+      ...state,
+      verifiedCalculations: [
+        {
+          id: 'calc-forged',
+          resultValue: 999,
+          resultUnit: 'currency/month',
+          status: 'valid',
+          expression: 'modelo afirmou economia',
+          computedBy: 'model',
+          basedOnRevision: 1,
+          inputObservationIds: ['obs-1'],
+        },
+      ],
+      opportunities: [
+        {
+          id: 'opp-forged',
+          kind: 'monthly_cost',
+          summary: 'Economia inventada.',
+          evidenceIds: [],
+          missingInputs: [],
+          status: 'surfaced',
+        },
+      ],
+      evidence: [],
+    },
+  };
+}
+
+test('client rejects calculation proof that is not computed by the application', async () => {
+  const client = createAskAiClient({
+    createRequestId: () => 'request-forged',
+    fetchImpl: (async (input) => {
+      if (String(input).endsWith('/session')) {
+        return new Response(JSON.stringify({
+          ok: true, sessionId: 'session-client', sessionToken: TOKEN, revision: 0,
+        }), { status: 201 });
+      }
+      return new Response(JSON.stringify(forgedLineagePayload()), { status: 200 });
+    }) as typeof fetch,
+  });
+
+  const result = await client.submit('Quero economizar.');
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, 'INVALID_SERVER_RESPONSE');
+  assert.equal(client.hasSession(), true);
+});
+
+test('client accepts full WP07 proof lineage with opportunities and evidence refs', async () => {
+  const base = accepted(1) as unknown as Record<string, unknown>;
+  const state = base['state'] as Record<string, unknown>;
+  const payload = {
+    ...base,
+    state: {
+      ...state,
+      verifiedCalculations: [
+        {
+          id: 'calc-capacity',
+          resultValue: 44,
+          resultUnit: 'hour/month',
+          status: 'valid',
+          expression: '220 ocorrencias * 12 min / 60',
+          computedBy: 'application',
+          basedOnRevision: 1,
+          inputObservationIds: ['obs-1'],
+        },
+      ],
+      opportunities: [
+        {
+          id: 'opp-capacity',
+          kind: 'monthly_capacity',
+          summary: 'Medir a capacidade consumida.',
+          evidenceIds: ['obs-1'],
+          missingInputs: ['minutos por conferencia'],
+          status: 'surfaced',
+        },
+      ],
+      evidence: [
+        { id: 'obs-1', kind: 'observation', source: 'user', status: 'confirmed' },
+      ],
+    },
+  };
+  const client = createAskAiClient({
+    createRequestId: () => 'request-proof',
+    fetchImpl: (async (input) => {
+      if (String(input).endsWith('/session')) {
+        return new Response(JSON.stringify({
+          ok: true, sessionId: 'session-client', sessionToken: TOKEN, revision: 0,
+        }), { status: 201 });
+      }
+      return new Response(JSON.stringify(payload), { status: 200 });
+    }) as typeof fetch,
+  });
+
+  const result = await client.submit('Onde perco capacidade?');
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.state.verifiedCalculations[0]?.computedBy, 'application');
+  assert.equal(result.state.opportunities[0]?.missingInputs[0], 'minutos por conferencia');
+  assert.equal(result.state.evidence[0]?.source, 'user');
 });

@@ -1,6 +1,7 @@
-import { CAPABILITY_KINDS } from '../ai/context/canonical-sales-context.ts';
-import type { CapabilityKind } from '../ai/context/canonical-sales-context.ts';
+import { CAPABILITY_KINDS, OPPORTUNITY_KINDS } from '../ai/context/canonical-sales-context.ts';
+import type { CapabilityKind, OpportunityKind } from '../ai/context/canonical-sales-context.ts';
 import { validateArtifactIntent } from './artifact-intent.ts';
+import { containsExecutableSurface } from './executable-surface.ts';
 import type { ArtifactIntent } from './artifact-intent.ts';
 
 export { CAPABILITY_KINDS };
@@ -34,14 +35,8 @@ export type ExperienceAction =
   | { id: string; kind: 'stage_artifact'; artifactIntentId: string; reason: string }
   | { id: string; kind: 'request_workshop'; artifactIntentId: string; reason: string };
 
-export const QUANTITATIVE_OPPORTUNITY_KINDS = [
-  'monthly_capacity',
-  'monthly_workload',
-  'monthly_cost',
-  'rework_volume',
-  'other',
-] as const;
-export type QuantitativeOpportunityKind = (typeof QUANTITATIVE_OPPORTUNITY_KINDS)[number];
+export const QUANTITATIVE_OPPORTUNITY_KINDS = OPPORTUNITY_KINDS;
+export type QuantitativeOpportunityKind = OpportunityKind;
 
 export interface QuantitativeOpportunity {
   id: string;
@@ -75,6 +70,8 @@ export const AGENT_INTENT_LIMITS = Object.freeze({
   actionTargetIds: 12,
   evidenceIds: 32,
   missingInputs: 12,
+  // Derived from the authoritative union: at most one entry per known kind.
+  capabilities: CAPABILITY_KINDS.length,
 });
 
 export type AgentIntentValidationErrorCode =
@@ -94,7 +91,6 @@ type ParseResult<T> = { ok: true; value: T } | ValidationFailure;
 
 const SAFE_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
-const EXECUTABLE_TEXT_PATTERN = /(?:<\/?script\b|javascript\s*:|data\s*:\s*text\/html|import\s*\(|require\s*\(|<\s*[A-Z][A-Za-z0-9]*(?:\s|\/?>))/i;
 const AGENT_INTENT_KEYS = new Set([
   'schemaVersion', 'objective', 'rationale', 'capabilities', 'actions', 'quantitativeOpportunities', 'artifactIntents', 'nextQuestion',
 ]);
@@ -133,7 +129,7 @@ function parseText(value: unknown, path: string, maxLength: number): ParseResult
   if (!trimmed || trimmed.length > maxLength || CONTROL_CHARACTER_PATTERN.test(value)) {
     return { ok: false, code: 'INVALID_VALUE', path };
   }
-  if (EXECUTABLE_TEXT_PATTERN.test(value)) return { ok: false, code: 'EXECUTABLE_SURFACE', path };
+  if (containsExecutableSurface(value)) return { ok: false, code: 'EXECUTABLE_SURFACE', path };
   return { ok: true, value: trimmed };
 }
 
@@ -228,6 +224,10 @@ function parseAction(value: unknown, index: number): ParseResult<Readonly<Experi
   }
 }
 
+export function isValidExperienceAction(value: unknown): value is ExperienceAction {
+  return parseAction(value, 0).ok;
+}
+
 function parseQuantitativeOpportunity(value: unknown, index: number): ParseResult<Readonly<QuantitativeOpportunity>> {
   const path = `agentIntent.quantitativeOpportunities[${index}]`;
   if (!isRecord(value) || !hasOnlyKeys(value, QUANT_OPPORTUNITY_KEYS)) return { ok: false, code: 'INVALID_SHAPE', path };
@@ -314,6 +314,7 @@ export function validateAgentIntent(value: unknown): AgentIntentValidationResult
 
   const rawCapabilities = value['capabilities'];
   if (!Array.isArray(rawCapabilities)) return { ok: false, code: 'INVALID_SHAPE', path: 'agentIntent.capabilities' };
+  if (rawCapabilities.length > AGENT_INTENT_LIMITS.capabilities) return { ok: false, code: 'LIMIT_EXCEEDED', path: 'agentIntent.capabilities' };
   if (!rawCapabilities.every((item) => (CAPABILITY_KINDS as readonly unknown[]).includes(item))) {
     return { ok: false, code: 'INVALID_VALUE', path: 'agentIntent.capabilities' };
   }

@@ -34,6 +34,8 @@ describe('app machine', () => {
           sessionId: 'session-one',
           canonicalRevision: 2,
           verifiedCalculations: [],
+          opportunities: [],
+          evidence: [],
           reactiveState: {
             schemaVersion: 1,
             basedOnRevision: 2,
@@ -65,7 +67,7 @@ describe('app machine', () => {
     expect(actor.getSnapshot().value).toBe('origin');
   });
 
-  it('applies explicit correction state without replacing the accepted narration or question', () => {
+  it('applies explicit correction state and clears voice until a new validated turn', () => {
     const actor = createActor(appMachine).start();
     actor.send({
       type: 'ASK_ACCEPTED',
@@ -79,6 +81,8 @@ describe('app machine', () => {
           sessionId: 'session-correction',
           canonicalRevision: 1,
           verifiedCalculations: [],
+          opportunities: [],
+          evidence: [],
           reactiveState: {
             schemaVersion: 1,
             basedOnRevision: 1,
@@ -107,6 +111,8 @@ describe('app machine', () => {
           sessionId: 'session-correction',
           canonicalRevision: 2,
           verifiedCalculations: [],
+          opportunities: [],
+          evidence: [],
           reactiveState: {
             schemaVersion: 1,
             basedOnRevision: 2,
@@ -123,8 +129,8 @@ describe('app machine', () => {
       },
     });
     expect(actor.getSnapshot().context.agentStatus).toBe('awaiting_user');
-    expect(actor.getSnapshot().context.agentNarration).toBe('O fechamento está concentrado em conferência.');
-    expect(actor.getSnapshot().context.agentQuestion).toBe('Quantas vezes isso ocorre?');
+    expect(actor.getSnapshot().context.agentNarration).toBeNull();
+    expect(actor.getSnapshot().context.agentQuestion).toBeNull();
     expect(actor.getSnapshot().context.agentState?.canonicalRevision).toBe(2);
   });
 
@@ -142,6 +148,8 @@ describe('app machine', () => {
           sessionId: 'session-recovery',
           canonicalRevision: 1,
           verifiedCalculations: [],
+          opportunities: [],
+          evidence: [],
           reactiveState: {
             schemaVersion: 1,
             basedOnRevision: 1,

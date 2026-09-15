@@ -75,6 +75,8 @@ export const appMachine = setup({
       ? {
           agentStatus: 'awaiting_user' as const,
           agentState: event.response.state,
+          agentNarration: null,
+          agentQuestion: null,
           agentErrorCode: null,
         }
       : {}),

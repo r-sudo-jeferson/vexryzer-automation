@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import {
   Background,
   BackgroundVariant,
@@ -11,42 +12,93 @@ import {
   type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { createCameraPlan, type CameraMode } from './camera.ts';
+import { type CameraMode } from './camera.ts';
+import { resolveCameraDirection, type CameraSceneComposition } from './camera-director.ts';
 import type { ProcessFixture } from './fixtures.ts';
 import type { ProcessGraph } from './domain.ts';
-import type { CanvasNodeSemanticOverlay } from './reactive-graph-adapter.ts';
+import type {
+  CanvasNodeSemanticOverlay,
+  CanvasOpportunity,
+  CanvasQuantification,
+} from './reactive-graph-adapter.ts';
+import {
+  OpportunityProofNode,
+  ValueProofNode,
+  opportunityProofAccessibleLabel,
+  valueProofAccessibleLabel,
+  type OpportunityProofFlowNode,
+  type ValueProofFlowNode,
+} from './EvidenceProofSurface.tsx';
 import { layoutProcessGraph } from './layout.ts';
 import { resolveZoomBand, type ZoomBand } from './semantic-zoom.ts';
 import { OriginNode, type OriginFlowNode } from './nodes/OriginNode.tsx';
 import { ProcessNode, processNodeAccessibleLabel, type ProcessFlowNode } from './nodes/ProcessNode.tsx';
+import { SpatialAgentNode, type SpatialAgentFlowNode } from './nodes/SpatialAgentNode.tsx';
+import { SPATIAL_AGENT_NODE_ID, resolveSpatialAgentPresence, type SpatialAgentStatus } from './spatial-agent-presence.ts';
 import type { MotionPolicy } from '../accessibility/motion-policy.ts';
 import './canvas.css';
 
-type CanvasNode = OriginFlowNode | ProcessFlowNode;
+type CanvasNode =
+  | OriginFlowNode
+  | ProcessFlowNode
+  | SpatialAgentFlowNode
+  | OpportunityProofFlowNode
+  | ValueProofFlowNode;
 
 const nodeTypes = {
   origin: OriginNode,
   process: ProcessNode,
+  'agent-presence': SpatialAgentNode,
+  'opportunity-proof': OpportunityProofNode,
+  'value-proof': ValueProofNode,
 };
 
 interface AutomationCanvasProps {
   fixture: ProcessFixture;
   graph?: ProcessGraph;
   semanticOverlays?: readonly Readonly<CanvasNodeSemanticOverlay>[];
+  opportunities?: readonly Readonly<CanvasOpportunity>[];
+  globalQuantifications?: readonly Readonly<CanvasQuantification>[];
   mode: CameraMode;
   focusedNodeId: string | null;
   motionPolicy: MotionPolicy;
   onFocusNode: (nodeId: string) => void;
+  semanticTargets?: readonly string[];
+  sceneComposition?: CameraSceneComposition;
+  sceneAnnouncement?: string | null;
+  onInterrupt?: () => void;
+  externalInterruptSignal?: number;
+  agentStatus?: SpatialAgentStatus;
+  agentNarration?: string | null;
+  agentQuestion?: string | null;
 }
+
+// Viewport-intent keys: operating the surface with these claims the camera.
+// Hover, Tab traversal, activation keys and modified shortcuts never interrupt:
+// they neither displace the viewport nor take camera ownership.
+const INTERRUPTING_KEYS = new Set([
+  'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+  'PageUp', 'PageDown', 'Home', 'End', '+', '=', '-',
+]);
 
 function CanvasSurface({
   fixture,
   graph: graphOverride,
   semanticOverlays = [],
+  opportunities = [],
+  globalQuantifications = [],
   mode,
   focusedNodeId,
   motionPolicy,
   onFocusNode,
+  semanticTargets = [],
+  sceneComposition = 'stable',
+  sceneAnnouncement = null,
+  onInterrupt,
+  externalInterruptSignal = 0,
+  agentStatus = 'idle',
+  agentNarration = null,
+  agentQuestion = null,
 }: AutomationCanvasProps) {
   const graph = graphOverride ?? fixture.graph;
   const [instance, setInstance] = useState<ReactFlowInstance<CanvasNode, Edge> | null>(null);
@@ -55,6 +107,11 @@ function CanvasSurface({
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const userInterruptedRef = useRef(false);
   const lastCameraIntentRef = useRef<string | null>(null);
+  const announcementRef = useRef<string | null>(sceneAnnouncement);
+  announcementRef.current = sceneAnnouncement;
+  const onInterruptRef = useRef(onInterrupt);
+  onInterruptRef.current = onInterrupt;
+  const lastExternalSignalRef = useRef(externalInterruptSignal);
   const observedInitialSizeRef = useRef(false);
   const [viewportRevision, setViewportRevision] = useState(0);
   const [directedMobile, setDirectedMobile] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 720px), (pointer: coarse)').matches);
@@ -62,13 +119,58 @@ function CanvasSurface({
     () => graph.nodes.map((node) => node.id).join('|') + '::' + graph.edges.map((edge) => edge.id).join('|'),
     [graph],
   );
-  const cameraIntent = `${mode}:${focusedNodeId ?? 'none'}:${motionPolicy.reduced ? 'reduced' : 'standard'}:${directedMobile ? 'directed-mobile' : 'canvas'}:${graphIntentKey}`;
+  const semanticTargetsKey = useMemo(() => [...semanticTargets].join('|'), [semanticTargets]);
+  const proofIntentKey = useMemo(
+    () => [
+      ...globalQuantifications.map((item) => `value:${item.calculationId}`),
+      ...opportunities
+        .filter((item) => item.status !== 'invalidated')
+        .map((item) => `opportunity:${item.id}:${item.status}`),
+    ].join('|'),
+    [globalQuantifications, opportunities],
+  );
+  const cameraIntent = `${mode}:${focusedNodeId ?? 'none'}:${sceneComposition}:${semanticTargetsKey}:${proofIntentKey}:${motionPolicy.reduced ? 'reduced' : 'standard'}:${directedMobile ? 'directed-mobile' : 'canvas'}:${graphIntentKey}`;
   const processNodeIds = useMemo(() => new Set(graph.nodes.map((node) => node.id)), [graph]);
   const overlayByNodeId = useMemo(
     () => new Map(semanticOverlays.map((overlay) => [overlay.nodeId, overlay] as const)),
     [semanticOverlays],
   );
   const stepCount = graph.nodes.length;
+  const processPositions = useMemo(
+    () => layoutProcessGraph(graph, { columns: directedMobile ? 2 : 4 }),
+    [directedMobile, graph],
+  );
+  const proofOrigin = useMemo(() => {
+    const positions = [...processPositions.values()];
+    if (positions.length === 0) return { x: 0, y: directedMobile ? 260 : 220 };
+    return {
+      x: Math.min(...positions.map((position) => position.x)),
+      y: Math.max(...positions.map((position) => position.y)) + (directedMobile ? 300 : 260),
+    };
+  }, [directedMobile, processPositions]);
+  const proofNodeIdsKey = useMemo(() => [
+    ...globalQuantifications.map((item) => `proof-value-${item.calculationId}`),
+    ...opportunities
+      .filter((item) => item.status !== 'invalidated')
+      .map((item) => `proof-opportunity-${item.id}`),
+  ].join('|'), [globalQuantifications, opportunities]);
+  const proofNodeIds = useMemo(
+    () => Object.freeze(proofNodeIdsKey === '' ? [] : proofNodeIdsKey.split('|')),
+    [proofNodeIdsKey],
+  );
+  const presencePositions = useMemo(() => {
+    const positions = new Map(processPositions);
+    positions.set('origin', { x: -440, y: -40 });
+    return positions;
+  }, [processPositions]);
+  const agentPresence = useMemo(() => resolveSpatialAgentPresence({
+    status: agentStatus,
+    mode,
+    focusedNodeId,
+    semanticTargets,
+    positions: presencePositions,
+    mobile: directedMobile,
+  }), [agentStatus, directedMobile, focusedNodeId, mode, presencePositions, semanticTargets]);
 
   useEffect(() => {
     if (window.__VXA_PERF__) window.__VXA_PERF__.canvasCommits += 1;
@@ -97,19 +199,19 @@ function CanvasSurface({
   }, []);
 
   const nodes = useMemo<CanvasNode[]>(() => {
-    const positions = layoutProcessGraph(graph, { columns: directedMobile ? 2 : 4 });
     const processNodes: ProcessFlowNode[] = graph.nodes.map((model) => {
       const overlay = overlayByNodeId.get(model.id);
       return {
         id: model.id,
         type: 'process',
-        position: positions.get(model.id) ?? { x: 0, y: 0 },
+        position: processPositions.get(model.id) ?? { x: 0, y: 0 },
         data: {
           model,
           zoomBand,
           muted: mode === 'origin'
             || (mode === 'focus' && focusedNodeId !== model.id)
             || overlay?.deEmphasized === true,
+          agentAnchored: agentPresence.anchorId === model.id,
           ...(overlay === undefined ? {} : { overlay }),
         },
         selected: mode === 'focus' && focusedNodeId === model.id,
@@ -122,7 +224,70 @@ function CanvasSurface({
       };
     });
 
-    if (mode !== 'origin') return processNodes;
+    const visibleOpportunities = opportunities.filter((item) => item.status !== 'invalidated');
+    const proofColumns = directedMobile ? 1 : Math.min(3, Math.max(1, visibleOpportunities.length + globalQuantifications.length));
+    const proofNodes: CanvasNode[] = [
+      ...globalQuantifications.map((quantification, index): ValueProofFlowNode => ({
+        id: `proof-value-${quantification.calculationId}`,
+        type: 'value-proof',
+        position: {
+          x: proofOrigin.x + (index % proofColumns) * 310,
+          y: proofOrigin.y + Math.floor(index / proofColumns) * 230,
+        },
+        data: { quantification, zoomBand },
+        draggable: false,
+        connectable: false,
+        selectable: false,
+        focusable: true,
+        ariaLabel: valueProofAccessibleLabel(quantification),
+        deletable: false,
+        zIndex: 6,
+      })),
+      ...visibleOpportunities.map((opportunity, offset): OpportunityProofFlowNode => {
+        const index = globalQuantifications.length + offset;
+        return {
+          id: `proof-opportunity-${opportunity.id}`,
+          type: 'opportunity-proof',
+          position: {
+            x: proofOrigin.x + (index % proofColumns) * 310,
+            y: proofOrigin.y + Math.floor(index / proofColumns) * 230,
+          },
+          data: { opportunity, zoomBand },
+          draggable: false,
+          connectable: false,
+          selectable: false,
+          focusable: true,
+          ariaLabel: opportunityProofAccessibleLabel(opportunity),
+          deletable: false,
+          zIndex: 6,
+        };
+      }),
+    ];
+
+    const spatialAgent: SpatialAgentFlowNode | null = agentPresence.visible ? {
+      id: SPATIAL_AGENT_NODE_ID,
+      type: 'agent-presence',
+      position: agentPresence.position,
+      data: {
+        phase: agentPresence.phase,
+        placement: agentPresence.placement,
+        reducedMotion: motionPolicy.reduced,
+        narration: agentNarration,
+        question: agentQuestion,
+      },
+      draggable: false,
+      connectable: false,
+      selectable: false,
+      focusable: false,
+      deletable: false,
+      zIndex: 12,
+    } : null;
+
+    if (mode !== 'origin') {
+      return spatialAgent === null
+        ? [...processNodes, ...proofNodes]
+        : [...processNodes, ...proofNodes, spatialAgent];
+    }
 
     const origin: OriginFlowNode = {
       id: 'origin',
@@ -136,8 +301,23 @@ function CanvasSurface({
       deletable: false,
     };
 
-    return [origin, ...processNodes];
-  }, [directedMobile, focusedNodeId, graph, mode, overlayByNodeId, zoomBand]);
+    return spatialAgent === null ? [origin, ...processNodes] : [origin, ...processNodes, spatialAgent];
+  }, [
+    agentNarration,
+    agentPresence,
+    agentQuestion,
+    directedMobile,
+    focusedNodeId,
+    globalQuantifications,
+    graph,
+    mode,
+    motionPolicy.reduced,
+    opportunities,
+    overlayByNodeId,
+    processPositions,
+    proofOrigin,
+    zoomBand,
+  ]);
 
   const edges = useMemo<Edge[]>(() => graph.edges.map((edge) => ({
     ...edge,
@@ -165,11 +345,17 @@ function CanvasSurface({
       if (!intentChanged && viewportRevision > 0) window.__VXA_PERF__.cameraResizeRefits += 1;
     }
 
-    const plan = createCameraPlan({
+    const plan = resolveCameraDirection({
       mode,
-      ...(focusedNodeId ? { focusNodeId: focusedNodeId } : {}),
+      focusedNodeId,
+      targets: semanticTargets,
+      composition: sceneComposition,
+      announcement: announcementRef.current,
+      knownNodeIds: [...processNodeIds, 'origin'],
+      mobile: directedMobile,
       reducedMotion: motionPolicy.reduced,
-    });
+      spatialCompanionVisible: mode !== 'origin' && agentPresence.visible,
+    }).plan;
     const common = {
       padding: plan.padding,
       minZoom: plan.minZoom,
@@ -177,19 +363,75 @@ function CanvasSurface({
       duration: plan.durationMs,
       interpolate: 'smooth' as const,
     };
+    const includeSpatialProof = mode !== 'origin'
+      && proofNodeIds.length > 0
+      && (
+        sceneComposition === 'stable'
+        || sceneComposition === 'focus'
+        || sceneComposition === 'overview'
+        || sceneComposition === 'compare'
+      );
     if (plan.kind === 'fit-nodes') {
-      void instance.fitView({ ...common, nodes: plan.nodeIds.map((id) => ({ id })) });
+      const plannedIds = includeSpatialProof
+        ? [...new Set([...plan.nodeIds, ...proofNodeIds])]
+        : plan.nodeIds;
+      const fitNodeIds = mode !== 'origin' && agentPresence.visible
+        ? [...new Set([...plannedIds, SPATIAL_AGENT_NODE_ID])]
+        : plannedIds;
+      void instance.fitView({ ...common, nodes: fitNodeIds.map((id) => ({ id })) });
       return;
     }
-    const processNodes = instance.getNodes().filter((node) => node.type === 'process');
-    if (processNodes.length > 0) void instance.fitView({ ...common, nodes: processNodes });
-  }, [cameraIntent, focusedNodeId, instance, mode, motionPolicy.reduced, viewportRevision]);
+    const visibleNodes = instance.getNodes().filter((node) =>
+      node.type === 'process'
+      || (includeSpatialProof && (node.type === 'opportunity-proof' || node.type === 'value-proof')));
+    if (visibleNodes.length > 0) void instance.fitView({ ...common, nodes: visibleNodes });
+    // cameraIntent embeds every Director input (mode, focus, composition,
+    // targets, motion, form factor, graph), so the dep list stays stable.
+  }, [
+    agentPresence.visible,
+    cameraIntent,
+    focusedNodeId,
+    instance,
+    mode,
+    motionPolicy.reduced,
+    proofNodeIds,
+    sceneComposition,
+    viewportRevision,
+  ]);
 
-  const handleMoveStart = (event: MouseEvent | TouchEvent | null) => {
-    if (!event || !instance) return;
+  // Single interruption owner: transition-only counting keeps the probe a
+  // truthful interruption count instead of an event counter, and the optional
+  // callback lets future presence work observe without owning policy.
+  const markInterrupted = () => {
+    if (userInterruptedRef.current) return;
     userInterruptedRef.current = true;
     if (window.__VXA_PERF__) window.__VXA_PERF__.cameraInterruptions += 1;
-    void instance.setViewport(instance.getViewport(), { duration: 0 });
+    onInterruptRef.current?.();
+    if (instance) void instance.setViewport(instance.getViewport(), { duration: 0 });
+  };
+
+  useEffect(() => {
+    if (lastExternalSignalRef.current === externalInterruptSignal) return;
+    lastExternalSignalRef.current = externalInterruptSignal;
+    markInterrupted();
+  });
+
+  const handleMoveStart = (event: MouseEvent | TouchEvent | null) => {
+    if (!event) return;
+    markInterrupted();
+  };
+
+  const handlePointerDown = () => markInterrupted();
+  const handleSurfaceClick = () => markInterrupted();
+  const handleWheel = () => markInterrupted();
+  const handleTouchStart = () => markInterrupted();
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    // Drag-motion claims the camera; plain hover never does.
+    if (event.buttons !== 0) markInterrupted();
+  };
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (INTERRUPTING_KEYS.has(event.key)) markInterrupted();
   };
 
   const handleViewport = (_event: MouseEvent | TouchEvent | null, viewport: Viewport) => {
@@ -208,7 +450,18 @@ function CanvasSurface({
   };
 
   return (
-    <div ref={canvasRef} className="vxa-canvas" data-mode={mode} data-zoom-band={zoomBand}>
+    <div
+      ref={canvasRef}
+      className="vxa-canvas"
+      data-mode={mode}
+      data-zoom-band={zoomBand}
+      onPointerDown={handlePointerDown}
+      onClick={handleSurfaceClick}
+      onWheel={handleWheel}
+      onTouchStart={handleTouchStart}
+      onPointerMove={handlePointerMove}
+      onKeyDown={handleKeyDown}
+    >
       <ReactFlow<CanvasNode, Edge>
         nodes={nodes}
         edges={edges}

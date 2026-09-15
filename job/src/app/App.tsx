@@ -1,19 +1,34 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { FocusEvent as ReactFocusEvent } from 'react';
 import { useMachine } from '@xstate/react';
 import { appMachine, type AppMachineEvent } from './app-machine.ts';
 import { transitionExperience, type ExperienceMode } from './experience-state.ts';
 import { decodeViewState, encodeViewState } from './view-state.ts';
-import { createAskAiClient } from './ask-ai-client.ts';
+import { createAskAiClient, type AskAiPublicState } from './ask-ai-client.ts';
 import { AskAiPanel } from './AskAiPanel.tsx';
 import { AutomationCanvas } from '../canvas/AutomationCanvas.tsx';
 import { processFixtures, type ProcessFixture } from '../canvas/fixtures.ts';
 import { createProcessGraph } from '../canvas/domain.ts';
-import { projectReactiveCanvas } from '../canvas/reactive-graph-adapter.ts';
+import { projectReactiveCanvas, type CanvasEvidenceContext } from '../canvas/reactive-graph-adapter.ts';
 import { useReducedMotionPolicy } from '../accessibility/useReducedMotionPolicy.ts';
 import { usePerformanceInstrumentation } from '../performance/usePerformanceInstrumentation.ts';
 import './app.css';
 
 const EMPTY_PROCESS_GRAPH = createProcessGraph([], []);
+
+function toCanvasEvidence(state: Readonly<AskAiPublicState>): CanvasEvidenceContext {
+  return {
+    verifiedCalculations: state.verifiedCalculations,
+    facts: state.evidence
+      .filter((item) => item.kind === 'fact')
+      .map((item) => ({ id: item.id, source: item.source, status: item.status })),
+    quantitativeObservations: state.evidence
+      .filter((item) => item.kind === 'observation')
+      .map((item) => ({ id: item.id, source: item.source, status: item.status })),
+    opportunities: state.opportunities,
+    proposalFacts: [],
+  };
+}
 
 function resolveFixture(): ProcessFixture {
   const value = new URLSearchParams(window.location.search).get('fixture');
@@ -44,11 +59,27 @@ export function App() {
     return projectReactiveCanvas(
       EMPTY_PROCESS_GRAPH,
       agentState.reactiveState,
-      { verifiedCalculations: agentState.verifiedCalculations },
+      toCanvasEvidence(agentState),
     );
   }, [agentState]);
 
   const liveActive = agentState !== null;
+  const [externalInterruptSignal, setExternalInterruptSignal] = useState(0);
+
+  // Focus landing on a user control outside the Canvas claims the camera:
+  // the Canvas keeps choreographing only until the user takes over.
+  const handleAppFocus = useCallback((event: ReactFocusEvent<HTMLDivElement>) => {
+    if (event.target instanceof HTMLElement && event.target.closest('.vxa-canvas') === null) {
+      setExternalInterruptSignal((signal) => signal + 1);
+    }
+  }, []);
+
+  const semanticTargets = useMemo(() => {
+    if (agentState === null) return [];
+    return [...agentState.reactiveState.scene.focusIds, ...agentState.reactiveState.scene.comparisonIds];
+  }, [agentState]);
+  const sceneComposition = agentState?.reactiveState.scene.composition ?? 'stable';
+  const sceneAnnouncement = agentState?.reactiveState.scene.announcement ?? null;
   const displayGraph = liveActive
     ? liveCanvas?.ok ? liveCanvas.model.graph : EMPTY_PROCESS_GRAPH
     : fixture.graph;
@@ -117,7 +148,7 @@ export function App() {
     const surface = projectReactiveCanvas(
       EMPTY_PROCESS_GRAPH,
       result.state.reactiveState,
-      { verifiedCalculations: result.state.verifiedCalculations },
+      toCanvasEvidence(result.state),
     );
     if (!surface.ok) {
       if (window.__VXA_PERF__) window.__VXA_PERF__.askFailures += 1;
@@ -152,7 +183,7 @@ export function App() {
     const surface = projectReactiveCanvas(
       EMPTY_PROCESS_GRAPH,
       result.state.reactiveState,
-      { verifiedCalculations: result.state.verifiedCalculations },
+      toCanvasEvidence(result.state),
     );
     if (!surface.ok) {
       send({ type: 'CORRECTION_FAILED', code: 'CLIENT_SURFACE_REJECTED' });
@@ -196,6 +227,7 @@ export function App() {
       data-motion={motionPolicy.reduced ? 'reduced' : 'standard'}
       data-agent-status={snapshot.context.agentStatus}
       data-live={liveActive ? 'true' : 'false'}
+      onFocus={handleAppFocus}
     >
       <a className="vxa-skip" href="#vxa-primary">Ir para a experiência</a>
       <header className="vxa-header">
@@ -253,10 +285,19 @@ export function App() {
           <AutomationCanvas
             fixture={fixture}
             {...(liveActive ? { graph: displayGraph, semanticOverlays } : {})}
+            opportunities={liveCanvas?.ok ? liveCanvas.model.opportunities : []}
+            globalQuantifications={liveCanvas?.ok ? liveCanvas.model.globalQuantifications : []}
             mode={mode}
             focusedNodeId={focusedNodeId}
             motionPolicy={motionPolicy}
             onFocusNode={(nodeId) => mode !== 'origin' && navigate({ type: 'FOCUS_NODE', nodeId })}
+            semanticTargets={semanticTargets}
+            sceneComposition={sceneComposition}
+            sceneAnnouncement={sceneAnnouncement}
+            externalInterruptSignal={externalInterruptSignal}
+            agentStatus={snapshot.context.agentStatus}
+            agentNarration={snapshot.context.agentNarration}
+            agentQuestion={snapshot.context.agentQuestion}
           />
 
           <nav className="vxa-director" aria-label="Navegação dirigida do processo">

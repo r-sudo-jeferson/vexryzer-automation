@@ -1,4 +1,5 @@
 import { validateAgentIntent } from './agent-intent.ts';
+import { containsExecutableSurface } from './executable-surface.ts';
 import { ARTIFACT_KINDS } from './artifact-intent.ts';
 import type {
   ArtifactProposal,
@@ -44,7 +45,6 @@ type ParseResult<T> = { ok: true; value: T } | ValidationFailure;
 
 const SAFE_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
-const EXECUTABLE_TEXT_PATTERN = /(?:<\/?[A-Za-z][^>]*>|javascript\s*:|data\s*:\s*text\/html|import\s*\(|require\s*\(|(?:window|document|globalThis)\s*\.|=>|(?:^|\s)(?:body|html|:root|[.#][A-Za-z][\w-]*)\s*\{[^{}]{0,500}:[^{}]{0,500}\})/i;
 const FORBIDDEN_EXECUTABLE_KEYS = new Set([
   'html', 'rawHtml', 'dangerouslySetInnerHTML', 'jsx', 'tsx', 'script', 'javascript', 'css', 'style', 'styles',
   'component', 'componentPath', 'module', 'modulePath', 'import', 'require', 'handler', 'callback', 'code',
@@ -107,7 +107,7 @@ function parseText(value: unknown, path: string, maxLength: number): ParseResult
   if (!trimmed || trimmed.length > maxLength || CONTROL_CHARACTER_PATTERN.test(value)) {
     return { ok: false, code: 'INVALID_VALUE', path };
   }
-  if (EXECUTABLE_TEXT_PATTERN.test(value)) return { ok: false, code: 'EXECUTABLE_SURFACE', path };
+  if (containsExecutableSurface(value)) return { ok: false, code: 'EXECUTABLE_SURFACE', path };
   return { ok: true, value: trimmed };
 }
 
@@ -219,6 +219,23 @@ function parseArtifactProposal(value: unknown, index: number): ParseResult<Reado
   const status = value['status'];
   if (!(ARTIFACT_STATUSES as readonly unknown[]).includes(status)) return { ok: false, code: 'INVALID_VALUE', path: `${path}.status` };
   return { ok: true, value: Object.freeze({ id: id.value, kind: kind as ArtifactProposal['kind'], title: title.value, summary: summary.value, evidenceIds: evidenceIds.value, status: status as ArtifactProposal['status'] }) };
+}
+
+export function isValidCorrectionProposal(value: unknown): value is CorrectionProposal {
+  return parseCorrection(value, 0).ok;
+}
+
+export function isValidProcessMutationProposal(value: unknown): value is ProcessMutationProposal {
+  return parseProcessMutation(value, 0).ok;
+}
+
+export function isValidExperienceSceneProposal(value: unknown): value is ExperienceSceneProposal {
+  const parsed = parseScene(value);
+  return parsed.ok && parsed.value !== null;
+}
+
+export function isValidArtifactProposal(value: unknown): value is ArtifactProposal {
+  return parseArtifactProposal(value, 0).ok;
 }
 
 function parseCollection<T extends { id: string }>(

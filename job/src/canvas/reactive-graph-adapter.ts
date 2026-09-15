@@ -1,4 +1,9 @@
-import type { VerifiedCalculation } from '../ai/context/canonical-sales-context.ts';
+import { OPPORTUNITY_PRESENTATION_LIMIT } from '../ai/context/canonical-sales-context.ts';
+import type {
+  OpportunityKind,
+  OpportunityRecord,
+  VerifiedCalculation,
+} from '../ai/context/canonical-sales-context.ts';
 import type { ReactiveExperienceState } from '../experience/reactive-experience-state.ts';
 import {
   createProcessGraph,
@@ -8,10 +13,50 @@ import {
   type ProcessNodeModel,
 } from './domain.ts';
 
+/**
+ * WP07 per-evidence provenance lineage.
+ *
+ * Every commercial surface in the Canvas carries the original source and
+ * status of each evidence item it cites. A user confirmation changes status
+ * but never rewrites source: an inference-confirmed fact keeps
+ * `source: 'inference'`, so confirmation cannot launder provenance.
+ * Calculations cite `source: 'application'` (their `computedBy` authority).
+ * Opportunities and artifacts are derived commercial/presentation objects and
+ * can never recursively become evidence authority.
+ * Only ids, kinds, sources and statuses travel here — never values, text
+ * payloads, secrets or attachment content.
+ */
+export interface CanvasEvidenceLineage {
+  id: string;
+  kind: 'fact' | 'observation' | 'calculation';
+  source: 'user' | 'inference' | 'system' | 'application';
+  status: string;
+}
+
+export interface CanvasQuantificationInput {
+  id: string;
+  source: 'user' | 'inference' | 'system';
+  status: string;
+}
+
 export interface CanvasQuantification {
   calculationId: string;
   resultValue: number;
   resultUnit: string;
+  // Deterministic-application proof: only `computedBy: 'application'`
+  // calculations with status `valid` ever reach presentation; anything else
+  // fails closed or disappears before this shape is built.
+  expression: string;
+  computedBy: 'application';
+  basedOnRevision: number;
+  inputObservationIds: readonly string[];
+  inputs: readonly Readonly<CanvasQuantificationInput>[];
+}
+
+export interface CanvasAnnotationEvidence {
+  text: string;
+  evidenceIds: readonly string[];
+  evidence: readonly Readonly<CanvasEvidenceLineage>[];
 }
 
 export interface CanvasNodeSemanticOverlay {
@@ -20,7 +65,26 @@ export interface CanvasNodeSemanticOverlay {
   deEmphasized: boolean;
   revealed: boolean;
   annotations: readonly string[];
+  annotationEvidence: readonly Readonly<CanvasAnnotationEvidence>[];
   quantifications: readonly Readonly<CanvasQuantification>[];
+}
+
+/**
+ * WP07 opportunity surface.
+ *
+ * A quantitativeOpportunity without numeric evidence stays explicitly
+ * non-numeric: it carries `missingInputs` and no numeric field of any kind.
+ * Presentation must render the missing inputs/uncertainty and never
+ * synthesize ROI, savings, capacity, cost or percentage values.
+ */
+export interface CanvasOpportunity {
+  id: string;
+  kind: OpportunityKind;
+  objective: string;
+  evidenceIds: readonly string[];
+  missingInputs: readonly string[];
+  status: 'surfaced' | 'active' | 'invalidated';
+  evidence: readonly Readonly<CanvasEvidenceLineage>[];
 }
 
 export interface CanvasSemanticGroup {
@@ -43,6 +107,7 @@ export interface ReactiveCanvasModel {
   groups: readonly Readonly<CanvasSemanticGroup>[];
   relationshipExplanations: readonly Readonly<CanvasRelationshipExplanation>[];
   globalQuantifications: readonly Readonly<CanvasQuantification>[];
+  opportunities: readonly Readonly<CanvasOpportunity>[];
 }
 
 export type ReactiveCanvasProjectionResult =
@@ -53,7 +118,8 @@ export type ReactiveCanvasProjectionResult =
         | 'INVALID_GRAPH_MUTATION'
         | 'UNKNOWN_ACTION_TARGET'
         | 'UNKNOWN_CALCULATION'
-        | 'INVALIDATED_CALCULATION';
+        | 'INVALIDATED_CALCULATION'
+        | 'UNKNOWN_EVIDENCE_REFERENCE';
       path: string;
       graph: ProcessGraph;
     };
@@ -137,26 +203,129 @@ function applyGraphMutations(
   return projected;
 }
 
+export interface CanvasEvidenceFact {
+  id: string;
+  source: 'user' | 'inference' | 'system';
+  status: string;
+}
+
+export interface CanvasEvidenceObservation {
+  id: string;
+  source: 'user' | 'inference' | 'system';
+  status: string;
+}
+
 export interface CanvasEvidenceContext {
-  verifiedCalculations: readonly Readonly<Pick<VerifiedCalculation, 'id' | 'resultValue' | 'resultUnit' | 'status'>>[];
+  verifiedCalculations: readonly Readonly<
+    Pick<
+      VerifiedCalculation,
+      'id' | 'resultValue' | 'resultUnit' | 'status' | 'computedBy' | 'expression' | 'basedOnRevision' | 'inputObservationIds'
+    >
+  >[];
+  facts: readonly Readonly<CanvasEvidenceFact>[];
+  quantitativeObservations: readonly Readonly<CanvasEvidenceObservation>[];
+  opportunities: readonly Readonly<
+    Pick<OpportunityRecord, 'id' | 'kind' | 'summary' | 'evidenceIds' | 'missingInputs' | 'status'>
+  >[];
+  // Same-turn proposed facts: the projector treats the turn's factProposals
+  // as known evidence pre-commit, so lineage resolution must see them too.
+  // Post-commit callers pass an empty list (proposals are canonical by then).
+  proposalFacts: readonly Readonly<CanvasEvidenceFact>[];
+}
+
+type EvidenceFailure = Extract<ReactiveCanvasProjectionResult, { ok: false }>;
+
+function failure(code: EvidenceFailure['code'], path: string): EvidenceFailure {
+  return { ok: false, code, path, graph: createProcessGraph([], []) };
+}
+
+function resolveEvidenceLineage(
+  canonical: Readonly<CanvasEvidenceContext>,
+  evidenceId: string,
+  path: string,
+): Readonly<CanvasEvidenceLineage> | EvidenceFailure {
+  const fact = canonical.facts.find((item) => item.id === evidenceId);
+  if (fact !== undefined) {
+    if (fact.status === 'superseded') return failure('UNKNOWN_EVIDENCE_REFERENCE', path);
+    return Object.freeze({ id: evidenceId, kind: 'fact' as const, source: fact.source, status: fact.status });
+  }
+  const proposalFact = canonical.proposalFacts.find((item) => item.id === evidenceId);
+  if (proposalFact !== undefined) {
+    return Object.freeze({
+      id: evidenceId,
+      kind: 'fact' as const,
+      source: proposalFact.source,
+      status: proposalFact.status,
+    });
+  }
+  const observation = canonical.quantitativeObservations.find((item) => item.id === evidenceId);
+  if (observation !== undefined) {
+    if (observation.status === 'superseded') return failure('UNKNOWN_EVIDENCE_REFERENCE', path);
+    return Object.freeze({
+      id: evidenceId,
+      kind: 'observation' as const,
+      source: observation.source,
+      status: observation.status,
+    });
+  }
+  const calculation = canonical.verifiedCalculations.find((item) => item.id === evidenceId);
+  if (calculation !== undefined) {
+    if (calculation.status !== 'valid' || calculation.computedBy !== 'application') {
+      return failure('UNKNOWN_EVIDENCE_REFERENCE', path);
+    }
+    return Object.freeze({
+      id: evidenceId,
+      kind: 'calculation' as const,
+      source: 'application' as const,
+      status: calculation.status,
+    });
+  }
+  return failure('UNKNOWN_EVIDENCE_REFERENCE', path);
+}
+
+function resolveEvidenceList(
+  canonical: Readonly<CanvasEvidenceContext>,
+  evidenceIds: readonly string[],
+  path: string,
+): readonly Readonly<CanvasEvidenceLineage>[] | EvidenceFailure {
+  const lineage: Readonly<CanvasEvidenceLineage>[] = [];
+  for (const evidenceId of evidenceIds) {
+    const resolved = resolveEvidenceLineage(canonical, evidenceId, path);
+    if ('ok' in resolved) return resolved;
+    lineage.push(resolved);
+  }
+  return Object.freeze(lineage);
 }
 
 function quantification(
   canonical: Readonly<CanvasEvidenceContext>,
   calculationId: string,
   path: string,
-): Readonly<CanvasQuantification> | Extract<ReactiveCanvasProjectionResult, { ok: false }> {
+): Readonly<CanvasQuantification> | EvidenceFailure {
   const calculation = canonical.verifiedCalculations.find((item) => item.id === calculationId);
   if (calculation === undefined) {
-    return { ok: false, code: 'UNKNOWN_CALCULATION', path, graph: createProcessGraph([], []) };
+    return failure('UNKNOWN_CALCULATION', path);
   }
-  if (calculation.status !== 'valid') {
-    return { ok: false, code: 'INVALIDATED_CALCULATION', path, graph: createProcessGraph([], []) };
+  if (calculation.status !== 'valid' || calculation.computedBy !== 'application') {
+    return failure('INVALIDATED_CALCULATION', path);
+  }
+  const inputs: Readonly<CanvasQuantificationInput>[] = [];
+  for (const inputId of calculation.inputObservationIds) {
+    const observation = canonical.quantitativeObservations.find((item) => item.id === inputId);
+    if (observation === undefined || observation.status !== 'confirmed') {
+      return failure('UNKNOWN_EVIDENCE_REFERENCE', path);
+    }
+    inputs.push(Object.freeze({ id: inputId, source: observation.source, status: observation.status }));
   }
   return Object.freeze({
     calculationId,
     resultValue: calculation.resultValue,
     resultUnit: calculation.resultUnit,
+    expression: calculation.expression,
+    computedBy: 'application' as const,
+    basedOnRevision: calculation.basedOnRevision,
+    inputObservationIds: Object.freeze([...calculation.inputObservationIds]),
+    inputs: Object.freeze(inputs),
   });
 }
 
@@ -188,13 +357,14 @@ export function projectReactiveCanvas(
     deEmphasized: boolean;
     revealed: boolean;
     annotations: string[];
+    annotationEvidence: CanvasAnnotationEvidence[];
     quantifications: Readonly<CanvasQuantification>[];
   }>();
 
   const overlayFor = (nodeId: string) => {
     let value = overlays.get(nodeId);
     if (value === undefined) {
-      value = { state: null, deEmphasized: false, revealed: false, annotations: [], quantifications: [] };
+      value = { state: null, deEmphasized: false, revealed: false, annotations: [], annotationEvidence: [], quantifications: [] };
       overlays.set(nodeId, value);
     }
     return value;
@@ -237,7 +407,17 @@ export function projectReactiveCanvas(
       case 'annotate': {
         const missing = ensureTarget(graph, action.targetId, `reactive.actions[${i}].targetId`);
         if (missing !== null) return missing;
-        overlayFor(action.targetId).annotations.push(action.text);
+        const lineage = resolveEvidenceList(canonical, action.evidenceIds, `reactive.actions[${i}].evidenceIds`);
+        if ('ok' in lineage) {
+          return { ok: false, code: lineage.code, path: lineage.path, graph };
+        }
+        const target = overlayFor(action.targetId);
+        target.annotations.push(action.text);
+        target.annotationEvidence.push(Object.freeze({
+          text: action.text,
+          evidenceIds: Object.freeze([...action.evidenceIds]),
+          evidence: lineage,
+        }));
         break;
       }
       case 'de_emphasize':
@@ -306,6 +486,26 @@ export function projectReactiveCanvas(
     if (missing !== null) return missing;
   }
 
+  const opportunities: Readonly<CanvasOpportunity>[] = [];
+  const activeOpportunities = canonical.opportunities
+    .filter((opportunity) => opportunity.status !== 'invalidated')
+    .slice(-OPPORTUNITY_PRESENTATION_LIMIT);
+  for (const opportunity of activeOpportunities) {
+    const lineage = resolveEvidenceList(canonical, opportunity.evidenceIds, `canonical.opportunities.${opportunity.id}`);
+    if ('ok' in lineage) {
+      return { ok: false, code: lineage.code, path: lineage.path, graph };
+    }
+    opportunities.push(Object.freeze({
+      id: opportunity.id,
+      kind: opportunity.kind,
+      objective: opportunity.summary,
+      evidenceIds: Object.freeze([...opportunity.evidenceIds]),
+      missingInputs: Object.freeze([...opportunity.missingInputs]),
+      status: opportunity.status,
+      evidence: lineage,
+    }));
+  }
+
   return {
     ok: true,
     model: Object.freeze({
@@ -318,11 +518,13 @@ export function projectReactiveCanvas(
         deEmphasized: value.deEmphasized,
         revealed: value.revealed,
         annotations: Object.freeze([...value.annotations]),
+        annotationEvidence: Object.freeze([...value.annotationEvidence]),
         quantifications: Object.freeze([...value.quantifications]),
       }))),
       groups: Object.freeze([...groups]),
       relationshipExplanations: Object.freeze([...relationshipExplanations]),
       globalQuantifications: Object.freeze([...globalQuantifications]),
+      opportunities: Object.freeze(opportunities),
     }),
   };
 }

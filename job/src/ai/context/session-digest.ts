@@ -1,3 +1,4 @@
+import { OPPORTUNITY_PRESENTATION_LIMIT } from './canonical-sales-context.ts';
 import type {
   CanonicalSalesContext,
   EvidenceSource,
@@ -66,7 +67,10 @@ export function createSessionDigest(context: CanonicalSalesContext): SessionDige
     openObjections: context.objections
       .filter((objection) => objection.status === 'open')
       .map((objection) => Object.freeze({ id: objection.id, kind: objection.kind, summary: objection.summary })),
-    activeOpportunityIds: context.opportunities.filter((item) => item.status !== 'invalidated').map((item) => item.id),
+    activeOpportunityIds: context.opportunities
+      .filter((item) => item.status !== 'invalidated')
+      .slice(-OPPORTUNITY_PRESENTATION_LIMIT)
+      .map((item) => item.id),
     openUncertainties: [...context.openUncertainties],
     latestUserIntent: context.latestUserIntent === null ? null : Object.freeze({ ...context.latestUserIntent }),
   };

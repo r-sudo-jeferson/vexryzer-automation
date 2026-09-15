@@ -75,7 +75,8 @@ test('runtime validators reject forged objection, calculation, opportunity, and 
   assert.throws(() => freezeCanonicalSalesContext({
     ...base,
     opportunities: [{
-      id: 'opp-forged', summary: 'x', capabilities: [], evidenceIds: [], status: 'approved' as never, invalidatedAtRevision: null,
+      id: 'opp-forged', kind: 'other', summary: 'x', capabilities: [], evidenceIds: [], missingInputs: [],
+      status: 'approved' as never, invalidatedAtRevision: null,
     }],
   }), /opportunity\.status/i);
 
@@ -93,4 +94,20 @@ test('runtime validators reject forged objection, calculation, opportunity, and 
       maturity: 'production' as never, evidenceIds: [], status: 'proposed', invalidatedAtRevision: null,
     }],
   }), /artifact\.maturity/i);
+
+  assert.throws(() => freezeCanonicalSalesContext({
+    ...base,
+    opportunities: [{
+      id: 'opp-bad-kind', kind: 'synthetic_roi' as never, summary: 'x', capabilities: [], evidenceIds: [],
+      missingInputs: [], status: 'surfaced', invalidatedAtRevision: null,
+    }],
+  }), /opportunity\.kind/i);
+
+  assert.throws(() => freezeCanonicalSalesContext({
+    ...base,
+    opportunities: [{
+      id: 'opp-bad-inputs', kind: 'other', summary: 'x', capabilities: [], evidenceIds: [],
+      missingInputs: ['ok', 'ok'], status: 'surfaced', invalidatedAtRevision: null,
+    }],
+  }), /opportunity\.missingInputs/i);
 });

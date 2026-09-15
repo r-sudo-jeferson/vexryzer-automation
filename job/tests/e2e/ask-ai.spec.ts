@@ -71,6 +71,8 @@ function acceptedResponse() {
       sessionId: 'session-browser',
       canonicalRevision: 1,
       verifiedCalculations: [],
+      opportunities: [],
+      evidence: [],
       reactiveState: reactiveState(),
     },
   };
@@ -117,7 +119,12 @@ test('ASK AI applies only accepted intelligence and sends no browser-authored Ca
 
   releaseTurn();
 
-  await expect(page.getByText('O fechamento depende de uma conferência manual recorrente.')).toBeVisible();
+  const spatialNarration = page.locator('.vxa-spatial-agent__narration');
+  await expect(spatialNarration).toHaveText('O fechamento depende de uma conferência manual recorrente.');
+  await expect(spatialNarration).toBeVisible();
+  const legacyLiveRegion = page.locator('.vxa-agent__response');
+  await expect(legacyLiveRegion).toContainText('O fechamento depende de uma conferência manual recorrente.');
+  await expect(legacyLiveRegion).toHaveClass(/vxa-visually-hidden/);
   await expect(page.locator('.vxa-shell')).toHaveAttribute('data-live', 'true');
   await expect(page.locator('.vxa-step')).toHaveCount(1);
   await expect(page.getByRole('button', { name: /Conferência do fechamento/i })).toBeVisible();
@@ -207,6 +214,8 @@ test('pending correction requires an explicit click and correction request carri
           sessionId: 'session-browser',
           canonicalRevision: 2,
           verifiedCalculations: [],
+      opportunities: [],
+      evidence: [],
           reactiveState: reactiveState({ correctionStatus: 'invalidated' }),
         },
       }),

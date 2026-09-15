@@ -24,6 +24,14 @@ export const OBJECTION_STATUSES = ['open', 'addressed', 'resolved'] as const;
 export const CALCULATION_KINDS = ['time_cost', 'capacity', 'volume', 'rework', 'delay', 'custom'] as const;
 export const CALCULATION_STATUSES = ['valid', 'invalidated'] as const;
 export const OPPORTUNITY_STATUSES = ['surfaced', 'active', 'invalidated'] as const;
+export const OPPORTUNITY_KINDS = [
+  'monthly_capacity',
+  'monthly_workload',
+  'monthly_cost',
+  'rework_volume',
+  'other',
+] as const;
+export type OpportunityKind = (typeof OPPORTUNITY_KINDS)[number];
 export const ARTIFACT_KINDS = [
   'operational_object', 'data_import_preview', 'presentation', 'bi_dashboard', 'training_module', 'workflow_concept', 'prototype',
 ] as const;
@@ -80,9 +88,14 @@ export interface VerifiedCalculation {
 
 export interface OpportunityRecord {
   id: string;
+  kind: OpportunityKind;
   summary: string;
   capabilities: readonly CapabilityKind[];
   evidenceIds: readonly string[];
+  // Explicit non-numeric uncertainty: a surfaced opportunity without numeric
+  // evidence stays non-numeric and names exactly which inputs are missing.
+  // Presentation must surface these inputs and never synthesize a number.
+  missingInputs: readonly string[];
   status: 'surfaced' | 'active' | 'invalidated';
   invalidatedAtRevision: number | null;
 }
@@ -222,8 +235,12 @@ export function freezeCalculation(calculation: VerifiedCalculation): VerifiedCal
   return Object.freeze({ ...calculation, inputObservationIds: freezeStrings(calculation.inputObservationIds) });
 }
 
-function freezeOpportunity(opportunity: OpportunityRecord): OpportunityRecord {
+export const OPPORTUNITY_MISSING_INPUTS_LIMIT = 12;
+export const OPPORTUNITY_PRESENTATION_LIMIT = 8;
+
+export function freezeOpportunity(opportunity: OpportunityRecord): OpportunityRecord {
   assertSafeDomainId('opportunity.id', opportunity.id);
+  if (!(OPPORTUNITY_KINDS as readonly string[]).includes(opportunity.kind)) throw new TypeError('opportunity.kind is invalid');
   if (!(OPPORTUNITY_STATUSES as readonly string[]).includes(opportunity.status)) throw new TypeError('opportunity.status is invalid');
   if (opportunity.status === 'invalidated' && opportunity.invalidatedAtRevision === null) throw new TypeError('invalidated opportunity requires invalidatedAtRevision');
   if (opportunity.status !== 'invalidated' && opportunity.invalidatedAtRevision !== null) throw new TypeError('active opportunity cannot have invalidatedAtRevision');
@@ -233,10 +250,16 @@ function freezeOpportunity(opportunity: OpportunityRecord): OpportunityRecord {
     if (!(CAPABILITY_KINDS as readonly string[]).includes(capability)) throw new TypeError(`unsupported capability: ${capability}`);
   }
   for (const id of opportunity.evidenceIds) assertSafeDomainId('opportunity.evidenceId', id);
+  if (!Array.isArray(opportunity.missingInputs) || opportunity.missingInputs.length > OPPORTUNITY_MISSING_INPUTS_LIMIT) {
+    throw new TypeError('opportunity.missingInputs must be a bounded list');
+  }
+  for (const input of opportunity.missingInputs) assertBoundedText('opportunity.missingInput', input, 200);
+  if (new Set(opportunity.missingInputs).size !== opportunity.missingInputs.length) throw new TypeError('opportunity.missingInputs must be unique');
   return Object.freeze({
     ...opportunity,
     capabilities: Object.freeze([...opportunity.capabilities]),
     evidenceIds: freezeStrings(opportunity.evidenceIds),
+    missingInputs: freezeStrings(opportunity.missingInputs),
   });
 }
 

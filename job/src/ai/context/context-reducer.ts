@@ -1,11 +1,11 @@
 import {
-  CAPABILITY_KINDS,
   assertBoundedText,
   assertSafeDomainId,
   freezeCalculation,
   freezeCanonicalSalesContext,
   freezeFact,
   freezeObservation,
+  freezeOpportunity,
   type ArtifactRecord,
   type CanonicalSalesContext,
   type OpportunityRecord,
@@ -60,6 +60,12 @@ function idExists(context: CanonicalSalesContext, id: string): boolean {
     || context.opportunities.some((item) => item.id === id)
     || context.objections.some((item) => item.id === id)
     || context.artifacts.some((item) => item.id === id);
+}
+
+function isEligibleEvidenceId(context: CanonicalSalesContext, id: string): boolean {
+  return context.facts.some((item) => item.id === id && item.status !== 'superseded')
+    || context.quantitativeObservations.some((item) => item.id === id && item.status !== 'superseded')
+    || context.verifiedCalculations.some((item) => item.id === id && item.status === 'valid');
 }
 
 function appendTurnId(turnIds: readonly string[], turnId: string): readonly string[] {
@@ -146,8 +152,6 @@ export function applyContextMutation(
         for (const item of context.facts) if (item.status !== 'superseded') knownEvidence.add(item.id);
         for (const item of context.quantitativeObservations) if (item.status !== 'superseded') knownEvidence.add(item.id);
         for (const item of context.verifiedCalculations) if (item.status === 'valid') knownEvidence.add(item.id);
-        for (const item of context.opportunities) if (item.status !== 'invalidated') knownEvidence.add(item.id);
-        for (const item of context.artifacts) if (item.status !== 'invalidated') knownEvidence.add(item.id);
         for (const fact of facts) knownEvidence.add(fact.id);
 
         const opportunities: OpportunityRecord[] = [];
@@ -156,12 +160,14 @@ export function applyContextMutation(
           if (idExists(context, raw.id) || batchIds.has(raw.id)) return reject(context, 'DUPLICATE_ID');
           if (raw.status !== 'surfaced' || raw.invalidatedAtRevision !== null) return reject(context, 'INVALID_MUTATION');
           if (raw.evidenceIds.some((id) => !knownEvidence.has(id))) return reject(context, 'INVALID_MUTATION');
-          batchIds.add(raw.id);
-          opportunities.push(Object.freeze({
-            ...raw,
-            capabilities: Object.freeze([...raw.capabilities]),
-            evidenceIds: Object.freeze([...raw.evidenceIds]),
-          }));
+          let opportunity: OpportunityRecord;
+          try {
+            opportunity = freezeOpportunity(raw);
+          } catch {
+            return reject(context, 'INVALID_MUTATION');
+          }
+          batchIds.add(opportunity.id);
+          opportunities.push(opportunity);
         }
 
         const artifacts: ArtifactRecord[] = [];
@@ -390,17 +396,14 @@ export function applyContextMutation(
       case 'ADD_OPPORTUNITY': {
         if (envelope.actor === 'user') return reject(context, 'AUTHORITY_VIOLATION');
         if (idExists(context, mutation.opportunity.id)) return reject(context, 'DUPLICATE_ID');
-        assertSafeDomainId('opportunity.id', mutation.opportunity.id);
-        assertBoundedText('opportunity.summary', mutation.opportunity.summary, 1000);
-        if (new Set(mutation.opportunity.capabilities).size !== mutation.opportunity.capabilities.length) return reject(context, 'INVALID_MUTATION');
-        if (mutation.opportunity.capabilities.some((item) => !(CAPABILITY_KINDS as readonly string[]).includes(item))) return reject(context, 'INVALID_MUTATION');
-        if (mutation.opportunity.evidenceIds.some((id) => !idExists(context, id))) return reject(context, 'INVALID_MUTATION');
-        if (mutation.opportunity.invalidatedAtRevision !== null) return reject(context, 'INVALID_MUTATION');
-        const opportunity = Object.freeze({
-          ...mutation.opportunity,
-          capabilities: Object.freeze([...mutation.opportunity.capabilities]),
-          evidenceIds: Object.freeze([...mutation.opportunity.evidenceIds]),
-        });
+        let opportunity: OpportunityRecord;
+        try {
+          opportunity = freezeOpportunity(mutation.opportunity);
+        } catch {
+          return reject(context, 'INVALID_MUTATION');
+        }
+        if (opportunity.evidenceIds.some((id) => !isEligibleEvidenceId(context, id))) return reject(context, 'INVALID_MUTATION');
+        if (opportunity.invalidatedAtRevision !== null) return reject(context, 'INVALID_MUTATION');
         return { ok: true, context: withRevision(context, { opportunities: [...context.opportunities, opportunity] }) };
       }
 

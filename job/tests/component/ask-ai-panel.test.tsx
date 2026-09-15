@@ -117,6 +117,27 @@ describe('ASK AI panel', () => {
     expect(screen.getByText(/não passou pelo ciclo de validação/i)).toBeTruthy();
   });
 
+  it('keeps accepted narration in the live region without rendering a second visible agent', () => {
+    const { container } = render(
+      <AskAiPanel
+        status="awaiting_user"
+        narration="A conferência concentra trabalho recorrente."
+        nextQuestion="Quantas vezes isso acontece por mês?"
+        errorCode={null}
+        artifacts={[]}
+        corrections={[]}
+        onSubmit={async () => true}
+        onApplyCorrection={async () => true}
+        onResetSession={() => {}}
+      />,
+    );
+    const response = container.querySelector('.vxa-agent__response');
+    expect(response?.classList.contains('vxa-visually-hidden')).toBe(true);
+    expect(screen.getByText('A conferência concentra trabalho recorrente.')).toBeTruthy();
+    expect(screen.getByText('Quantas vezes isso acontece por mês?')).toBeTruthy();
+    expect(screen.getByText('CANAL / CONTABILIDADE')).toBeTruthy();
+  });
+
   it('renders pending correction as an explicit user decision and never auto-applies it', () => {
     const onApplyCorrection = vi.fn(async () => true);
     renderPanel({

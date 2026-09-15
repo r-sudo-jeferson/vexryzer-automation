@@ -19,6 +19,7 @@ import {
   type ReactiveExperienceState,
 } from './reactive-experience-state.ts';
 import { createCameraIntent, createExperienceSemanticKey } from './experience-semantic-key.ts';
+import type { CanvasTelemetryRecorder } from './canvas-telemetry.ts';
 
 export type ExperienceProjectionErrorCode =
   | 'STALE_REVISION'
@@ -38,8 +39,6 @@ function collectKnownEvidenceIds(canonical: CanonicalSalesContext, proposal?: Re
   for (const item of canonical.facts) ids.add(item.id);
   for (const item of canonical.quantitativeObservations) ids.add(item.id);
   for (const item of canonical.verifiedCalculations) ids.add(item.id);
-  for (const item of canonical.opportunities) ids.add(item.id);
-  for (const item of canonical.artifacts) ids.add(item.id);
   if (proposal) for (const item of proposal.factProposals) ids.add(item.id);
   return ids;
 }
@@ -306,21 +305,44 @@ function projectArtifacts(proposals: readonly Readonly<ArtifactProposal>[], cano
   }));
 }
 
+/**
+ * WP03 telemetry: when a per-turn recorder is provided, every exit path emits
+ * exactly one non-sensitive event describing the outcome. Emission never
+ * alters the projection result. PROJECTION_CAPACITY_EXCEEDED emits nothing:
+ * the fixed rejection taxonomy has no truthful code for guard capacity, so
+ * the result code itself remains the audit record.
+ */
 export function projectExperienceProposal(
   state: Readonly<ReactiveExperienceState>,
   proposal: Readonly<ExperienceProposal>,
   canonical: CanonicalSalesContext,
+  telemetry?: CanvasTelemetryRecorder,
 ): ExperienceProjectionResult {
-  if (canonical.revision < state.basedOnRevision) return { ok: false, code: 'REVISION_ROLLBACK', path: 'canonical.revision', state };
+  if (canonical.revision < state.basedOnRevision) {
+    telemetry?.record({ kind: 'stale-revision', revision: canonical.revision });
+    return { ok: false, code: 'REVISION_ROLLBACK', path: 'canonical.revision', state };
+  }
   const reconciled = reconcileReactiveExperience(state, canonical);
-  if (proposal.baseRevision !== canonical.revision) return { ok: false, code: 'STALE_REVISION', path: 'proposal.baseRevision', state: reconciled };
+  if (proposal.baseRevision !== canonical.revision) {
+    telemetry?.record({ kind: 'stale-revision', revision: proposal.baseRevision });
+    return { ok: false, code: 'STALE_REVISION', path: 'proposal.baseRevision', state: reconciled };
+  }
 
   const references = validateProjectionReferences(proposal, canonical);
-  if (!references.ok) return { ...references, state: reconciled };
-  if (!hasVisualSemantics(proposal)) return { ok: true, state: reconciled, deduplicated: false };
+  if (!references.ok) {
+    telemetry?.record({ kind: 'intent-rejected', rejectionCode: 'missing-evidence', revision: canonical.revision });
+    return { ...references, state: reconciled };
+  }
+  if (!hasVisualSemantics(proposal)) {
+    telemetry?.record({ kind: 'no-op', deduplicated: false, revision: canonical.revision });
+    return { ok: true, state: reconciled, deduplicated: false };
+  }
 
   const key = createExperienceSemanticKey(proposal);
-  if (reconciled.recentSemanticKeys.includes(key)) return { ok: true, state: reconciled, deduplicated: true };
+  if (reconciled.recentSemanticKeys.includes(key)) {
+    telemetry?.record({ kind: 'no-op', deduplicated: true, revision: canonical.revision });
+    return { ok: true, state: reconciled, deduplicated: true };
+  }
 
   const invalidEvidenceIds = collectInvalidEvidenceIds(canonical);
   const actions = proposal.intent.actions.map((action) => {
@@ -373,6 +395,7 @@ export function projectExperienceProposal(
   }
 
   const recentSemanticKeys = [...reconciled.recentSemanticKeys, key].slice(-REACTIVE_EXPERIENCE_LIMITS.recentSemanticKeys);
+  telemetry?.record({ kind: 'intent-accepted', revision: canonical.revision });
   return {
     ok: true,
     deduplicated: false,

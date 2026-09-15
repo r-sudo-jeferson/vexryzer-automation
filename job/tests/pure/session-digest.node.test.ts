@@ -38,3 +38,25 @@ test('session digest preserves evidence status, quantitative truth and open obje
   assert.deepEqual(digest.openObjections, [{ id: 'obj-1', kind: 'price', summary: 'receio de custo' }]);
   assert.equal(digest.facts[0]?.status, 'proposed');
 });
+
+test('WP07 RED: session digest keeps the same newest-eight opportunity working set', () => {
+  const base = createCanonicalSalesContext({ sessionId: 'session-opportunities' });
+  const context = {
+    ...base,
+    opportunities: Array.from({ length: 12 }, (_, index) => ({
+      id: `opp-${index}`,
+      kind: 'rework_volume' as const,
+      summary: `Medir retrabalho ${index}.`,
+      capabilities: [] as const,
+      evidenceIds: [] as const,
+      missingInputs: ['taxa de retrabalho'] as const,
+      status: 'surfaced' as const,
+      invalidatedAtRevision: null,
+    })),
+  };
+  const digest = createSessionDigest(context);
+  assert.deepEqual(
+    digest.activeOpportunityIds,
+    ['opp-4', 'opp-5', 'opp-6', 'opp-7', 'opp-8', 'opp-9', 'opp-10', 'opp-11'],
+  );
+});

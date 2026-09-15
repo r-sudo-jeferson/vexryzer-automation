@@ -72,6 +72,8 @@ export function AskAiPanel({
   const [composing, setComposing] = useState(false);
   const busy = status === 'requesting' || status === 'correcting';
   const canSubmit = !busy && text.trim().length > 0 && text.trim().length <= 4_000;
+  const responseLivesInCanvas = (status === 'awaiting_user' || status === 'recovery')
+    && (narration !== null || nextQuestion !== null);
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
@@ -91,8 +93,8 @@ export function AskAiPanel({
     <section className="vxa-agent" aria-labelledby="vxa-agent-title" data-status={status}>
       <div className="vxa-agent__heading">
         <div>
-          <span className="vxa-agent__eyebrow">ASK AI / CONTABILIDADE</span>
-          <h2 id="vxa-agent-title">Descreva a rotina como ela acontece.</h2>
+          <span className="vxa-agent__eyebrow">CANAL / CONTABILIDADE</span>
+          <h2 id="vxa-agent-title">Fale com o agente no Canvas.</h2>
         </div>
         <span className="vxa-agent__state" aria-hidden="true">
           {status === 'requesting' ? 'ANALISANDO' : status === 'correcting' ? 'CORRIGINDO' : status === 'recovery' ? 'MODO SEGURO' : status === 'error' ? 'NÃO PUBLICADO' : 'PRONTO'}
@@ -100,7 +102,11 @@ export function AskAiPanel({
       </div>
 
       {(narration !== null || nextQuestion !== null || busy || status === 'error') ? (
-        <div className="vxa-agent__response" aria-live="polite" aria-atomic="true">
+        <div
+          className={`vxa-agent__response${responseLivesInCanvas ? ' vxa-visually-hidden' : ''}`}
+          aria-live="polite"
+          aria-atomic="true"
+        >
           {busy ? (
             <>
               <span className="vxa-agent__pulse" aria-hidden="true" />

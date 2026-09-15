@@ -14,6 +14,7 @@ import {
 import type {
   AcceptedExperienceSurfaceGuard,
 } from '../../../experience/accepted-experience-transaction.ts';
+import type { CanvasTelemetryEvent } from '../../../experience/canvas-telemetry.ts';
 import type { ReactiveExperienceState } from '../../../experience/reactive-experience-state.ts';
 import {
   runCriticTurn,
@@ -74,6 +75,7 @@ export type AgentLedTurnRuntimeResult =
       reactiveState: Readonly<ReactiveExperienceState>;
       detail: string;
       reviews: readonly Readonly<CriticReview>[];
+      telemetry?: readonly Readonly<CanvasTelemetryEvent>[];
     };
 
 const DEFAULT_DEPENDENCIES: AgentLedTurnRuntimeDependencies = Object.freeze({
@@ -152,6 +154,7 @@ function publish(
       reactiveState: input.reactiveState,
       detail: publication.code + ':' + publication.detail,
       reviews,
+      telemetry: publication.telemetry ?? [],
     };
   }
   return {

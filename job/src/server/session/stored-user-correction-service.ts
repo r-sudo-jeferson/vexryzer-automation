@@ -420,7 +420,7 @@ export async function runStoredUserCorrection(input: {
   const surface = projectReactiveCanvas(
     createProcessGraph([], []),
     reactiveState,
-    committed.context,
+    { ...committed.context, proposalFacts: [] },
   );
   if (!surface.ok) {
     const released = await release(

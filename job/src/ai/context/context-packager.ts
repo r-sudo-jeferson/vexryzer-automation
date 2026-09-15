@@ -1,6 +1,8 @@
+import { OPPORTUNITY_PRESENTATION_LIMIT } from './canonical-sales-context.ts';
 import type {
   ArtifactRecord,
   CanonicalSalesContext,
+  OpportunityRecord,
   QuantitativeObservation,
   SalesFact,
   SalesObjection,
@@ -32,11 +34,45 @@ export interface CurrentProcessNode {
   provenance: 'user_stated' | 'ai_inferred' | 'user_confirmed';
 }
 
+export const VISUAL_SCENE_COMPOSITIONS = [
+  'stable',
+  'focus',
+  'compare',
+  'overview',
+  'artifact',
+] as const;
+export type VisualSceneComposition = (typeof VISUAL_SCENE_COMPOSITIONS)[number];
+
+export const VISUAL_CHOREOGRAPHY_OUTCOMES = [
+  'idle',
+  'directed',
+  'interrupted',
+] as const;
+export type VisualChoreographyOutcome = (typeof VISUAL_CHOREOGRAPHY_OUTCOMES)[number];
+
 export interface CurrentExperienceState {
   sceneId: string | null;
   focusedEntityIds: readonly string[];
   activeArtifactIds: readonly string[];
   processNodes?: readonly Readonly<CurrentProcessNode>[];
+  sceneComposition?: VisualSceneComposition;
+  choreographyOutcome?: VisualChoreographyOutcome;
+}
+
+/**
+ * Server-truthful choreography outcome derived from reactive choreography
+ * state only: 'interrupted' wins, otherwise an active camera intent with
+ * surviving targets is 'directed', anything else is 'idle'. No viewport,
+ * DOM, screenshot or client-observed signal is involved.
+ */
+export function deriveVisualChoreographyOutcome(choreography: {
+  interrupted: boolean;
+  intentKey: string | null;
+  cameraTargetIds: readonly string[];
+}): VisualChoreographyOutcome {
+  if (choreography.interrupted) return 'interrupted';
+  if (choreography.intentKey !== null && choreography.cameraTargetIds.length > 0) return 'directed';
+  return 'idle';
 }
 
 export interface ContextPackagerInput {
@@ -79,6 +115,7 @@ export interface ContextPack {
   };
   visualState: CurrentExperienceState;
   activeArtifacts: readonly Pick<ArtifactRecord, 'id' | 'kind' | 'title' | 'summary' | 'maturity' | 'status'>[];
+  activeOpportunities: readonly Pick<OpportunityRecord, 'id' | 'kind' | 'summary' | 'evidenceIds' | 'missingInputs' | 'status'>[];
   digestContinuity: { basedOnRevision: number; activeOpportunityIds: readonly string[] } | null;
   recentTurns: readonly Omit<RecentContextTurn, 'includedInDigest'>[];
   metadata: ContextPackMetadata;
@@ -116,6 +153,20 @@ const VISUAL_NODE_LABEL_LIMIT = 120;
 const VISUAL_NODE_KIND_LIMIT = 48;
 const RECENT_TURN_KEYS = new Set(['id', 'role', 'text', 'includedInDigest']);
 const ATTACHMENT_KEY_PATTERN = /(attachment|file|document|ocr|embedding|upload|byte|blob)/i;
+const SCENE_COMPOSITIONS = new Set<string>(VISUAL_SCENE_COMPOSITIONS);
+const CHOREOGRAPHY_OUTCOMES = new Set<string>(VISUAL_CHOREOGRAPHY_OUTCOMES);
+
+function projectSceneComposition(value: unknown): VisualSceneComposition | undefined {
+  return typeof value === 'string' && SCENE_COMPOSITIONS.has(value)
+    ? value as VisualSceneComposition
+    : undefined;
+}
+
+function projectChoreographyOutcome(value: unknown): VisualChoreographyOutcome | undefined {
+  return typeof value === 'string' && CHOREOGRAPHY_OUTCOMES.has(value)
+    ? value as VisualChoreographyOutcome
+    : undefined;
+}
 
 function validId(value: string): boolean {
   return value.length >= 1 && value.length <= 96 && SAFE_ID.test(value);
@@ -250,6 +301,20 @@ function projectActiveArtifacts(context: CanonicalSalesContext, visual: CurrentE
     })));
 }
 
+function projectActiveOpportunities(context: CanonicalSalesContext) {
+  return freezeArray(context.opportunities
+    .filter((opportunity) => opportunity.status !== 'invalidated')
+    .slice(-OPPORTUNITY_PRESENTATION_LIMIT)
+    .map((opportunity) => Object.freeze({
+      id: opportunity.id,
+      kind: opportunity.kind,
+      summary: opportunity.summary,
+      evidenceIds: freezeArray(opportunity.evidenceIds),
+      missingInputs: freezeArray(opportunity.missingInputs),
+      status: opportunity.status,
+    })));
+}
+
 function prepareRecentTurns(
   turns: readonly RecentContextTurn[],
   latestIntentTurnId: string | null,
@@ -306,6 +371,7 @@ interface PayloadParts {
   decisionContext: ContextPack['decisionContext'];
   visualState: CurrentExperienceState;
   activeArtifacts: ContextPack['activeArtifacts'];
+  activeOpportunities: ContextPack['activeOpportunities'];
   digestContinuity: ContextPack['digestContinuity'];
   recentTurns: ContextPack['recentTurns'];
 }
@@ -330,8 +396,15 @@ function buildPack(
       focusedEntityIds: freezeArray(parts.visualState.focusedEntityIds),
       activeArtifactIds: freezeArray(parts.visualState.activeArtifactIds),
       processNodes: projectProcessNodes(parts.visualState.processNodes),
+      ...(parts.visualState.sceneComposition === undefined
+        ? {}
+        : { sceneComposition: parts.visualState.sceneComposition }),
+      ...(parts.visualState.choreographyOutcome === undefined
+        ? {}
+        : { choreographyOutcome: parts.visualState.choreographyOutcome }),
     }),
     activeArtifacts: parts.activeArtifacts,
+    activeOpportunities: parts.activeOpportunities,
     digestContinuity: parts.digestContinuity,
     recentTurns: parts.recentTurns,
     metadata: Object.freeze(metadata),
@@ -365,11 +438,15 @@ export function packageContext(input: ContextPackagerInput): ContextPackagingRes
   const recent = prepareRecentTurns(input.recentTurns, input.canonical.latestUserIntent?.turnId ?? null);
   if ('ok' in recent) return recent;
 
+  const sceneComposition = projectSceneComposition(input.visualState.sceneComposition);
+  const choreographyOutcome = projectChoreographyOutcome(input.visualState.choreographyOutcome);
   const visualState: CurrentExperienceState = Object.freeze({
     sceneId: input.visualState.sceneId,
     focusedEntityIds: uniqueBoundedIds(input.visualState.focusedEntityIds),
     activeArtifactIds: uniqueBoundedIds(input.visualState.activeArtifactIds),
     processNodes: projectProcessNodes(input.visualState.processNodes),
+    ...(sceneComposition === undefined ? {} : { sceneComposition }),
+    ...(choreographyOutcome === undefined ? {} : { choreographyOutcome }),
   });
 
   const baseParts: PayloadParts = {
@@ -389,10 +466,12 @@ export function packageContext(input: ContextPackagerInput): ContextPackagingRes
     }),
     visualState,
     activeArtifacts: projectActiveArtifacts(input.canonical, visualState),
+    activeOpportunities: projectActiveOpportunities(input.canonical),
     digestContinuity: input.digest === null || input.digest.basedOnRevision !== input.canonical.revision ? null : Object.freeze({
       basedOnRevision: input.digest.basedOnRevision,
       activeOpportunityIds: freezeArray(input.canonical.opportunities
         .filter((opportunity) => opportunity.status !== 'invalidated')
+        .slice(-OPPORTUNITY_PRESENTATION_LIMIT)
         .map((opportunity) => opportunity.id)),
     }),
     recentTurns: recent.turns,
@@ -434,6 +513,12 @@ export function packageContext(input: ContextPackagerInput): ContextPackagingRes
       ...(baseParts.visualState.processNodes === undefined
         ? {}
         : { processNodes: baseParts.visualState.processNodes }),
+      ...(baseParts.visualState.sceneComposition === undefined
+        ? {}
+        : { sceneComposition: baseParts.visualState.sceneComposition }),
+      ...(baseParts.visualState.choreographyOutcome === undefined
+        ? {}
+        : { choreographyOutcome: baseParts.visualState.choreographyOutcome }),
     }),
     activeArtifacts: baseParts.activeArtifacts,
     digestContinuity: null,

@@ -20,7 +20,17 @@ function canonical(calculationStatus: 'valid' | 'invalidated' = 'valid'): Canoni
     desiredOutcome: null,
     knownConsequences: Object.freeze([]),
     objections: Object.freeze([]),
-    quantitativeObservations: Object.freeze([]),
+    quantitativeObservations: Object.freeze([Object.freeze({
+      id: 'obs-1',
+      metric: 'minutos por conferencia',
+      value: 40,
+      unit: 'minute' as const,
+      period: 'day' as const,
+      status: 'confirmed' as const,
+      source: 'user' as const,
+      supportingTurnIds: Object.freeze(['turn-7']),
+      confirmedByTurnId: 'turn-7',
+    })]),
     verifiedCalculations: Object.freeze([Object.freeze({
       id: 'calc-1',
       kind: 'capacity' as const,
@@ -128,7 +138,7 @@ test('composes graph mutation, focus, reveal, group, relationship explanation an
   assert.equal(projected.ok, true);
   if (!projected.ok) return;
 
-  const result = projectReactiveCanvas(baseGraph, projected.state, canonical());
+  const result = projectReactiveCanvas(baseGraph, projected.state, { ...canonical(), proposalFacts: [] });
   assert.equal(result.ok, true);
   if (!result.ok) return;
 
@@ -171,7 +181,7 @@ test('dangling relationship mutation is rejected atomically and preserves the ba
   if (!projected.ok) return;
 
   const baseGraph = processFixtures.standard.graph;
-  const result = projectReactiveCanvas(baseGraph, projected.state, canonical());
+  const result = projectReactiveCanvas(baseGraph, projected.state, { ...canonical(), proposalFacts: [] });
   assert.equal(result.ok, false);
   if (result.ok) return;
   assert.equal(result.code, 'INVALID_GRAPH_MUTATION');
@@ -195,7 +205,7 @@ test('unknown semantic action target fails closed instead of fabricating a node'
   assert.equal(projected.ok, true);
   if (!projected.ok) return;
 
-  const result = projectReactiveCanvas(processFixtures.standard.graph, projected.state, canonical());
+  const result = projectReactiveCanvas(processFixtures.standard.graph, projected.state, { ...canonical(), proposalFacts: [] });
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.code, 'UNKNOWN_ACTION_TARGET');
 });
@@ -214,7 +224,7 @@ test('remove_element prunes a node and all dependent relationships while retaini
   if (!projected.ok) return;
 
   const baseGraph = processFixtures.standard.graph;
-  const result = projectReactiveCanvas(baseGraph, projected.state, canonical());
+  const result = projectReactiveCanvas(baseGraph, projected.state, { ...canonical(), proposalFacts: [] });
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.model.graph.nodes.some((node) => node.id === 'manual-review'), false);

@@ -24,6 +24,11 @@ import {
   type ExperienceProjectionResult,
 } from './experience-projector.ts';
 import type { ReactiveExperienceState } from './reactive-experience-state.ts';
+import {
+  createCanvasTelemetryRecorder,
+  type CanvasTelemetryEvent,
+  type CanvasTelemetryRecorder,
+} from './canvas-telemetry.ts';
 
 export interface AcceptedExperienceTransactionDependencies {
   validateSellerSubmission: typeof validateSellerSubmission;
@@ -50,6 +55,7 @@ export interface AcceptedExperienceTransactionInput {
   submission: Readonly<SellerSubmission>;
   review: Readonly<CriticReview>;
   surfaceGuard: AcceptedExperienceSurfaceGuard;
+  telemetry?: CanvasTelemetryRecorder;
   dependencies?: Partial<AcceptedExperienceTransactionDependencies>;
 }
 
@@ -60,6 +66,7 @@ export type AcceptedExperienceTransactionResult =
       reactiveState: Readonly<ReactiveExperienceState>;
       canonicalChanged: boolean;
       deduplicated: boolean;
+      telemetry: readonly Readonly<CanvasTelemetryEvent>[];
     }
   | {
       ok: false;
@@ -74,6 +81,7 @@ export type AcceptedExperienceTransactionResult =
       canonical: CanonicalSalesContext;
       reactiveState: Readonly<ReactiveExperienceState>;
       detail: string;
+      telemetry: readonly Readonly<CanvasTelemetryEvent>[];
     };
 
 const DEFAULT_DEPENDENCIES: AcceptedExperienceTransactionDependencies = Object.freeze({
@@ -121,9 +129,11 @@ function canonicalOpportunities(
 ): readonly OpportunityRecord[] {
   return Object.freeze(submission.proposal.intent.quantitativeOpportunities.map((item) => Object.freeze({
     id: item.id,
+    kind: item.kind,
     summary: item.objective,
     capabilities: Object.freeze([...submission.proposal.intent.capabilities]),
     evidenceIds: Object.freeze([...item.evidenceIds]),
+    missingInputs: Object.freeze([...item.missingInputs]),
     status: 'surfaced' as const,
     invalidatedAtRevision: null,
   })));
@@ -173,6 +183,7 @@ export function commitCriticApprovedExperience(
     ...DEFAULT_DEPENDENCIES,
     ...input.dependencies,
   });
+  const recorder = input.telemetry ?? createCanvasTelemetryRecorder();
 
   const seller = dependencies.validateSellerSubmission(input.submission, {
     canonical: input.canonical,
@@ -184,6 +195,7 @@ export function commitCriticApprovedExperience(
       canonical: input.canonical,
       reactiveState: input.reactiveState,
       detail: sellerFailureDetail(seller),
+      telemetry: recorder.snapshot(),
     };
   }
 
@@ -198,6 +210,7 @@ export function commitCriticApprovedExperience(
       canonical: input.canonical,
       reactiveState: input.reactiveState,
       detail: criticFailureDetail(critic),
+      telemetry: recorder.snapshot(),
     };
   }
   if (critic.review.verdict !== 'PASS') {
@@ -207,6 +220,7 @@ export function commitCriticApprovedExperience(
       canonical: input.canonical,
       reactiveState: input.reactiveState,
       detail: critic.review.verdict,
+      telemetry: recorder.snapshot(),
     };
   }
 
@@ -214,6 +228,7 @@ export function commitCriticApprovedExperience(
     input.reactiveState,
     seller.submission.proposal,
     input.canonical,
+    recorder,
   );
   if (!projected.ok) {
     return {
@@ -222,6 +237,7 @@ export function commitCriticApprovedExperience(
       canonical: input.canonical,
       reactiveState: input.reactiveState,
       detail: projectionFailureDetail(projected),
+      telemetry: recorder.snapshot(),
     };
   }
 
@@ -237,6 +253,7 @@ export function commitCriticApprovedExperience(
       canonical: input.canonical,
       reactiveState: input.reactiveState,
       detail: committed.code,
+      telemetry: recorder.snapshot(),
     };
   }
 
@@ -251,6 +268,7 @@ export function commitCriticApprovedExperience(
       canonical: input.canonical,
       reactiveState: input.reactiveState,
       detail: 'REACTIVE_CANONICAL_RECONCILIATION_FAILED',
+      telemetry: recorder.snapshot(),
     };
   }
 
@@ -264,6 +282,7 @@ export function commitCriticApprovedExperience(
       canonical: input.canonical,
       reactiveState: input.reactiveState,
       detail: 'SURFACE_GUARD_THROW',
+      telemetry: recorder.snapshot(),
     };
   }
   if (!surface.ok) {
@@ -273,6 +292,7 @@ export function commitCriticApprovedExperience(
       canonical: input.canonical,
       reactiveState: input.reactiveState,
       detail: (surface.code ?? 'SURFACE_REJECTED') + ':' + (surface.path ?? 'surface'),
+      telemetry: recorder.snapshot(),
     };
   }
 
@@ -282,5 +302,6 @@ export function commitCriticApprovedExperience(
     reactiveState,
     canonicalChanged: committed !== null,
     deduplicated: projected.deduplicated,
+    telemetry: recorder.snapshot(),
   };
 }

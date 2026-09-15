@@ -197,7 +197,11 @@ test('observation correction preserves metric/unit/period and invalidates calcul
   assert.equal(replacement.source, 'user');
   assert.equal(stored.canonical.verifiedCalculations[0]?.status, 'invalidated');
   assert.equal(stored.canonical.verifiedCalculations[0]?.invalidatedAtRevision, 2);
-  assert.equal(result.state.verifiedCalculations[0]?.status, 'invalidated');
+  assert.equal(
+    result.state.verifiedCalculations.some((item) => item.id === stored.canonical.verifiedCalculations[0]?.id),
+    false,
+    'invalidated numeric truth must stay in Canon history but leave public state',
+  );
 });
 
 test('exact correction retry is idempotent even when the client still carries the pre-commit revision', async () => {

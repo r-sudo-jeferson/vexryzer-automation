@@ -1,8 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { applyContextMutation } from '../../ai/context/context-reducer.ts';
 import { createSessionDigest } from '../../ai/context/session-digest.ts';
-import type { CanonicalSalesContext, VerifiedCalculation } from '../../ai/context/canonical-sales-context.ts';
+import { OPPORTUNITY_PRESENTATION_LIMIT } from '../../ai/context/canonical-sales-context.ts';
+import type {
+  CanonicalSalesContext,
+  OpportunityKind,
+  VerifiedCalculation,
+} from '../../ai/context/canonical-sales-context.ts';
 import type { RecentContextTurn } from '../../ai/context/context-packager.ts';
+import { deriveVisualChoreographyOutcome } from '../../ai/context/context-packager.ts';
 import type { ReactiveExperienceState } from '../../experience/reactive-experience-state.ts';
 import { projectReactiveCanvas, type ReactiveCanvasModel } from '../../canvas/reactive-graph-adapter.ts';
 import { createProcessGraph } from '../../canvas/domain.ts';
@@ -83,12 +89,37 @@ export interface PublicVerifiedCalculation {
   resultValue: number;
   resultUnit: string;
   status: VerifiedCalculation['status'];
+  // WP07 deterministic proof lineage (ids and authority only — no payloads).
+  expression: string;
+  computedBy: 'application';
+  basedOnRevision: number;
+  inputObservationIds: readonly string[];
+}
+
+export interface PublicOpportunity {
+  id: string;
+  kind: OpportunityKind;
+  summary: string;
+  evidenceIds: readonly string[];
+  // Explicit non-numeric uncertainty: presentation surfaces these inputs and
+  // never synthesizes a numeric value for the opportunity.
+  missingInputs: readonly string[];
+  status: 'surfaced' | 'active' | 'invalidated';
+}
+
+export interface PublicEvidenceRef {
+  id: string;
+  kind: 'fact' | 'observation';
+  source: 'user' | 'inference' | 'system';
+  status: string;
 }
 
 export interface PublicAgentSessionState {
   sessionId: string;
   canonicalRevision: number;
   verifiedCalculations: readonly Readonly<PublicVerifiedCalculation>[];
+  opportunities: readonly Readonly<PublicOpportunity>[];
+  evidence: readonly Readonly<PublicEvidenceRef>[];
   reactiveState: Readonly<ReactiveExperienceState>;
 }
 
@@ -154,6 +185,8 @@ function visualState(
 ) {
   return Object.freeze({
     sceneId: record.canonical.currentSceneId,
+    sceneComposition: record.reactiveState.scene.composition,
+    choreographyOutcome: deriveVisualChoreographyOutcome(record.reactiveState.choreography),
     focusedEntityIds: Object.freeze([
       ...new Set([
         ...record.reactiveState.scene.focusIds,
@@ -178,12 +211,47 @@ export function projectPublicAgentSessionState(
   return Object.freeze({
     sessionId: record.sessionId,
     canonicalRevision: record.canonical.revision,
-    verifiedCalculations: Object.freeze(record.canonical.verifiedCalculations.map((calculation) => Object.freeze({
+    verifiedCalculations: Object.freeze(record.canonical.verifiedCalculations
+      .filter((calculation) => calculation.status === 'valid')
+      .map((calculation) => Object.freeze({
       id: calculation.id,
       resultValue: calculation.resultValue,
       resultUnit: calculation.resultUnit,
       status: calculation.status,
+      expression: calculation.expression,
+      computedBy: calculation.computedBy,
+      basedOnRevision: calculation.basedOnRevision,
+      inputObservationIds: Object.freeze([...calculation.inputObservationIds]),
     }))),
+    opportunities: Object.freeze(record.canonical.opportunities
+      .filter((opportunity) => opportunity.status !== 'invalidated')
+      .slice(-OPPORTUNITY_PRESENTATION_LIMIT)
+      .map((opportunity) => Object.freeze({
+      id: opportunity.id,
+      kind: opportunity.kind,
+      summary: opportunity.summary,
+      evidenceIds: Object.freeze([...opportunity.evidenceIds]),
+      missingInputs: Object.freeze([...opportunity.missingInputs]),
+      status: opportunity.status,
+    }))),
+    evidence: Object.freeze([
+      ...record.canonical.facts
+        .filter((fact) => fact.status !== 'superseded')
+        .map((fact) => Object.freeze({
+        id: fact.id,
+        kind: 'fact' as const,
+        source: fact.source,
+        status: fact.status,
+      })),
+      ...record.canonical.quantitativeObservations
+        .filter((observation) => observation.status !== 'superseded')
+        .map((observation) => Object.freeze({
+        id: observation.id,
+        kind: 'observation' as const,
+        source: observation.source,
+        status: observation.status,
+      })),
+    ]),
     reactiveState: record.reactiveState,
   });
 }
@@ -475,7 +543,7 @@ export async function runStoredAgentTurn(
   const currentSurface = projectReactiveCanvas(
     createProcessGraph([], []),
     claimed.record.reactiveState,
-    canonicalAfterInput,
+    { ...canonicalAfterInput, proposalFacts: [] },
   );
   if (!currentSurface.ok) {
     return releaseFailedTurn(
@@ -509,7 +577,7 @@ export async function runStoredAgentTurn(
       const surface = projectReactiveCanvas(
         createProcessGraph([], []),
         reactiveState,
-        canonical,
+        { ...canonical, proposalFacts: [] },
       );
       return surface.ok
         ? { ok: true }

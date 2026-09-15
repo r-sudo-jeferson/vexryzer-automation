@@ -100,9 +100,9 @@ test('quantitative correction supersedes history and invalidates dependent calcu
     mutation: {
       type: 'ADD_OPPORTUNITY',
       opportunity: {
-        id: 'opp-1', summary: 'Liberar capacidade da conferencia',
+        id: 'opp-1', kind: 'monthly_capacity', summary: 'Liberar capacidade da conferencia',
         capabilities: ['automation_integration', 'bi_decision_intelligence'],
-        evidenceIds: ['obs-minutes', 'calc-hours'], status: 'active', invalidatedAtRevision: null,
+        evidenceIds: ['obs-minutes', 'calc-hours'], missingInputs: [], status: 'active', invalidatedAtRevision: null,
       },
     },
   }));
@@ -169,9 +169,11 @@ test('model proposal canonical commit is atomic and increments revision exactly 
       }],
       opportunities: [{
         id: 'opp-proposed',
+        kind: 'rework_volume',
         summary: 'Medir o impacto do retrabalho',
         capabilities: ['bi_decision_intelligence'],
         evidenceIds: ['fact-proposed'],
+        missingInputs: ['taxa de retrabalho'],
         status: 'surfaced',
         invalidatedAtRevision: null,
       }],
@@ -246,9 +248,11 @@ test('atomic model proposal rejects forged authority or unknown evidence without
         }],
         opportunities: [{
           id: 'opp-invalid',
+          kind: 'other',
           summary: 'Oportunidade sem evidência conhecida',
           capabilities: ['process_data_improvement'],
           evidenceIds: ['fact-missing'],
+          missingInputs: [],
           status: 'surfaced',
           invalidatedAtRevision: null,
         }],
@@ -261,6 +265,69 @@ test('atomic model proposal rejects forged authority or unknown evidence without
   });
 });
 
+
+test('WP07 RED: opportunities and artifacts cannot become recursive evidence authority', () => {
+  let context = createCanonicalSalesContext({ sessionId: 'session-no-recursive-evidence' });
+  context = accepted(applyContextMutation(context, {
+    baseRevision: 0,
+    actor: 'model',
+    mutation: {
+      type: 'COMMIT_MODEL_PROPOSAL',
+      facts: [{
+        id: 'fact-root',
+        subject: 'fechamento',
+        predicate: 'tem',
+        value: 'retrabalho',
+        status: 'proposed',
+        source: 'inference',
+        confidence: null,
+        supportingTurnIds: ['turn-1'],
+        confirmedByTurnId: null,
+      }],
+      opportunities: [{
+        id: 'opp-root',
+        kind: 'rework_volume',
+        summary: 'Medir retrabalho',
+        capabilities: ['bi_decision_intelligence'],
+        evidenceIds: ['fact-root'],
+        missingInputs: ['volume mensal'],
+        status: 'surfaced',
+        invalidatedAtRevision: null,
+      }],
+      artifacts: [{
+        id: 'artifact-root',
+        kind: 'bi_dashboard',
+        title: 'Visão de retrabalho',
+        summary: 'Representação conceitual baseada no fato raiz.',
+        maturity: 'conceptual',
+        evidenceIds: ['fact-root'],
+        status: 'proposed',
+        invalidatedAtRevision: null,
+      }],
+    },
+  }));
+
+  for (const forbiddenEvidenceId of ['opp-root', 'artifact-root']) {
+    const result = applyContextMutation(context, {
+      baseRevision: context.revision,
+      actor: 'model',
+      mutation: {
+        type: 'ADD_OPPORTUNITY',
+        opportunity: {
+          id: `opp-child-${forbiddenEvidenceId === 'opp-root' ? 'opportunity' : 'artifact'}`,
+          kind: 'other',
+          summary: 'Não pode usar objeto comercial como prova.',
+          capabilities: ['process_data_improvement'],
+          evidenceIds: [forbiddenEvidenceId],
+          missingInputs: ['evidência canônica independente'],
+          status: 'surfaced',
+          invalidatedAtRevision: null,
+        },
+      },
+    });
+    assert.deepEqual(result, { ok: false, code: 'INVALID_MUTATION', revision: context.revision });
+  }
+});
 
 test('atomic model proposal rejects superseded and invalidated evidence as support for new objects', () => {
   let context = createCanonicalSalesContext({ sessionId: 'session-invalid-evidence' });
@@ -309,9 +376,11 @@ test('atomic model proposal rejects superseded and invalidated evidence as suppo
       facts: [],
       opportunities: [{
         id: 'opp-stale',
+        kind: 'monthly_capacity',
         summary: 'Não pode depender de evidência invalidada',
         capabilities: ['process_data_improvement'],
         evidenceIds: ['calc-old'],
+        missingInputs: [],
         status: 'surfaced',
         invalidatedAtRevision: null,
       }],

@@ -167,6 +167,66 @@ test('performs at most one bounded recompaction attempt before returning overflo
   assert.equal(calls, 2);
 });
 
+test('WP07 RED: current opportunity context survives next-turn packaging and bounded compaction', () => {
+  const input = baseInput();
+  const opportunityCanonical = {
+    ...canonical,
+    opportunities: [{
+      id: 'opp-capacity',
+      kind: 'monthly_capacity' as const,
+      summary: 'Medir a capacidade consumida pela conferência manual.',
+      capabilities: ['bi_decision_intelligence'] as const,
+      evidenceIds: ['fact-confirmed'] as const,
+      missingInputs: ['minutos por conferência', 'pessoas envolvidas'] as const,
+      status: 'surfaced' as const,
+      invalidatedAtRevision: null,
+    }],
+  };
+  const result = packageContext({
+    ...input,
+    canonical: opportunityCanonical,
+    recentTurns: [
+      ...input.recentTurns,
+      { id: 'turn-old', role: 'assistant' as const, text: 'x'.repeat(4000) },
+    ],
+    budget: { maxInputTokens: 3200, reservedOutputTokens: 500 },
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.pack.metadata.compaction, 'bounded');
+  assert.deepEqual(result.pack.activeOpportunities, [{
+    id: 'opp-capacity',
+    kind: 'monthly_capacity',
+    summary: 'Medir a capacidade consumida pela conferência manual.',
+    evidenceIds: ['fact-confirmed'],
+    missingInputs: ['minutos por conferência', 'pessoas envolvidas'],
+    status: 'surfaced',
+  }]);
+});
+
+test('WP07 RED: Seller opportunity details and digest continuity share the same bounded working set', () => {
+  const input = baseInput();
+  const opportunities = Array.from({ length: 12 }, (_, index) => ({
+    id: `opp-${index}`,
+    kind: 'rework_volume' as const,
+    summary: `Medir retrabalho ${index}.`,
+    capabilities: [] as const,
+    evidenceIds: ['fact-confirmed'] as const,
+    missingInputs: ['taxa de retrabalho'] as const,
+    status: 'surfaced' as const,
+    invalidatedAtRevision: null,
+  }));
+  const result = packageContext({
+    ...input,
+    canonical: { ...canonical, opportunities },
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const expected = ['opp-4', 'opp-5', 'opp-6', 'opp-7', 'opp-8', 'opp-9', 'opp-10', 'opp-11'];
+  assert.deepEqual(result.pack.activeOpportunities.map((item) => item.id), expected);
+  assert.deepEqual(result.pack.digestContinuity?.activeOpportunityIds, expected);
+});
+
 test('stale digest cannot reintroduce continuity state over a newer canonical revision', () => {
   const input = baseInput();
   const result = packageContext({

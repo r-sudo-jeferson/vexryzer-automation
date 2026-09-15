@@ -1,3 +1,4 @@
+import { containsExecutableSurface } from './executable-surface.ts';
 export const ARTIFACT_KINDS = [
   'operational_object',
   'data_import_preview',
@@ -38,7 +39,6 @@ type ParseResult<T> = { ok: true; value: T } | ValidationFailure;
 
 const SAFE_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const CONTROL_CHARACTER_PATTERN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
-const EXECUTABLE_TEXT_PATTERN = /(?:<\/?script\b|javascript\s*:|data\s*:\s*text\/html|import\s*\(|require\s*\(|<\s*[A-Z][A-Za-z0-9]*(?:\s|\/?>))/i;
 const ARTIFACT_KEYS = new Set(['id', 'kind', 'objective', 'evidenceIds', 'audience', 'desiredImpact', 'workshopRequired']);
 const MAX_EVIDENCE_IDS = 32;
 
@@ -60,7 +60,7 @@ function parseText(value: unknown, path: string, maxLength: number): ParseResult
   if (!trimmed || trimmed.length > maxLength || CONTROL_CHARACTER_PATTERN.test(value)) {
     return { ok: false, code: 'INVALID_VALUE', path };
   }
-  if (EXECUTABLE_TEXT_PATTERN.test(value)) return { ok: false, code: 'EXECUTABLE_SURFACE', path };
+  if (containsExecutableSurface(value)) return { ok: false, code: 'EXECUTABLE_SURFACE', path };
   return { ok: true, value: trimmed };
 }
 
